@@ -4,11 +4,12 @@ import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { EmptyState } from "@/components/EmptyState";
 import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
+import { ArchetypeCards } from "@/components/dashboard/ArchetypeCards";
 import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useArchetypeDiscovery } from "@/hooks/useStrategyData";
-import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Brain, Loader2, Sparkles } from "lucide-react";
+import { useArchetypeDiscovery, usePlaybookData } from "@/hooks/useStrategyData";
+import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Brain, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,14 +54,6 @@ function sumField<T>(arr: T[], field: keyof T): number {
   return arr.reduce((sum, p) => sum + (Number((p as any)[field]) || 0), 0);
 }
 
-const ARCHETYPE_COLORS = [
-  "border-violet-500/50", "border-emerald-500/50", "border-yellow-500/50",
-  "border-blue-500/50", "border-rose-500/50",
-];
-const ARCHETYPE_LABEL_COLORS = [
-  "text-violet-400", "text-emerald-400", "text-yellow-400",
-  "text-blue-400", "text-rose-400",
-];
 
 const Dashboard = () => {
   usePageTitle("Dashboard", "Your Threads analytics and performance overview");
@@ -75,6 +68,7 @@ const Dashboard = () => {
 
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
   const { data: discoveredArchetypes } = useArchetypeDiscovery();
+  const { data: playbookData } = usePlaybookData();
 
   const profileQuery = useQuery({
     queryKey: ["dashboard-profile", user?.id],
@@ -323,35 +317,11 @@ const Dashboard = () => {
               {discoveredArchetypes ? "Your Content Archetypes" : "Content Archetypes"}
             </h3>
             {discoveredArchetypes?.archetypes ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {discoveredArchetypes.archetypes.map((a, i) => (
-                  <div
-                    key={a.name}
-                    className={`border-2 ${ARCHETYPE_COLORS[i % ARCHETYPE_COLORS.length]} rounded-xl bg-card/50 p-4`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[i % ARCHETYPE_LABEL_COLORS.length]}`}>
-                        {a.emoji} {a.name}
-                      </h4>
-                      <Badge variant="outline" className="text-xs text-muted-foreground">
-                        {a.recommended_percentage}%
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed mb-2.5">{a.description}</p>
-                    <div className="flex justify-between text-xs mb-2">
-                      <span className="text-muted-foreground">Drives</span>
-                      <span className="font-semibold text-foreground">{a.drives}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {a.key_ingredients.map((ing) => (
-                        <span key={ing} className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
-                          {ing}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <ArchetypeCards
+                archetypes={discoveredArchetypes.archetypes}
+                posts={allPosts ?? []}
+                playbook={playbookData}
+              />
             ) : (
               <div className="rounded-xl border border-dashed border-purple-500/30 bg-purple-500/5 p-6 text-center">
                 <Brain className="h-6 w-6 mx-auto mb-2 text-purple-400" />
