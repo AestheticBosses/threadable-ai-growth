@@ -3,13 +3,11 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { RegressionAnalysis } from "@/components/strategy/RegressionAnalysis";
 import { GrowthSignals } from "@/components/strategy/GrowthSignals";
-import { FrameworkTab } from "@/components/strategy/FrameworkTab";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "regression", label: "Regression" },
-  { id: "growth", label: "Growth Signals" },
-  { id: "framework", label: "Framework" },
+  { id: "regression", label: "Regression Insights" },
+  { id: "growth", label: "Top Performers" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -46,7 +44,6 @@ const Insights = () => {
 
         {activeTab === "regression" && <RegressionAnalysis />}
         {activeTab === "growth" && <GrowthSignals />}
-        {activeTab === "framework" && <FrameworkTab />}
       </div>
     </AppLayout>
   );
