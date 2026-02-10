@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.fetch-competitor-posts]
 verify_jwt = false
+
+[functions.run-regression]
+verify_jwt = false
