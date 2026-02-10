@@ -111,7 +111,7 @@ export function useDashboardData(filters: DashboardFilters) {
       if (!userId) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("threads_username, threads_access_token, threads_user_id, full_name, threads_profile_picture_url")
+        .select("threads_username, threads_access_token, threads_user_id, full_name, display_name, threads_profile_picture_url, follower_count")
         .eq("id", userId)
         .maybeSingle();
       return data;
