@@ -25,43 +25,82 @@ serve(async (req) => {
 
     console.log("User:", user.id)
 
-    // Get top 50 posts by views
-    const { data: posts, error: postsError } = await adminClient
-      .from('posts_analyzed')
-      .select('text_content, views, likes, replies, reposts, quotes, engagement_rate, word_count, posted_at')
-      .eq('user_id', user.id)
-      .order('views', { ascending: false })
-      .limit(50)
+    const body = await req.json().catch(() => ({}))
+    const isNewAccount = body.new_account === true
+    const nicheHint = body.niche || ""
+    const goalsHint = body.goals || ""
 
-    if (postsError || !posts?.length) {
-      console.error("Posts error:", postsError)
-      return new Response(JSON.stringify({ error: 'No posts found' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    let postsForAnalysis = ""
+    let promptContent = ""
+
+    if (isNewAccount) {
+      // New account — no posts, generate starter archetypes based on niche
+      console.log("New account mode — niche:", nicheHint)
+      promptContent = `You are a viral content strategist. A NEW creator is starting on Threads in the "${nicheHint}" niche. Their goals: "${goalsHint}".
+
+They have NO existing posts yet. Based on what works for successful Threads creators in this niche, suggest 3-5 content archetypes they should use.
+
+For each archetype, determine:
+1. A memorable name (2-3 words, specific to their niche)
+2. What makes this type work (the pattern)
+3. Typical engagement pattern (what metric it drives most: views, likes, reposts, replies)
+4. Key ingredients (what elements should always be present)
+5. A template/formula for writing this type
+6. What percentage of their content should be this type
+
+Also provide:
+- A recommended weekly posting schedule (7 days) using these archetypes
+- 3 rules for new creators in this niche
+
+Respond ONLY in this exact JSON format with no other text:
+{
+  "archetypes": [
+    {
+      "name": "Archetype Name",
+      "emoji": "🔥",
+      "description": "What this content type is and why it works",
+      "drives": "primary metric it drives (views/likes/reposts/replies)",
+      "avg_views": 0,
+      "avg_engagement": 0,
+      "key_ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
+      "template": "Fill-in-the-blank template for writing this type",
+      "recommended_percentage": 30,
+      "example_posts": ["example post idea 1", "example post idea 2"]
     }
+  ],
+  "weekly_schedule": [
+    { "day": "Monday", "archetype": "Archetype Name", "notes": "why this day" }
+  ],
+  "rules": [
+    "Rule 1 for new creators",
+    "Rule 2 for new creators",
+    "Rule 3 for new creators"
+  ]
+}`
+    } else {
+      // Established account — analyze existing posts
+      const { data: posts, error: postsError } = await adminClient
+        .from('posts_analyzed')
+        .select('text_content, views, likes, replies, reposts, quotes, engagement_rate, word_count, posted_at')
+        .eq('user_id', user.id)
+        .order('views', { ascending: false })
+        .limit(50)
 
-    console.log("Posts loaded:", posts.length)
+      if (postsError || !posts?.length) {
+        console.error("Posts error:", postsError)
+        return new Response(JSON.stringify({ error: 'No posts found. Fetch your posts first.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
 
-    // Format posts for Claude
-    const postsForAnalysis = posts.map((p: any, i: number) => 
-      `Post ${i+1} (${p.views} views, ${p.likes} likes, ${p.replies} replies, ${p.reposts} reposts, ${p.quotes} quotes, ${p.engagement_rate}% eng):
+      console.log("Posts loaded:", posts.length)
+
+      postsForAnalysis = posts.map((p: any, i: number) => 
+        `Post ${i+1} (${p.views} views, ${p.likes} likes, ${p.replies} replies, ${p.reposts} reposts, ${p.quotes} quotes, ${p.engagement_rate}% eng):
 ${p.text_content}`
-    ).join('\n\n---\n\n')
+      ).join('\n\n---\n\n')
 
-    // Call Claude API
-    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [{
-          role: 'user',
-          content: `You are a viral content strategist analyzing a creator's Threads posts to discover their unique content archetypes.
+      promptContent = `You are a viral content strategist analyzing a creator's Threads posts to discover their unique content archetypes.
 
-Here are their top 50 posts ranked by views with engagement data:
+Here are their top ${posts.length} posts ranked by views with engagement data:
 
 ${postsForAnalysis}
 
@@ -104,6 +143,22 @@ Respond ONLY in this exact JSON format with no other text:
     "Rule 3 validated by the data"
   ]
 }`
+    }
+
+    // Call Claude API
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: promptContent
         }]
       })
     })

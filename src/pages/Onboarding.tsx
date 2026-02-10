@@ -111,9 +111,22 @@ const Onboarding = () => {
       await refreshProfile();
 
       if (isEstablished) {
+        // Established users go to analyze their existing posts
         navigate("/analyze", { replace: true });
       } else {
-        navigate("/analyze", { replace: true });
+        // New accounts: call discover-archetypes with niche context for starter archetypes
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await supabase.functions.invoke("discover-archetypes", {
+              body: { new_account: true, niche: niche.trim(), goals: endGoal.trim() },
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+          }
+        } catch {
+          // Non-critical — they can discover later
+        }
+        navigate("/playbook", { replace: true });
       }
     } catch (e: any) {
       toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
