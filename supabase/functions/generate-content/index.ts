@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     const [profileRes, strategyRes, postsRes] = await Promise.all([
       adminClient.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
       adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).single(),
-      adminClient.from("posts_analyzed").select("text_content, engagement_rate, views").eq("user_id", userId).eq("source", "own").order("engagement_rate", { ascending: false }).limit(5),
+      adminClient.from("posts_analyzed").select("text_content, engagement_rate, views").eq("user_id", userId).order("engagement_rate", { ascending: false }).limit(5),
     ]);
 
     const profile = profileRes.data;

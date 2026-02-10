@@ -48,7 +48,6 @@ Deno.serve(async (req) => {
       .from("posts_analyzed")
       .select("text_content")
       .eq("user_id", userId)
-      .eq("source", "own")
       .order("engagement_rate", { ascending: false })
       .limit(20);
 

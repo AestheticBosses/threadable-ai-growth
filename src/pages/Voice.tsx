@@ -69,7 +69,6 @@ const Voice = () => {
         .from("posts_analyzed")
         .select("id, text_content, engagement_rate, views")
         .eq("user_id", user.id)
-        .eq("source", "own")
         .order("engagement_rate", { ascending: false })
         .limit(20),
       supabase
