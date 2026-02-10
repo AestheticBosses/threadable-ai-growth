@@ -88,8 +88,10 @@ export function ThreadsConnectionCard({ threadsUsername, tokenExpiresAt, onDisco
       );
       const json = await res.json();
       if (json.url) {
+        console.log("Generated Threads OAuth URL:", json.url);
         window.location.href = json.url;
       } else {
+        console.error("No URL in response:", json);
         toast.error("Failed to get authorization URL");
       }
     } catch {
