@@ -96,6 +96,27 @@ export type Database = {
           },
         ]
       }
+      follower_snapshots: {
+        Row: {
+          follower_count: number
+          id: string
+          recorded_at: string
+          user_id: string
+        }
+        Insert: {
+          follower_count?: number
+          id?: string
+          recorded_at?: string
+          user_id: string
+        }
+        Update: {
+          follower_count?: number
+          id?: string
+          recorded_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       posts_analyzed: {
         Row: {
           char_count: number | null
