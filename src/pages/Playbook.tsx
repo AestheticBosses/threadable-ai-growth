@@ -49,13 +49,15 @@ const Playbook = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
-      const { data, error } = await supabase.functions.invoke("generate-playbook", {
+      const { data, error } = await supabase.functions.invoke("run-analysis", {
         body: {},
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (error) throw new Error(error.message || "Failed to generate playbook");
-      toast({ title: "Playbook generated!", description: "Your personalized content playbook is ready." });
+      if (error) throw new Error(error.message || "Failed to run analysis");
+      toast({ title: "Analysis complete!", description: "Your playbook, archetypes, and insights are ready." });
       queryClient.invalidateQueries({ queryKey: ["playbook-data"] });
+      queryClient.invalidateQueries({ queryKey: ["discovered-archetypes"] });
+      queryClient.invalidateQueries({ queryKey: ["regression-insights"] });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
@@ -126,7 +128,7 @@ const Playbook = () => {
               ) : (
                 <Sparkles className="h-5 w-5" />
               )}
-              {generating ? "Claude is building your playbook…" : "✨ Generate Your Playbook"}
+              {generating ? "Claude is running full analysis…" : "🧠 Run Full Analysis"}
             </Button>
           </div>
         </div>

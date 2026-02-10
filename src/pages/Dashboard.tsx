@@ -8,7 +8,7 @@ import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useArchetypeDiscovery } from "@/hooks/useStrategyData";
-import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Sparkles, Loader2 } from "lucide-react";
+import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Brain, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -71,7 +71,7 @@ const Dashboard = () => {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
   const { data: discoveredArchetypes } = useArchetypeDiscovery();
@@ -179,24 +179,27 @@ const Dashboard = () => {
     }
   };
 
-  const handleDiscoverArchetypes = async () => {
+  const handleRunAnalysis = async () => {
     if (!user) return;
-    setDiscovering(true);
+    setAnalyzing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Not logged in"); return; }
-      const { data, error } = await supabase.functions.invoke("discover-archetypes", {
+      const { data, error } = await supabase.functions.invoke("run-analysis", {
         body: {},
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (error) { toast.error(error.message || "Failed to discover archetypes"); return; }
-      const count = data?.analysis?.archetypes?.length ?? 0;
-      toast.success(`Discovered ${count} archetypes from your data!`);
+      if (error) { toast.error(error.message || "Analysis failed"); return; }
+      const archetypeCount = data?.analysis?.archetypes?.length ?? 0;
+      const insightCount = data?.analysis?.regression_insights?.length ?? 0;
+      toast.success(`Analysis complete! ${archetypeCount} archetypes, ${insightCount} insights, and playbook built.`);
       queryClient.invalidateQueries({ queryKey: ["discovered-archetypes"] });
+      queryClient.invalidateQueries({ queryKey: ["regression-insights"] });
+      queryClient.invalidateQueries({ queryKey: ["playbook-data"] });
     } catch (err) {
-      toast.error("Failed to discover archetypes");
+      toast.error("Analysis failed");
     } finally {
-      setDiscovering(false);
+      setAnalyzing(false);
     }
   };
 
@@ -226,9 +229,9 @@ const Dashboard = () => {
               <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
               {fetching ? "Fetching…" : "Fetch My Posts"}
             </Button>
-            <Button onClick={handleDiscoverArchetypes} disabled={discovering || !hasAnyData} className="bg-purple-600 hover:bg-purple-700 text-white">
-              {discovering ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
-              {discovering ? "Analyzing…" : "✨ Discover Archetypes"}
+            <Button onClick={handleRunAnalysis} disabled={analyzing || !hasAnyData} className="bg-purple-600 hover:bg-purple-700 text-white">
+              {analyzing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Brain className="h-4 w-4 mr-1.5" />}
+              {analyzing ? "Analyzing…" : "🧠 Run Full Analysis"}
             </Button>
             <DateRangeSelector
               range={range}
@@ -241,10 +244,10 @@ const Dashboard = () => {
         </div>
 
         {/* Discovery loading */}
-        {discovering && (
+        {analyzing && (
           <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-            <span className="text-sm font-medium text-purple-300">Claude is analyzing your content patterns…</span>
+            <span className="text-sm font-medium text-purple-300">Claude is analyzing your content… This takes about 30 seconds.</span>
           </div>
         )}
 
@@ -351,12 +354,12 @@ const Dashboard = () => {
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-purple-500/30 bg-purple-500/5 p-6 text-center">
-                <Sparkles className="h-6 w-6 mx-auto mb-2 text-purple-400" />
+                <Brain className="h-6 w-6 mx-auto mb-2 text-purple-400" />
                 <p className="text-sm font-medium text-purple-300">
-                  Click "✨ Discover Archetypes" to let AI analyze your content patterns
+                  Click "🧠 Run Full Analysis" to discover your content archetypes
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Claude will analyze your top posts and discover your unique content types
+                  Claude will analyze all your posts and build archetypes, insights, and a playbook
                 </p>
               </div>
             )}

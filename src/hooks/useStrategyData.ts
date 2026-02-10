@@ -21,12 +21,25 @@ export interface ArchetypeDiscovery {
   rules: string[];
 }
 
+export interface RegressionInsight {
+  category: string;
+  insight: string;
+  evidence: string;
+  metric_impacted: string;
+  strength: string;
+  recommendation: string;
+}
+
+export interface RegressionInsightsData {
+  insights: RegressionInsight[];
+}
+
 export interface PlaybookData {
   weekly_schedule: { day: string; archetype: string; emoji: string; notes: string }[];
   checklist: { points: number; question: string; data_backing: string }[];
   templates: { archetype: string; emoji: string; template: string; example: string }[];
   rules: { rule: string; evidence: string }[];
-  generation_guidelines: { tone: string; avg_length: string; vocabulary: string[]; avoid: string[] };
+  generation_guidelines: { tone: string; avg_length: string; vocabulary: string[]; hooks_that_work?: string[]; avoid: string[] };
 }
 
 async function fetchStrategyData<T>(userId: string, strategyType: string): Promise<T | null> {
@@ -52,6 +65,15 @@ export function useArchetypeDiscovery() {
   return useQuery({
     queryKey: ["discovered-archetypes", user?.id],
     queryFn: () => fetchStrategyData<ArchetypeDiscovery>(user!.id, "archetype_discovery"),
+    enabled: !!user?.id,
+  });
+}
+
+export function useRegressionInsights() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["regression-insights", user?.id],
+    queryFn: () => fetchStrategyData<RegressionInsightsData>(user!.id, "regression_insights"),
     enabled: !!user?.id,
   });
 }
