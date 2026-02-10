@@ -6,36 +6,29 @@ import { toast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
   Loader2,
   ArrowRight,
-  Lightbulb,
-  Calendar,
   Target,
-  AlertTriangle,
   Sparkles,
-  Clock,
 } from "lucide-react";
 
-type StrategyJson = {
-  content_pillars: { name: string; description: string; percentage_of_content: number; example_topics: string[] }[];
-  weekly_schedule: { day: string; posts_count: number; content_types: string[]; best_time: string }[];
-  content_ratios: { authority: number; engagement: number; storytelling: number; cta: number };
-  hooks_to_use: string[];
-  topics_for_this_week: string[];
-  avoid: string[];
-};
+import { ContentArchetypes } from "@/components/strategy/ContentArchetypes";
+import { ScoringChecklist } from "@/components/strategy/ScoringChecklist";
+import { WeeklyScheduleSection } from "@/components/strategy/WeeklyScheduleSection";
+import { HookFormulas } from "@/components/strategy/HookFormulas";
+import { TopicsSection } from "@/components/strategy/TopicsSection";
+import { AvoidSection } from "@/components/strategy/AvoidSection";
 
-const PILLAR_COLORS = [
-  "bg-primary/10 text-primary border-primary/20",
-  "bg-orange-500/10 text-orange-600 border-orange-500/20",
-  "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-  "bg-violet-500/10 text-violet-600 border-violet-500/20",
-  "bg-rose-500/10 text-rose-600 border-rose-500/20",
-];
+type StrategyJson = {
+  content_pillars?: { name: string; description: string; percentage_of_content: number; example_topics: string[] }[];
+  weekly_schedule?: { day: string; posts_count: number; content_types: string[]; best_time: string }[];
+  content_ratios?: { authority: number; engagement: number; storytelling: number; cta: number };
+  hooks_to_use?: string[];
+  topics_for_this_week?: string[];
+  avoid?: string[];
+};
 
 const Strategy = () => {
   usePageTitle("Content Strategy", "Your data-driven weekly content plan");
@@ -69,7 +62,6 @@ const Strategy = () => {
       setLoading(false);
     } else {
       setLoading(false);
-      // Auto-trigger generation
       generateStrategy();
     }
   }, [user]);
@@ -171,12 +163,12 @@ const Strategy = () => {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-8">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-10">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Content Strategy</h1>
-            <p className="mt-1 text-muted-foreground">Your data-driven weekly content plan.</p>
+            <p className="mt-1 text-muted-foreground">Your archetype-driven weekly content plan.</p>
           </div>
           <Button variant="outline" onClick={generateStrategy} disabled={generating} className="gap-2">
             <Sparkles className="h-4 w-4" />
@@ -184,150 +176,25 @@ const Strategy = () => {
           </Button>
         </div>
 
-        {/* Content Pillars */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" />
-            Content Pillars
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {strategy.content_pillars?.map((pillar, i) => (
-              <Card key={i} className={`border ${PILLAR_COLORS[i % PILLAR_COLORS.length].split(" ").pop()}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{pillar.name}</CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                      {pillar.percentage_of_content}%
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-sm text-muted-foreground">{pillar.description}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {pillar.example_topics?.slice(0, 3).map((topic, j) => (
-                      <Badge key={j} variant="outline" className="text-xs font-normal">
-                        {topic}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+        {/* Section 1: Content Archetypes */}
+        <ContentArchetypes />
 
-        {/* Content Ratios */}
-        {strategy.content_ratios && (
-          <section>
-            <h2 className="text-lg font-semibold text-foreground mb-4">Content Mix</h2>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {Object.entries(strategy.content_ratios).map(([key, val]) => (
-                <Card key={key}>
-                  <CardContent className="py-4 text-center">
-                    <p className="text-2xl font-bold text-primary">{val}%</p>
-                    <p className="text-sm text-muted-foreground capitalize">{key}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* Section 2: Scoring Checklist */}
+        <ScoringChecklist />
 
-        {/* Weekly Calendar */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
-            Weekly Schedule
-          </h2>
-          <div className="grid gap-3 md:grid-cols-7">
-            {strategy.weekly_schedule?.map((day, i) => (
-              <Card key={i} className="text-center">
-                <CardContent className="py-4 space-y-2">
-                  <p className="text-sm font-semibold text-foreground">{day.day.slice(0, 3)}</p>
-                  <p className="text-2xl font-bold text-primary">{day.posts_count}</p>
-                  <p className="text-xs text-muted-foreground">post{day.posts_count !== 1 ? "s" : ""}</p>
-                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
-                    {day.best_time}
-                  </div>
-                  <div className="flex flex-wrap justify-center gap-1">
-                    {day.content_types?.map((type, j) => (
-                      <Badge key={j} variant="outline" className="text-[10px] px-1.5 py-0">
-                        {type}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+        {/* Section 3: Weekly Schedule */}
+        <WeeklyScheduleSection schedule={strategy.weekly_schedule} />
 
-        {/* Hooks */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Lightbulb className="h-5 w-5 text-primary" />
-            Hook Formulas
-          </h2>
-          <Card>
-            <CardContent className="py-4">
-              <div className="grid gap-2 md:grid-cols-2">
-                {strategy.hooks_to_use?.map((hook, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 rounded-lg border border-border p-3"
-                  >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                      {i + 1}
-                    </span>
-                    <p className="text-sm text-foreground">{hook}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        {/* Section 4: Hook Formulas */}
+        <HookFormulas hooks={strategy.hooks_to_use} />
 
-        {/* Topics */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Topics for This Week</h2>
-          <Card>
-            <CardContent className="py-4">
-              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                {strategy.topics_for_this_week?.map((topic, i) => (
-                  <div key={i} className="flex items-start gap-2 rounded-lg border border-border p-3">
-                    <span className="text-xs font-mono text-muted-foreground mt-0.5">{i + 1}.</span>
-                    <p className="text-sm text-foreground">{topic}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        {/* Section 5: Topics */}
+        <TopicsSection topics={strategy.topics_for_this_week} />
 
-        {/* Avoid */}
-        {strategy.avoid?.length > 0 && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Things to Avoid
-            </h2>
-            <Card className="border-destructive/20">
-              <CardContent className="py-4">
-                <div className="space-y-2">
-                  {strategy.avoid.map((item, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm">
-                      <span className="text-destructive mt-0.5">✕</span>
-                      <p className="text-foreground">{item}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-        )}
+        {/* Section 6: Avoid */}
+        <AvoidSection items={strategy.avoid ?? []} />
 
-        {/* CTA */}
+        {/* Section 7: CTA */}
         <div className="pt-4">
           <Button size="lg" onClick={() => navigate("/queue")} className="gap-2">
             Generate This Week's Content
