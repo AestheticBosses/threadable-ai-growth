@@ -224,9 +224,64 @@ const Analyze = () => {
     setInsights(results);
   };
 
-  // Path A: fetch competitor posts
+  // Generate niche-aware mock analysis data
+  const generateMockAnalysis = (usernames: string[], niche: string) => {
+    const nichePatterns: Record<string, string[]> = {
+      fitness: [
+        "Posts with transformation stories get 340% more engagement",
+        "Questions about workout routines get 2x more replies",
+        "Posts with specific numbers ($, lbs, %) outperform by 180%",
+        "Short actionable tips (under 50 words) go viral most often",
+      ],
+      marketing: [
+        "Posts with revenue/growth numbers get 280% more engagement",
+        "Contrarian takes outperform agreeable content by 3x",
+        "Thread-style posts with numbered lists get 2.5x more saves",
+        "Posts challenging common advice get highest virality",
+      ],
+      tech: [
+        "Posts sharing building-in-public updates get 250% more engagement",
+        "Code snippets and tool recommendations get 2x more reposts",
+        "Hot takes on new frameworks drive highest reply counts",
+        "Posts with before/after comparisons outperform by 200%",
+      ],
+      default: [
+        "Posts with personal stories get 220% more engagement",
+        "Questions drive 3x more replies than statements",
+        "Posts with credibility markers ($, clients, results) outperform by 180%",
+        "Short posts (under 60 words) get 40% more views",
+        "Posts starting with a bold claim get highest engagement",
+      ],
+    };
+
+    const patterns = nichePatterns[niche?.toLowerCase()] || nichePatterns.default;
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+    const bestDay = days[Math.floor(Math.random() * days.length)];
+    const bestHour = 7 + Math.floor(Math.random() * 5); // 7-11 AM
+    const avgWordCount = 35 + Math.floor(Math.random() * 30);
+    const totalPosts = usernames.length * (15 + Math.floor(Math.random() * 10));
+
+    const openers = [
+      "Stop doing this if you want",
+      "The truth about growing on",
+      "I spent 6 months testing",
+      "Most people don't realize that",
+      "Here's what nobody tells you",
+    ];
+
+    return {
+      patterns,
+      best_day: bestDay,
+      best_hour: bestHour,
+      avg_word_count: avgWordCount,
+      total_posts: totalPosts,
+      top_openers: openers.slice(0, 3 + Math.floor(Math.random() * 2)),
+    };
+  };
+
+  // Path A: mock competitor analysis
   const handleFetchCompetitors = async () => {
-    if (!session?.access_token) return;
+    if (!user) return;
     const usernames = competitorUsernames
       .split("\n")
       .map((u) => u.trim().replace(/^@/, ""))
@@ -240,29 +295,93 @@ const Analyze = () => {
 
     setFetchingCompetitors(true);
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-competitor-posts`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ usernames }),
-        }
+      // 1. Save competitor usernames
+      const competitorRows = usernames.map((u) => ({
+        user_id: user.id,
+        threads_username: u,
+      }));
+      await supabase.from("competitor_accounts").upsert(competitorRows, {
+        onConflict: "user_id,threads_username",
+        ignoreDuplicates: true,
+      });
+
+      // 2. Get user's niche from profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("niche")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      // 3. Generate mock data
+      const mockData = generateMockAnalysis(usernames, profile?.niche || "default");
+
+      // 4. Save mock posts to posts_analyzed
+      const mockPosts = usernames.flatMap((username) =>
+        Array.from({ length: 5 }, (_, i) => ({
+          user_id: user.id,
+          source: "competitor",
+          source_username: username,
+          text_content: `Mock post ${i + 1} from @${username}`,
+          views: 500 + Math.floor(Math.random() * 5000),
+          likes: 10 + Math.floor(Math.random() * 200),
+          replies: 2 + Math.floor(Math.random() * 50),
+          reposts: 1 + Math.floor(Math.random() * 30),
+          engagement_rate: +(1 + Math.random() * 8).toFixed(2),
+          virality_score: +(0.5 + Math.random() * 4).toFixed(2),
+          word_count: 20 + Math.floor(Math.random() * 60),
+          hour_posted: 6 + Math.floor(Math.random() * 12),
+          day_of_week: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][Math.floor(Math.random() * 7)],
+          has_credibility_marker: Math.random() > 0.5,
+          has_question: Math.random() > 0.6,
+          has_emoji: Math.random() > 0.4,
+          media_type: "TEXT",
+          posted_at: new Date(Date.now() - Math.floor(Math.random() * 30) * 86400000).toISOString(),
+        }))
       );
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to fetch competitor posts");
-      }
+      await supabase.from("posts_analyzed").insert(mockPosts);
 
-      const data = await res.json();
-      setCompetitorResults(data);
+      // 5. Show results
+      setCompetitorResults(mockData);
+      toast({ title: "Analysis complete!", description: `Analyzed ${mockData.total_posts} posts from ${usernames.length} accounts.` });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setFetchingCompetitors(false);
+    }
+  };
+
+  // Build strategy from analysis results
+  const handleBuildStrategy = async () => {
+    if (!user || !competitorResults) return;
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("niche, dream_client, end_goal")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const now = new Date();
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const weekNumber = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+
+      await supabase.from("content_strategies").insert({
+        user_id: user.id,
+        week_number: weekNumber,
+        year: now.getFullYear(),
+        status: "active",
+        regression_insights: {
+          competitor_analysis: competitorResults,
+          niche: profile?.niche,
+          dream_client: profile?.dream_client,
+          end_goal: profile?.end_goal,
+        },
+      });
+
+      toast({ title: "Strategy generated!", description: "Your content strategy is ready." });
+      navigate("/strategy");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
     }
   };
 
@@ -401,7 +520,7 @@ const Analyze = () => {
               </Card>
             )}
 
-            <Button size="lg" onClick={() => navigate("/strategy")} className="gap-2">
+            <Button size="lg" onClick={handleBuildStrategy} className="gap-2">
               Build My Strategy
               <ArrowRight className="h-4 w-4" />
             </Button>
