@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS competitor_accounts_user_username_unique ON public.competitor_accounts (user_id, threads_username);
