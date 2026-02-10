@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.publish-post]
 verify_jwt = false
+
+[functions.weekly-assessment]
+verify_jwt = false
