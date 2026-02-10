@@ -144,6 +144,7 @@ const Onboarding = () => {
     url.searchParams.set("scope", "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies,threads_manage_replies");
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", user.id);
+    console.log("Generated Threads OAuth URL:", url.toString());
     window.location.href = url.toString();
   };
 
