@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Insights from "./pages/Insights";
 import Queue from "./pages/Queue";
 import Voice from "./pages/Voice";
+import Playbook from "./pages/Playbook";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -31,6 +32,7 @@ const App = () => (
             <Route path="/analyze" element={<ProtectedRoute><Analyze /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
+            <Route path="/playbook" element={<ProtectedRoute><Playbook /></ProtectedRoute>} />
             <Route path="/strategy" element={<Navigate to="/dashboard" replace />} />
             <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><Voice /></ProtectedRoute>} />

@@ -18,6 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { title: "Insights", path: "/insights", icon: Lightbulb },
+  { title: "Playbook", path: "/playbook", icon: Zap },
   { title: "Content Queue", path: "/queue", icon: CalendarClock },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Settings", path: "/settings", icon: Settings },
