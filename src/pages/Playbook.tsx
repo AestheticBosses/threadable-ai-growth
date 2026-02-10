@@ -9,8 +9,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles, RefreshCw } from "lucide-react";
-import { usePlaybookData } from "@/hooks/useStrategyData";
+import { usePlaybookData, useArchetypeDiscovery } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
+import { DailyPostingPlan } from "@/components/playbook/DailyPostingPlan";
 
 const ARCHETYPE_BORDER_COLORS = [
   "border-violet-500/40",
@@ -41,7 +42,9 @@ const Playbook = () => {
   const queryClient = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
+  const [postsPerDay, setPostsPerDay] = useState(5);
   const { data: playbook, isLoading } = usePlaybookData();
+  const { data: discoveredArchetypes } = useArchetypeDiscovery();
 
   const handleGeneratePlaybook = async () => {
     if (!user) return;
@@ -79,7 +82,7 @@ const Playbook = () => {
             Authorization: `Bearer ${session.access_token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ posts_count: 10 }),
+          body: JSON.stringify({ posts_count: postsPerDay * 7 }),
         }
       );
       if (!res.ok) {
@@ -165,33 +168,23 @@ const Playbook = () => {
               className="gap-2"
             >
               {generatingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {generatingContent ? "Generating…" : "✨ Generate This Week's Content"}
+              {generatingContent ? "Generating…" : `✨ Generate ${postsPerDay * 7} Posts`}
             </Button>
           </div>
         </div>
 
-        {/* SECTION 1: Weekly Rotation */}
-        {playbook.weekly_schedule && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
-              7-Day Rotation
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-              {playbook.weekly_schedule.map((s, i) => (
-                <Card key={s.day} className={`border-2 ${ARCHETYPE_BORDER_COLORS[i % ARCHETYPE_BORDER_COLORS.length]}`}>
-                  <CardContent className="p-4 space-y-2">
-                    <p className={`text-xs font-bold font-mono ${ARCHETYPE_LABEL_COLORS[i % ARCHETYPE_LABEL_COLORS.length]}`}>
-                      {s.day.slice(0, 3).toUpperCase()}
-                    </p>
-                    <p className="text-lg">{s.emoji}</p>
-                    <p className="text-sm font-semibold text-foreground">{s.archetype}</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{s.notes}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* SECTION 1: Daily Posting Plan */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">
+            Daily Posting Plan
+          </h2>
+          <DailyPostingPlan
+            playbook={playbook}
+            archetypes={discoveredArchetypes?.archetypes}
+            postsPerDay={postsPerDay}
+            onPostsPerDayChange={setPostsPerDay}
+          />
+        </section>
 
         {/* SECTION 2: Pre-Post Checklist */}
         {playbook.checklist && (
