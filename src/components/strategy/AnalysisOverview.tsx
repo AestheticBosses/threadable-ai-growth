@@ -1,8 +1,15 @@
 import { useState, useMemo } from "react";
-import { usePostsAnalyzed, classifyArchetype, type AnalyzedPost, type Archetype } from "@/hooks/usePostsAnalyzed";
+import { usePostsAnalyzed, type AnalyzedPost, type Archetype } from "@/hooks/usePostsAnalyzed";
 import { getMockThreads, getOverviewKPIs, getArchetypeStats, getDistributionInsight } from "@/lib/mockAnalysisData";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const ARCHETYPE_DB_TO_DISPLAY: Record<string, Archetype> = {
+  vault_drop: "Vault Drop",
+  truth: "Truth Bomb",
+  hot_take: "Hot Take",
+  window: "Window",
+};
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   "Vault Drop": "border-violet-500/50",
@@ -18,13 +25,14 @@ const ARCHETYPE_LABEL_COLORS: Record<string, string> = {
   "Window": "text-blue-400",
 };
 
-type SortKey = "index" | "title" | "views" | "likes" | "replies" | "reposts" | "engRate";
+type SortKey = "index" | "title" | "views" | "likes" | "follows" | "replies" | "reposts" | "engRate";
 
 interface EnrichedPost {
   index: number;
   title: string;
   views: number;
   likes: number;
+  follows: number;
   replies: number;
   reposts: number;
   engRate: number;
@@ -37,10 +45,11 @@ function enrichPosts(posts: AnalyzedPost[]): EnrichedPost[] {
     title: (p.text_content ?? "").slice(0, 80) || "(no text)",
     views: p.views ?? 0,
     likes: p.likes ?? 0,
+    follows: (p as any).follows ?? 0,
     replies: p.replies ?? 0,
     reposts: p.reposts ?? 0,
     engRate: p.engagement_rate ?? 0,
-    archetype: classifyArchetype(p.text_content),
+    archetype: ARCHETYPE_DB_TO_DISPLAY[(p as any).archetype ?? "truth"] ?? "Truth Bomb",
   }));
 }
 
@@ -48,6 +57,7 @@ function computeKPIs(posts: EnrichedPost[]) {
   const n = posts.length;
   if (n === 0) return null;
   const totalViews = posts.reduce((s, p) => s + p.views, 0);
+  const totalFollows = posts.reduce((s, p) => s + p.follows, 0);
   const totalReposts = posts.reduce((s, p) => s + p.reposts, 0);
   const sortedViews = [...posts].sort((a, b) => a.views - b.views);
   const medianViews = n % 2 === 0
@@ -59,7 +69,10 @@ function computeKPIs(posts: EnrichedPost[]) {
     totalPosts: n,
     avgViews: Math.round(totalViews / n),
     medianViews,
+    totalFollows,
+    followRate: totalViews > 0 ? parseFloat(((totalFollows / totalViews) * 100).toFixed(2)) : 0,
     totalReposts,
+    repostRate: totalViews > 0 ? parseFloat(((totalReposts / totalViews) * 100).toFixed(2)) : 0,
     topEngRate: topPost.engRate,
     topEngPost: topPost.title.slice(0, 40) + "...",
   };
@@ -70,17 +83,20 @@ function computeArchetypeStats(posts: EnrichedPost[]) {
   return archetypes.map((archetype) => {
     const group = posts.filter((p) => p.archetype === archetype);
     const n = group.length;
-    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgReposts: 0, medianViews: 0, avgEngRate: 0 };
+    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgFollows: 0, avgReposts: 0, medianViews: 0, followRate: 0 };
     const sorted = [...group].sort((a, b) => a.views - b.views);
     const median = n % 2 === 0 ? (sorted[n / 2 - 1].views + sorted[n / 2].views) / 2 : sorted[Math.floor(n / 2)].views;
+    const totalViews = group.reduce((s, p) => s + p.views, 0);
+    const totalFollows = group.reduce((s, p) => s + p.follows, 0);
     return {
       archetype,
       count: n,
-      avgViews: Math.round(group.reduce((s, p) => s + p.views, 0) / n),
+      avgViews: Math.round(totalViews / n),
       avgLikes: Math.round(group.reduce((s, p) => s + p.likes, 0) / n),
+      avgFollows: Math.round(totalFollows / n),
       avgReposts: Math.round(group.reduce((s, p) => s + p.reposts, 0) / n),
       medianViews: Math.round(median),
-      avgEngRate: parseFloat((group.reduce((s, p) => s + p.engRate, 0) / n).toFixed(2)),
+      followRate: totalViews > 0 ? parseFloat(((totalFollows / totalViews) * 100).toFixed(2)) : 0,
     };
   });
 }
@@ -90,8 +106,8 @@ export function AnalysisOverview() {
   const useReal = (rawPosts?.length ?? 0) > 0;
 
   const enriched = useMemo(() => useReal ? enrichPosts(rawPosts!) : null, [rawPosts, useReal]);
-  const kpis = useMemo(() => useReal ? computeKPIs(enriched!) : null, [enriched, useReal]);
-  const archetypeStats = useMemo(() => useReal ? computeArchetypeStats(enriched!) : null, [enriched, useReal]);
+  const kpis = useMemo(() => useReal && enriched ? computeKPIs(enriched) : null, [enriched, useReal]);
+  const archetypeStats = useMemo(() => useReal && enriched ? computeArchetypeStats(enriched) : null, [enriched, useReal]);
 
   // Mock fallbacks
   const mockKpis = useMemo(() => useReal ? null : getOverviewKPIs(), [useReal]);
@@ -108,20 +124,21 @@ export function AnalysisOverview() {
       title: t.title,
       views: t.views,
       likes: t.likes,
+      follows: t.follows,
       replies: t.comments,
       reposts: t.reposts,
       engRate: t.engRate,
       archetype: t.archetype as Archetype,
     }));
     return [...items].sort((a, b) => {
-      const av = a[sortKey] as number;
-      const bv = b[sortKey] as number;
+      const av = a[sortKey];
+      const bv = b[sortKey];
       if (typeof av === "string") return sortAsc ? (av as string).localeCompare(bv as unknown as string) : (bv as unknown as string).localeCompare(av);
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
   }, [enriched, mockThreads, sortKey, sortAsc, useReal]);
 
-  // Compute distribution insight from real data (must be before early return)
+  // Compute distribution insight from real data
   const distInsight = useMemo(() => {
     if (!useReal || !enriched || enriched.length < 3) return mockDist;
     const sortedByViews = [...enriched].sort((a, b) => b.views - a.views);
@@ -151,28 +168,21 @@ export function AnalysisOverview() {
   const displayKpis = useReal ? kpis! : mockKpis!;
   const displayArchetypes = useReal ? archetypeStats! : mockArchetypeStats!;
 
-  const kpiCards = useReal
-    ? [
-        { label: "Total Posts", value: displayKpis.totalPosts, sub: "Analyzed" },
-        { label: "Avg Views", value: displayKpis.avgViews.toLocaleString(), sub: "per post" },
-        { label: "Median Views", value: displayKpis.medianViews.toLocaleString(), sub: "center value" },
-        { label: "Total Reposts", value: displayKpis.totalReposts.toLocaleString(), sub: "shares" },
-        { label: "Top Eng Rate", value: `${displayKpis.topEngRate}%`, sub: displayKpis.topEngPost },
-      ]
-    : [
-        { label: "Total Posts", value: (displayKpis as any).totalPosts, sub: "Analyzed" },
-        { label: "Avg Views", value: (displayKpis as any).avgViews.toLocaleString(), sub: "per thread" },
-        { label: "Median Views", value: (displayKpis as any).medianViews.toLocaleString(), sub: "more accurate center" },
-        { label: "Total Follows", value: (displayKpis as any).totalFollows.toLocaleString(), sub: `${(displayKpis as any).followRate}% rate` },
-        { label: "Total Reposts", value: (displayKpis as any).totalReposts.toLocaleString(), sub: `${(displayKpis as any).repostRate}% rate` },
-        { label: "Top Eng Rate", value: `${(displayKpis as any).topEngRate}%`, sub: (displayKpis as any).topEngPost },
-      ];
+  const kpiCards = [
+    { label: "Total Posts", value: displayKpis.totalPosts, sub: "Analyzed" },
+    { label: "Avg Views", value: (displayKpis as any).avgViews?.toLocaleString(), sub: "per post" },
+    { label: "Median Views", value: (displayKpis as any).medianViews?.toLocaleString(), sub: "center value" },
+    { label: "Total Follows", value: ((displayKpis as any).totalFollows ?? 0).toLocaleString(), sub: `${(displayKpis as any).followRate ?? 0}% rate` },
+    { label: "Total Reposts", value: ((displayKpis as any).totalReposts ?? 0).toLocaleString(), sub: `${(displayKpis as any).repostRate ?? 0}% rate` },
+    { label: "Top Eng Rate", value: `${(displayKpis as any).topEngRate}%`, sub: (displayKpis as any).topEngPost },
+  ];
 
   const columns: { key: SortKey; label: string }[] = [
     { key: "index", label: "#" },
     { key: "title", label: "Post" },
     { key: "views", label: "Views" },
     { key: "likes", label: "Likes" },
+    { key: "follows", label: "Follows" },
     { key: "replies", label: "Replies" },
     { key: "reposts", label: "Reposts" },
     { key: "engRate", label: "Eng%" },
@@ -185,7 +195,7 @@ export function AnalysisOverview() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {kpiCards.map((k) => (
           <div key={k.label} className="rounded-lg border border-[hsl(260,20%,20%)] bg-[hsl(260,15%,10%)] p-4">
             <p className="text-xs text-[hsl(260,10%,55%)] font-medium uppercase tracking-wider">{k.label}</p>
@@ -207,10 +217,10 @@ export function AnalysisOverview() {
                   ["Posts", a.count],
                   ["Avg Views", (a.avgViews ?? 0).toLocaleString()],
                   ["Avg Likes", (a.avgLikes ?? 0).toLocaleString()],
+                  ["Avg Follows", (a.avgFollows ?? 0).toLocaleString()],
                   ["Avg Reposts", (a.avgReposts ?? 0)],
                   ["Median Views", (a.medianViews ?? 0).toLocaleString()],
-                  ...(a.avgEngRate !== undefined ? [["Avg Eng%", `${a.avgEngRate}%`]] : []),
-                  ...(a.followRate !== undefined ? [["Follow Rate", `${a.followRate}%`]] : []),
+                  ["Follow Rate", `${a.followRate ?? 0}%`],
                 ].map(([label, val]) => (
                   <div key={label as string} className="flex justify-between">
                     <span className="text-[hsl(260,10%,50%)]">{label}</span>
@@ -248,6 +258,7 @@ export function AnalysisOverview() {
                   <td className="px-3 py-2 text-[hsl(0,0%,88%)] max-w-[300px] truncate">{t.title}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.views.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.likes.toLocaleString()}</td>
+                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.follows.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.replies}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.reposts}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(142,71%,60%)]">{t.engRate}%</td>

@@ -119,19 +119,32 @@ export type Database = {
       }
       posts_analyzed: {
         Row: {
+          archetype: string | null
           char_count: number | null
           clicks: number | null
           content_category: string | null
           day_of_week: string | null
+          emotion_count: number | null
           engagement_rate: number | null
           fetched_at: string | null
+          follow_rate: number | null
+          follows: number | null
+          has_controversy: boolean | null
           has_credibility_marker: boolean | null
+          has_dollar_amount: boolean | null
           has_emoji: boolean | null
           has_hashtag: boolean | null
+          has_namedrop: boolean | null
+          has_profanity: boolean | null
           has_question: boolean | null
+          has_relatability: boolean | null
+          has_steps: boolean | null
           has_url: boolean | null
+          has_visual: boolean | null
+          has_vulnerability: boolean | null
           hour_posted: number | null
           id: string
+          is_short_form: boolean | null
           likes: number | null
           line_count: number | null
           media_type: string | null
@@ -152,19 +165,32 @@ export type Database = {
           word_count: number | null
         }
         Insert: {
+          archetype?: string | null
           char_count?: number | null
           clicks?: number | null
           content_category?: string | null
           day_of_week?: string | null
+          emotion_count?: number | null
           engagement_rate?: number | null
           fetched_at?: string | null
+          follow_rate?: number | null
+          follows?: number | null
+          has_controversy?: boolean | null
           has_credibility_marker?: boolean | null
+          has_dollar_amount?: boolean | null
           has_emoji?: boolean | null
           has_hashtag?: boolean | null
+          has_namedrop?: boolean | null
+          has_profanity?: boolean | null
           has_question?: boolean | null
+          has_relatability?: boolean | null
+          has_steps?: boolean | null
           has_url?: boolean | null
+          has_visual?: boolean | null
+          has_vulnerability?: boolean | null
           hour_posted?: number | null
           id?: string
+          is_short_form?: boolean | null
           likes?: number | null
           line_count?: number | null
           media_type?: string | null
@@ -185,19 +211,32 @@ export type Database = {
           word_count?: number | null
         }
         Update: {
+          archetype?: string | null
           char_count?: number | null
           clicks?: number | null
           content_category?: string | null
           day_of_week?: string | null
+          emotion_count?: number | null
           engagement_rate?: number | null
           fetched_at?: string | null
+          follow_rate?: number | null
+          follows?: number | null
+          has_controversy?: boolean | null
           has_credibility_marker?: boolean | null
+          has_dollar_amount?: boolean | null
           has_emoji?: boolean | null
           has_hashtag?: boolean | null
+          has_namedrop?: boolean | null
+          has_profanity?: boolean | null
           has_question?: boolean | null
+          has_relatability?: boolean | null
+          has_steps?: boolean | null
           has_url?: boolean | null
+          has_visual?: boolean | null
+          has_vulnerability?: boolean | null
           hour_posted?: number | null
           id?: string
+          is_short_form?: boolean | null
           likes?: number | null
           line_count?: number | null
           media_type?: string | null
