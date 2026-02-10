@@ -1,12 +1,16 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff, AlertTriangle, RefreshCw, Unplug } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Wifi, WifiOff, AlertTriangle, RefreshCw, Unplug, ChevronDown, Settings2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { format, differenceInDays, parseISO } from "date-fns";
+import { format, differenceInDays, parseISO, addDays } from "date-fns";
 
 interface ThreadsConnectionCardProps {
   threadsUsername: string | null;
@@ -16,8 +20,39 @@ interface ThreadsConnectionCardProps {
 
 export function ThreadsConnectionCard({ threadsUsername, tokenExpiresAt, onDisconnect }: ThreadsConnectionCardProps) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [reconnecting, setReconnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualUserId, setManualUserId] = useState("");
+  const [manualToken, setManualToken] = useState("");
+  const [savingManual, setSavingManual] = useState(false);
+
+  const handleSaveManualToken = async () => {
+    if (!user || !manualUserId.trim() || !manualToken.trim()) {
+      toast.error("Please enter both User ID and Access Token");
+      return;
+    }
+    setSavingManual(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          threads_user_id: manualUserId.trim(),
+          threads_access_token: manualToken.trim(),
+          threads_token_expires_at: addDays(new Date(), 60).toISOString(),
+          onboarding_complete: true,
+        })
+        .eq("id", user.id);
+      if (error) throw error;
+      toast.success("Token saved successfully!");
+      navigate("/dashboard");
+    } catch {
+      toast.error("Failed to save token");
+    } finally {
+      setSavingManual(false);
+    }
+  };
 
   const isConnected = !!threadsUsername;
   const expiresDate = tokenExpiresAt ? parseISO(tokenExpiresAt) : null;
@@ -119,6 +154,36 @@ export function ThreadsConnectionCard({ threadsUsername, tokenExpiresAt, onDisco
             </Button>
           )}
         </div>
+
+        <Collapsible open={manualOpen} onOpenChange={setManualOpen}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="w-full justify-between text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Settings2 className="h-4 w-4" />
+                Advanced: Manual Token Setup
+              </span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${manualOpen ? "rotate-180" : ""}`} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-3 pt-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-user-id">Threads User ID</Label>
+              <Input id="manual-user-id" placeholder="Enter your Threads user ID" value={manualUserId} onChange={(e) => setManualUserId(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-token">Threads Access Token</Label>
+              <Input id="manual-token" placeholder="Paste your long-lived access token" value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
+            </div>
+            <Button onClick={handleSaveManualToken} disabled={savingManual} size="sm">
+              {savingManual ? "Saving…" : "Save Token"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              You can get a test token from the Meta Graph API Explorer at{" "}
+              <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline text-primary">developers.facebook.com</a>
+              {" → Tools → API Explorer → select Threads API"}
+            </p>
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
