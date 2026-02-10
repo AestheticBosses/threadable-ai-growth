@@ -23,11 +23,19 @@ function getRangeEnd(filters: DashboardFilters): Date {
   return new Date();
 }
 
+function getPreviousRangeStart(filters: DashboardFilters): Date {
+  const rangeStart = getRangeStart(filters);
+  const rangeEnd = getRangeEnd(filters);
+  const durationMs = rangeEnd.getTime() - rangeStart.getTime();
+  return new Date(rangeStart.getTime() - durationMs);
+}
+
 export function useDashboardData(filters: DashboardFilters) {
   const { user } = useAuth();
   const userId = user?.id;
   const rangeStart = getRangeStart(filters);
   const rangeEnd = getRangeEnd(filters);
+  const prevRangeStart = getPreviousRangeStart(filters);
 
   const postsQuery = useQuery({
     queryKey: ["dashboard-posts", userId, rangeStart.toISOString(), rangeEnd.toISOString()],
@@ -40,6 +48,24 @@ export function useDashboardData(filters: DashboardFilters) {
         .eq("source", "own")
         .gte("posted_at", rangeStart.toISOString())
         .lte("posted_at", rangeEnd.toISOString())
+        .order("posted_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!userId,
+  });
+
+  const previousPostsQuery = useQuery({
+    queryKey: ["dashboard-posts-prev", userId, prevRangeStart.toISOString(), rangeStart.toISOString()],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await supabase
+        .from("posts_analyzed")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("source", "own")
+        .gte("posted_at", prevRangeStart.toISOString())
+        .lt("posted_at", rangeStart.toISOString())
         .order("posted_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
@@ -85,7 +111,7 @@ export function useDashboardData(filters: DashboardFilters) {
       if (!userId) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("threads_username, threads_access_token, threads_user_id")
+        .select("threads_username, threads_access_token, threads_user_id, full_name, threads_profile_picture_url")
         .eq("id", userId)
         .maybeSingle();
       return data;
@@ -112,7 +138,45 @@ export function useDashboardData(filters: DashboardFilters) {
   });
 
   const posts = postsQuery.data ?? [];
-  const totalViews = posts.reduce((sum, p) => sum + (p.views ?? 0), 0);
+  const previousPosts = previousPostsQuery.data ?? [];
+
+  // Period stats
+  const sumField = (arr: typeof posts, field: string) =>
+    arr.reduce((sum, p) => sum + ((p as any)[field] ?? 0), 0);
+
+  const periodStats = {
+    views: sumField(posts, "views"),
+    likes: sumField(posts, "likes"),
+    replies: sumField(posts, "replies"),
+    reposts: sumField(posts, "reposts"),
+    quotes: sumField(posts, "quotes"),
+    posts: posts.length,
+  };
+
+  const prevPeriodStats = {
+    views: sumField(previousPosts, "views"),
+    likes: sumField(previousPosts, "likes"),
+    replies: sumField(previousPosts, "replies"),
+    reposts: sumField(previousPosts, "reposts"),
+    quotes: sumField(previousPosts, "quotes"),
+    posts: previousPosts.length,
+  };
+
+  const pctChange = (current: number, previous: number) => {
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const periodChanges = {
+    views: pctChange(periodStats.views, prevPeriodStats.views),
+    likes: pctChange(periodStats.likes, prevPeriodStats.likes),
+    replies: pctChange(periodStats.replies, prevPeriodStats.replies),
+    reposts: pctChange(periodStats.reposts, prevPeriodStats.reposts),
+    quotes: pctChange(periodStats.quotes, prevPeriodStats.quotes),
+    posts: pctChange(periodStats.posts, prevPeriodStats.posts),
+  };
+
+  const totalViews = periodStats.views;
   const avgEngagement = posts.length > 0
     ? posts.reduce((sum, p) => sum + (p.engagement_rate ?? 0), 0) / posts.length
     : 0;
@@ -120,6 +184,18 @@ export function useDashboardData(filters: DashboardFilters) {
 
   const latestReport = weeklyReportsQuery.data?.[0] ?? null;
   const previousReport = weeklyReportsQuery.data?.[1] ?? null;
+
+  // Follower data
+  const followerSnapshots = followerSnapshotsQuery.data ?? [];
+  const latestFollowers = followerSnapshots.length > 0
+    ? followerSnapshots[followerSnapshots.length - 1].follower_count
+    : null;
+  const earliestFollowersInRange = followerSnapshots.length > 0
+    ? followerSnapshots[0].follower_count
+    : null;
+  const followerChange = latestFollowers !== null && earliestFollowersInRange !== null
+    ? latestFollowers - earliestFollowersInRange
+    : null;
 
   // Calculate streak
   const publishedPosts = publishedPostsQuery.data ?? [];
@@ -135,7 +211,6 @@ export function useDashboardData(filters: DashboardFilters) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check if most recent post is today or yesterday
     if (sortedDays.length > 0) {
       const diff = differenceInCalendarDays(today, sortedDays[0]);
       if (diff <= 1) {
@@ -151,14 +226,19 @@ export function useDashboardData(filters: DashboardFilters) {
 
   return {
     posts,
+    previousPosts,
     totalViews,
     avgEngagement,
     postsPublished,
     latestReport,
     previousReport,
-    followerSnapshots: followerSnapshotsQuery.data ?? [],
+    followerSnapshots,
+    latestFollowers,
+    followerChange,
     profile: profileQuery.data,
     streak,
-    isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading,
+    periodStats,
+    periodChanges,
+    isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading || profileQuery.isLoading,
   };
 }
