@@ -270,9 +270,11 @@ export type Database = {
         Row: {
           auto_approve_ai_posts: boolean
           created_at: string
+          display_name: string | null
           dream_client: string | null
           email: string | null
           end_goal: string | null
+          follower_count: number | null
           full_name: string | null
           generate_weekend_posts: boolean
           id: string
@@ -292,9 +294,11 @@ export type Database = {
         Insert: {
           auto_approve_ai_posts?: boolean
           created_at?: string
+          display_name?: string | null
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
+          follower_count?: number | null
           full_name?: string | null
           generate_weekend_posts?: boolean
           id: string
@@ -314,9 +318,11 @@ export type Database = {
         Update: {
           auto_approve_ai_posts?: boolean
           created_at?: string
+          display_name?: string | null
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
+          follower_count?: number | null
           full_name?: string | null
           generate_weekend_posts?: boolean
           id?: string

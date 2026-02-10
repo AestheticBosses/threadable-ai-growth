@@ -149,39 +149,43 @@ const Dashboard = () => {
         ) : (
           <>
             {/* Account Overview Bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border border-[hsl(0,0%,100%,0.06)] bg-[hsl(0,0%,100%,0.02)] p-4">
+            {(() => { console.log("[Dashboard] profile data:", profile, "latestFollowers:", latestFollowers, "followerChange:", followerChange); return null; })()}
+            <div
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}
+              className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+            >
               <div className="flex items-center gap-3">
                 <Avatar className="h-12 w-12 border border-[hsl(0,0%,100%,0.1)]">
                   <AvatarImage src={(profile as any)?.threads_profile_picture_url ?? undefined} />
-                  <AvatarFallback className="bg-[hsl(0,0%,100%,0.05)]">
-                    <User className="h-5 w-5 text-muted-foreground" />
+                  <AvatarFallback style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    <User className="h-5 w-5" style={{ color: '#8a8680' }} />
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-semibold text-foreground text-sm">
-                    {profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
+                  <p style={{ color: '#e8e4de', fontWeight: 600, fontSize: '14px' }}>
+                    {(profile as any)?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
                   </p>
                   {profile?.threads_username ? (
-                    <p className="text-xs text-muted-foreground">@{profile.threads_username}</p>
+                    <p style={{ color: '#8a8680', fontSize: '12px' }}>@{profile.threads_username}</p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">{user?.email ?? "Connect Threads to see profile data"}</p>
+                    <p style={{ color: '#8a8680', fontSize: '12px' }}>{user?.email ?? "Connect Threads to see profile data"}</p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-6 ml-0 sm:ml-auto">
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Followers: </span>
-                  <span className="font-bold text-foreground">
-                    {latestFollowers !== null ? latestFollowers.toLocaleString() : "—"}
+                <div style={{ fontSize: '14px' }}>
+                  <span style={{ color: '#8a8680' }}>Followers: </span>
+                  <span style={{ color: '#e8e4de', fontWeight: 700 }}>
+                    {latestFollowers !== null ? latestFollowers.toLocaleString() : ((profile as any)?.follower_count?.toLocaleString() ?? "—")}
                   </span>
                   {followerChange !== null && followerChange !== 0 && (
-                    <span className={`ml-1.5 text-xs font-medium ${followerChange > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    <span style={{ marginLeft: '6px', fontSize: '12px', fontWeight: 500, color: followerChange > 0 ? '#34d399' : '#f87171' }}>
                       {followerChange > 0 ? "+" : ""}{followerChange}
                     </span>
                   )}
                 </div>
                 {streak >= 2 && (
-                  <div className="flex items-center gap-1 text-sm">
+                  <div className="flex items-center gap-1" style={{ fontSize: '14px' }}>
                     <Flame className="h-4 w-4 text-primary" />
                     <span className="font-semibold text-primary">{streak} day streak</span>
                   </div>
@@ -190,14 +194,18 @@ const Dashboard = () => {
             </div>
 
             {/* Period Stats — 6 Cards */}
+            {(() => { console.log("[Dashboard] periodStats:", periodStats, "periodChanges:", periodChanges); return null; })()}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {statCards.map((s) => (
-                <div key={s.label} className="rounded-lg border border-[hsl(0,0%,100%,0.06)] bg-[hsl(0,0%,100%,0.02)] p-4">
+                <div
+                  key={s.label}
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}
+                >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{s.label}</span>
-                    <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span style={{ color: '#8a8680', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
+                    <s.icon className="h-3.5 w-3.5" style={{ color: '#8a8680' }} />
                   </div>
-                  <p className="text-2xl font-bold font-mono text-foreground">{s.value.toLocaleString()}</p>
+                  <p style={{ color: '#e8e4de', fontSize: '24px', fontWeight: 700, fontFamily: "'Space Mono', monospace" }}>{s.value.toLocaleString()}</p>
                   <PctChange value={s.change} />
                 </div>
               ))}
