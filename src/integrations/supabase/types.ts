@@ -229,13 +229,17 @@ export type Database = {
       }
       profiles: {
         Row: {
+          auto_approve_ai_posts: boolean
           created_at: string
           dream_client: string | null
           email: string | null
           end_goal: string | null
           full_name: string | null
+          generate_weekend_posts: boolean
           id: string
+          include_credibility_markers: boolean
           is_established: boolean | null
+          max_posts_per_day: number
           niche: string | null
           onboarding_complete: boolean | null
           threads_access_token: string | null
@@ -246,13 +250,17 @@ export type Database = {
           voice_profile: Json | null
         }
         Insert: {
+          auto_approve_ai_posts?: boolean
           created_at?: string
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
           full_name?: string | null
+          generate_weekend_posts?: boolean
           id: string
+          include_credibility_markers?: boolean
           is_established?: boolean | null
+          max_posts_per_day?: number
           niche?: string | null
           onboarding_complete?: boolean | null
           threads_access_token?: string | null
@@ -263,13 +271,17 @@ export type Database = {
           voice_profile?: Json | null
         }
         Update: {
+          auto_approve_ai_posts?: boolean
           created_at?: string
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
           full_name?: string | null
+          generate_weekend_posts?: boolean
           id?: string
+          include_credibility_markers?: boolean
           is_established?: boolean | null
+          max_posts_per_day?: number
           niche?: string | null
           onboarding_complete?: boolean | null
           threads_access_token?: string | null
