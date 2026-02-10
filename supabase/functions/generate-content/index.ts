@@ -6,47 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Scoring Engine ──
-function scorePost(
-  text: string,
-  insights: any
-): { score: number; breakdown: Record<string, boolean> } {
-  const breakdown: Record<string, boolean> = {};
-
-  // 1. Under 500 chars
-  breakdown.under_500_chars = text.length <= 500;
-
-  // 2. Strong hook (first line under 60 chars and attention-grabbing)
-  const firstLine = text.split("\n")[0]?.trim() || "";
-  breakdown.strong_hook = firstLine.length > 0 && firstLine.length <= 80;
-
-  // 3. Has line breaks for readability
-  breakdown.has_formatting = text.includes("\n") && text.split("\n").length >= 3;
-
-  // 4. Contains credibility marker (if data says it helps)
-  const credKeywords = ["$", "k/mo", "revenue", "clients", "generated", "scaled", "million", "figure", "sold", "built", "grew", "growth"];
-  const lower = text.toLowerCase();
-  const hasCred = credKeywords.some((kw) => lower.includes(kw));
-  const credLift = insights?.credibility_marker_lift ?? 0;
-  breakdown.credibility_marker = credLift > 0 ? hasCred : true; // pass if data says it doesn't matter
-
-  // 5. Word count in optimal range
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const optRange = insights?.optimal_word_count_range;
-  if (optRange?.min && optRange?.max) {
-    breakdown.optimal_length = wordCount >= optRange.min * 0.7 && wordCount <= optRange.max * 1.3;
-  } else {
-    breakdown.optimal_length = wordCount >= 15 && wordCount <= 120;
-  }
-
-  // 6. No generic filler
-  const genericPhrases = ["in today's world", "let me tell you", "here's the thing", "at the end of the day", "it is what it is"];
-  breakdown.no_generic_filler = !genericPhrases.some((p) => lower.includes(p));
-
-  const score = Object.values(breakdown).filter(Boolean).length;
-  return { score, breakdown };
-}
-
 function getNextDayDate(dayName: string, baseDate: Date): Date {
   const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const targetIdx = days.indexOf(dayName.toLowerCase());
@@ -57,6 +16,26 @@ function getNextDayDate(dayName: string, baseDate: Date): Date {
   const result = new Date(baseDate);
   result.setDate(result.getDate() + diff);
   return result;
+}
+
+async function callScorePost(
+  text: string,
+  authHeader: string,
+  supabaseUrl: string
+): Promise<{ score: number; breakdown: any }> {
+  const res = await fetch(`${supabaseUrl}/functions/v1/score-post`, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    console.error("score-post error:", res.status);
+    return { score: 0, breakdown: {} };
+  }
+  return await res.json();
 }
 
 Deno.serve(async (req) => {
@@ -75,8 +54,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!authHeader.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -96,24 +75,16 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const postsCount = body.posts_count || 21;
-    // Optional: regenerate a single post
     const regeneratePostId = body.regenerate_post_id;
     const regenerateCategory = body.regenerate_category;
     const rescoreText = body.rescore_text;
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // If just re-scoring edited text
+    // Re-score edited text via score-post
     if (rescoreText) {
-      const { data: latestStrategy } = await adminClient
-        .from("content_strategies")
-        .select("regression_insights")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-      const scoreResult = scorePost(rescoreText, latestStrategy?.regression_insights);
-      return new Response(JSON.stringify(scoreResult), {
+      const result = await callScorePost(rescoreText, authHeader, SUPABASE_URL);
+      return new Response(JSON.stringify(result), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -145,10 +116,7 @@ Deno.serve(async (req) => {
     const strategyJson = strategy.strategy_json as any;
 
     const insightsBullets = (insights?.human_readable_insights || []).map((i: string) => `• ${i}`).join("\n");
-
-    const topPostsRef = topPosts.map((p: any, i: number) =>
-      `${i + 1}. "${(p.text_content || "").slice(0, 300)}"`
-    ).join("\n");
+    const topPostsRef = topPosts.map((p: any, i: number) => `${i + 1}. "${(p.text_content || "").slice(0, 300)}"`).join("\n");
 
     const voiceText = voiceProfile
       ? `Tone: ${(voiceProfile.tone || []).join(", ")}
@@ -195,122 +163,121 @@ RULES:
 9. No generic motivational crap. Be specific and real.
 10. Write like a real person, not a brand.${categoryHint}`;
 
-    const userPrompt = `Generate exactly ${actualCount} posts. Return as a JSON array of objects with: text, content_category, suggested_day, suggested_time (HH:MM format).`;
-
-    // Call AI
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [{
-          type: "function",
-          function: {
-            name: "output_posts",
-            description: "Output the generated posts",
-            parameters: {
-              type: "object",
-              properties: {
-                posts: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      text: { type: "string" },
-                      content_category: { type: "string" },
-                      suggested_day: { type: "string" },
-                      suggested_time: { type: "string" },
+    const generatePosts = async (count: number): Promise<any[]> => {
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Generate exactly ${count} posts. Return as a JSON array of objects with: text, content_category, suggested_day, suggested_time (HH:MM format).` },
+          ],
+          tools: [{
+            type: "function",
+            function: {
+              name: "output_posts",
+              description: "Output the generated posts",
+              parameters: {
+                type: "object",
+                properties: {
+                  posts: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        text: { type: "string" },
+                        content_category: { type: "string" },
+                        suggested_day: { type: "string" },
+                        suggested_time: { type: "string" },
+                      },
+                      required: ["text", "content_category", "suggested_day", "suggested_time"],
                     },
-                    required: ["text", "content_category", "suggested_day", "suggested_time"],
                   },
                 },
+                required: ["posts"],
               },
-              required: ["posts"],
             },
-          },
-        }],
-        tool_choice: { type: "function", function: { name: "output_posts" } },
-      }),
-    });
-
-    if (!aiResponse.ok) {
-      const status = aiResponse.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      console.error("AI error:", status, await aiResponse.text());
-      return new Response(JSON.stringify({ error: "AI generation failed" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }],
+          tool_choice: { type: "function", function: { name: "output_posts" } },
+        }),
       });
-    }
 
-    const aiData = await aiResponse.json();
-    let generatedPosts: any[];
+      if (!aiResponse.ok) {
+        const status = aiResponse.status;
+        if (status === 429) throw new Error("Rate limit exceeded. Please try again shortly.");
+        if (status === 402) throw new Error("AI credits exhausted. Please add funds.");
+        throw new Error("AI generation failed");
+      }
 
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const parsed = typeof toolCall.function.arguments === "string"
-        ? JSON.parse(toolCall.function.arguments)
-        : toolCall.function.arguments;
-      generatedPosts = parsed.posts || parsed;
-    } else {
+      const aiData = await aiResponse.json();
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        const parsed = typeof toolCall.function.arguments === "string"
+          ? JSON.parse(toolCall.function.arguments)
+          : toolCall.function.arguments;
+        return parsed.posts || parsed;
+      }
       const content = aiData.choices?.[0]?.message?.content || "";
       const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        generatedPosts = JSON.parse(jsonMatch[0]);
-      } else {
-        return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
+      if (jsonMatch) return JSON.parse(jsonMatch[0]);
+      throw new Error("Failed to parse AI response");
+    };
 
-    // Score and save posts
     const now = new Date();
     const savedPosts: any[] = [];
 
-    for (const post of generatedPosts) {
-      const { score, breakdown } = scorePost(post.text, insights);
+    // Generate posts
+    let generatedPosts = await generatePosts(actualCount);
 
-      // Calculate scheduled_for date
+    // Score each post, retry low-scoring ones
+    for (const post of generatedPosts) {
+      let bestText = post.text;
+      let bestResult = await callScorePost(bestText, authHeader, SUPABASE_URL);
+      let retries = 0;
+
+      while (bestResult.score < 4 && retries < 2) {
+        retries++;
+        try {
+          const retryPosts = await generatePosts(1);
+          if (retryPosts[0]) {
+            const retryResult = await callScorePost(retryPosts[0].text, authHeader, SUPABASE_URL);
+            if (retryResult.score > bestResult.score) {
+              bestText = retryPosts[0].text;
+              bestResult = retryResult;
+            }
+          }
+        } catch {
+          break;
+        }
+      }
+
       const dayDate = getNextDayDate(post.suggested_day, now);
       const [hours, minutes] = (post.suggested_time || "09:00").split(":").map(Number);
       dayDate.setHours(hours || 9, minutes || 0, 0, 0);
 
       const postRow: any = {
         user_id: userId,
-        text_content: post.text,
+        text_content: bestText,
         content_category: post.content_category,
         scheduled_for: dayDate.toISOString(),
         status: "draft",
         ai_generated: true,
-        pre_post_score: score,
-        score_breakdown: breakdown,
+        pre_post_score: bestResult.score,
+        score_breakdown: bestResult.breakdown,
         strategy_id: strategy.id,
       };
 
-      // If regenerating a specific post, update it
       if (regeneratePostId) {
         const { data: updated, error: updateErr } = await adminClient
           .from("scheduled_posts")
           .update({
-            text_content: post.text,
-            pre_post_score: score,
-            score_breakdown: breakdown,
+            text_content: bestText,
+            pre_post_score: bestResult.score,
+            score_breakdown: bestResult.breakdown,
             user_edited: false,
           })
           .eq("id", regeneratePostId)
@@ -331,10 +298,10 @@ RULES:
     return new Response(JSON.stringify({ posts: savedPosts, total: savedPosts.length }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
+  } catch (e: any) {
     console.error("Unexpected error:", e);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: e.message || "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
