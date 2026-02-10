@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { EmptyState } from "@/components/EmptyState";
 import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
-import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
+import { type DateRange } from "@/hooks/useDashboardData";
+import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,9 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { subDays, startOfDay } from "date-fns";
 
 function PctChange({ value }: { value: number }) {
   if (value === 0) return <span className="text-xs text-muted-foreground">—</span>;
@@ -27,6 +29,28 @@ function PctChange({ value }: { value: number }) {
   );
 }
 
+function getRangeDates(range: DateRange, customFrom?: Date, customTo?: Date) {
+  const now = new Date();
+  if (range === "all") return { start: null, end: null };
+  if (range === "custom" && customFrom) return { start: customFrom, end: customTo ?? now };
+  const days = parseInt(range, 10);
+  return { start: startOfDay(subDays(now, days)), end: now };
+}
+
+function filterPostsByRange<T extends { posted_at: string | null }>(posts: T[], range: DateRange, customFrom?: Date, customTo?: Date): T[] {
+  const { start, end } = getRangeDates(range, customFrom, customTo);
+  if (!start) return posts; // "all" — no filter
+  return posts.filter((p) => {
+    if (!p.posted_at) return false;
+    const d = new Date(p.posted_at);
+    return d >= start && (!end || d <= end);
+  });
+}
+
+function sumField<T>(arr: T[], field: keyof T): number {
+  return arr.reduce((sum, p) => sum + (Number((p as any)[field]) || 0), 0);
+}
+
 const Dashboard = () => {
   usePageTitle("Dashboard", "Your Threads analytics and performance overview");
   const navigate = useNavigate();
@@ -37,17 +61,93 @@ const Dashboard = () => {
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
 
-  const {
-    posts,
-    followerSnapshots,
-    latestFollowers,
-    followerChange,
-    profile,
-    periodStats,
-    periodChanges,
-    allPostsCount,
-    isLoading,
-  } = useDashboardData({ range, customFrom, customTo });
+  // Single data source — the same query that powers Archetype cards & posts table
+  const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
+
+  // Profile data (independent query)
+  const profileQuery = useQuery({
+    queryKey: ["dashboard-profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("threads_username, full_name, display_name, threads_profile_picture_url, follower_count")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Follower snapshots
+  const followerQuery = useQuery({
+    queryKey: ["dashboard-follower-snapshots", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from("follower_snapshots")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("recorded_at", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
+  const profile = profileQuery.data;
+  const followerSnapshots = followerQuery.data ?? [];
+  const latestFollowers = followerSnapshots.length > 0 ? followerSnapshots[followerSnapshots.length - 1].follower_count : null;
+  const earliestFollowers = followerSnapshots.length > 0 ? followerSnapshots[0].follower_count : null;
+  const followerChange = latestFollowers !== null && earliestFollowers !== null ? latestFollowers - earliestFollowers : null;
+
+  // Filter posts by date range — single source of truth
+  const posts = useMemo(() => allPosts ? filterPostsByRange(allPosts, range, customFrom, customTo) : [], [allPosts, range, customFrom, customTo]);
+
+  // Previous period for % change
+  const prevPosts = useMemo(() => {
+    if (!allPosts || range === "all") return [];
+    const { start, end } = getRangeDates(range, customFrom, customTo);
+    if (!start || !end) return [];
+    const durationMs = end.getTime() - start.getTime();
+    const prevStart = new Date(start.getTime() - durationMs);
+    return allPosts.filter((p) => {
+      if (!p.posted_at) return false;
+      const d = new Date(p.posted_at);
+      return d >= prevStart && d < start;
+    });
+  }, [allPosts, range, customFrom, customTo]);
+
+  const periodStats = {
+    views: sumField(posts, "views"),
+    likes: sumField(posts, "likes"),
+    replies: sumField(posts, "replies"),
+    reposts: sumField(posts, "reposts"),
+    quotes: sumField(posts, "quotes"),
+    posts: posts.length,
+  };
+
+  const prevStats = {
+    views: sumField(prevPosts, "views"),
+    likes: sumField(prevPosts, "likes"),
+    replies: sumField(prevPosts, "replies"),
+    reposts: sumField(prevPosts, "reposts"),
+    quotes: sumField(prevPosts, "quotes"),
+    posts: prevPosts.length,
+  };
+
+  const pctChange = (current: number, previous: number) => {
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return ((current - previous) / previous) * 100;
+  };
+
+  const periodChanges = {
+    views: pctChange(periodStats.views, prevStats.views),
+    likes: pctChange(periodStats.likes, prevStats.likes),
+    replies: pctChange(periodStats.replies, prevStats.replies),
+    reposts: pctChange(periodStats.reposts, prevStats.reposts),
+    quotes: pctChange(periodStats.quotes, prevStats.quotes),
+    posts: pctChange(periodStats.posts, prevStats.posts),
+  };
 
   const handleFetchPosts = async () => {
     if (!user) return;
@@ -61,12 +161,9 @@ const Dashboard = () => {
       });
       if (error) { toast.error(error.message || "Failed to fetch posts"); return; }
       toast.success(`Fetched ${data?.total_posts || 0} posts from Threads!`);
-      queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-posts-prev"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
       queryClient.invalidateQueries({ queryKey: ["posts-analyzed-own"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-all-posts-count"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
     } catch (err) {
       toast.error("Failed to fetch posts from Threads");
     } finally {
@@ -83,7 +180,8 @@ const Dashboard = () => {
     { label: "Posts", value: periodStats.posts, change: periodChanges.posts, icon: FileText },
   ];
 
-  const hasAnyData = allPostsCount > 0;
+  const hasAnyData = (allPosts?.length ?? 0) > 0;
+  const isLoading = postsLoading && !allPosts;
 
   return (
     <AppLayout>
@@ -132,20 +230,20 @@ const Dashboard = () => {
           />
         ) : (
           <>
-            {/* Section 1: Account Header — compact single row */}
+            {/* Section 1: Account Header */}
             <div
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '10px 16px' }}
               className="flex items-center gap-3"
             >
               <Avatar className="h-9 w-9 border border-[hsl(0,0%,100%,0.1)]">
-                <AvatarImage src={(profile as any)?.threads_profile_picture_url ?? undefined} />
+                <AvatarImage src={profile?.threads_profile_picture_url ?? undefined} />
                 <AvatarFallback style={{ background: 'rgba(255,255,255,0.05)' }}>
                   <User className="h-4 w-4" style={{ color: '#8a8680' }} />
                 </AvatarFallback>
               </Avatar>
               <div className="flex items-center gap-1.5">
                 <span style={{ color: '#e8e4de', fontWeight: 600, fontSize: '14px' }}>
-                  {(profile as any)?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
+                  {profile?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
                 </span>
                 {profile?.threads_username && (
                   <span style={{ color: '#8a8680', fontSize: '13px' }}>@{profile.threads_username}</span>
@@ -154,7 +252,7 @@ const Dashboard = () => {
               <div className="ml-auto flex items-center gap-1.5">
                 <span style={{ color: '#8a8680', fontSize: '13px' }}>Followers</span>
                 <span style={{ color: '#e8e4de', fontWeight: 700, fontSize: '18px', fontFamily: "'Space Mono', monospace" }}>
-                  {latestFollowers !== null ? latestFollowers.toLocaleString() : ((profile as any)?.follower_count?.toLocaleString() ?? "—")}
+                  {latestFollowers !== null ? latestFollowers.toLocaleString() : (profile?.follower_count?.toLocaleString() ?? "—")}
                 </span>
                 {followerChange !== null && followerChange !== 0 && (
                   <span
@@ -192,12 +290,12 @@ const Dashboard = () => {
 
             {/* Charts */}
             {posts.length > 0 && (
-              <DashboardCharts posts={posts} followerSnapshots={followerSnapshots} />
+              <DashboardCharts posts={posts as any} followerSnapshots={followerSnapshots} />
             )}
           </>
         )}
 
-        {/* Section 3 & 4: Archetype Performance + All Analyzed Posts (filtered by date range) */}
+        {/* Section 3 & 4: Archetype Performance + All Analyzed Posts */}
         {hasAnyData && (
           <AnalysisOverview range={range} customFrom={customFrom} customTo={customTo} />
         )}
