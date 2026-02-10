@@ -10,19 +10,7 @@ const ARCHETYPE_DB_TO_DISPLAY: Record<string, Archetype> = {
   window: "Window",
 };
 
-const ARCHETYPE_COLORS: Record<string, string> = {
-  "Vault Drop": "border-violet-500/50",
-  "Truth Bomb": "border-emerald-500/50",
-  "Hot Take": "border-yellow-500/50",
-  "Window": "border-blue-500/50",
-};
 
-const ARCHETYPE_LABEL_COLORS: Record<string, string> = {
-  "Vault Drop": "text-violet-400",
-  "Truth Bomb": "text-emerald-400",
-  "Hot Take": "text-yellow-400",
-  "Window": "text-blue-400",
-};
 
 type SortKey = "index" | "title" | "views" | "likes" | "replies" | "reposts" | "engRate";
 
@@ -79,32 +67,13 @@ function filterByRange(posts: EnrichedPost[], range?: DateRange, customFrom?: Da
   });
 }
 
-function computeArchetypeStats(posts: EnrichedPost[]) {
-  const archetypes: Archetype[] = ["Vault Drop", "Truth Bomb", "Hot Take", "Window"];
-  return archetypes.map((archetype) => {
-    const group = posts.filter((p) => p.archetype === archetype);
-    const n = group.length;
-    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgReposts: 0, medianViews: 0 };
-    const sorted = [...group].sort((a, b) => a.views - b.views);
-    const median = n % 2 === 0 ? (sorted[n / 2 - 1].views + sorted[n / 2].views) / 2 : sorted[Math.floor(n / 2)].views;
-    const totalViews = group.reduce((s, p) => s + p.views, 0);
-    return {
-      archetype,
-      count: n,
-      avgViews: Math.round(totalViews / n),
-      avgLikes: Math.round(group.reduce((s, p) => s + p.likes, 0) / n),
-      avgReposts: Math.round(group.reduce((s, p) => s + p.reposts, 0) / n),
-      medianViews: Math.round(median),
-    };
-  });
-}
 
 export function AnalysisOverview({ range, customFrom, customTo }: AnalysisOverviewProps) {
   const { data: rawPosts, isLoading } = usePostsAnalyzed();
 
   const enriched = useMemo(() => rawPosts && rawPosts.length > 0 ? enrichPosts(rawPosts) : [], [rawPosts]);
   const filtered = useMemo(() => filterByRange(enriched, range, customFrom, customTo), [enriched, range, customFrom, customTo]);
-  const archetypeStats = useMemo(() => computeArchetypeStats(filtered), [filtered]);
+  
 
   const [sortKey, setSortKey] = useState<SortKey>("views");
   const [sortAsc, setSortAsc] = useState(false);
@@ -152,36 +121,6 @@ export function AnalysisOverview({ range, customFrom, customTo }: AnalysisOvervi
 
   return (
     <div className="space-y-6">
-      {/* Archetype Performance */}
-      <div>
-        <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Archetype Performance</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {archetypeStats.map((a) => (
-            <div
-              key={a.archetype}
-              className={`border-2 ${ARCHETYPE_COLORS[a.archetype]}`}
-              style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', padding: '14px' }}
-            >
-              <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[a.archetype]} mb-3`}>{a.archetype}</h4>
-              <div className="space-y-1.5 text-xs">
-                {[
-                  ["Posts", a.count],
-                  ["Avg Views", (a.avgViews ?? 0).toLocaleString()],
-                  ["Avg Likes", (a.avgLikes ?? 0).toLocaleString()],
-                  ["Avg Reposts", a.avgReposts ?? 0],
-                  ["Median Views", (a.medianViews ?? 0).toLocaleString()],
-                ].map(([label, val]) => (
-                  <div key={label as string} className="flex justify-between">
-                    <span style={{ color: '#8a8680' }}>{label}</span>
-                    <span style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>{val}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* All Analyzed Posts Table */}
       <div>
         <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>
