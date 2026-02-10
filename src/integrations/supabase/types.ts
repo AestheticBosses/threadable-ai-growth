@@ -282,6 +282,7 @@ export type Database = {
           niche: string | null
           onboarding_complete: boolean | null
           threads_access_token: string | null
+          threads_profile_picture_url: string | null
           threads_token_expires_at: string | null
           threads_user_id: string | null
           threads_username: string | null
@@ -303,6 +304,7 @@ export type Database = {
           niche?: string | null
           onboarding_complete?: boolean | null
           threads_access_token?: string | null
+          threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
@@ -324,6 +326,7 @@ export type Database = {
           niche?: string | null
           onboarding_complete?: boolean | null
           threads_access_token?: string | null
+          threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
