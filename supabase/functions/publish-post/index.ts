@@ -10,6 +10,64 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function publishSinglePost(
+  adminClient: any,
+  post: { id: string; user_id: string; text_content: string },
+  profile: { threads_access_token: string; threads_user_id: string; threads_token_expires_at: string | null }
+): Promise<{ success: boolean; error?: string; threads_media_id?: string }> {
+  // Check token
+  if (!profile.threads_access_token || !profile.threads_user_id) {
+    return { success: false, error: "Threads not connected — connect your account first" };
+  }
+
+  if (profile.threads_token_expires_at) {
+    const expiresAt = new Date(profile.threads_token_expires_at);
+    if (expiresAt <= new Date()) {
+      return { success: false, error: "Token expired — reconnect Threads" };
+    }
+  }
+
+  // Step 1: Create media container
+  const createParams = new URLSearchParams({
+    media_type: "TEXT",
+    text: post.text_content || "",
+    access_token: profile.threads_access_token,
+  });
+
+  const createRes = await fetch(
+    `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads`,
+    { method: "POST", body: createParams }
+  );
+  const createData = await createRes.json();
+
+  if (!createRes.ok || !createData.id) {
+    const errMsg = createData.error?.message || JSON.stringify(createData);
+    return { success: false, error: `Container creation failed: ${errMsg}` };
+  }
+
+  // Step 2: Wait for processing
+  await sleep(2000);
+
+  // Step 3: Publish
+  const publishParams = new URLSearchParams({
+    creation_id: createData.id,
+    access_token: profile.threads_access_token,
+  });
+
+  const publishRes = await fetch(
+    `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads_publish`,
+    { method: "POST", body: publishParams }
+  );
+  const publishData = await publishRes.json();
+
+  if (!publishRes.ok || !publishData.id) {
+    const errMsg = publishData.error?.message || JSON.stringify(publishData);
+    return { success: false, error: `Publishing failed: ${errMsg}` };
+  }
+
+  return { success: true, threads_media_id: publishData.id };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -20,7 +78,90 @@ Deno.serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Find approved posts that are due
+    // Check for single post publish (postId in body)
+    const body = await req.json().catch(() => ({}));
+    const postId = body.postId;
+
+    if (postId) {
+      // === Single post "Post Now" flow ===
+      const authHeader = req.headers.get("Authorization") || "";
+      if (!authHeader.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const token = authHeader.replace("Bearer ", "");
+      const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+      if (claimsError || !claimsData?.claims) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const userId = claimsData.claims.sub as string;
+
+      // Fetch the post
+      const { data: post, error: postErr } = await adminClient
+        .from("scheduled_posts")
+        .select("id, user_id, text_content, status")
+        .eq("id", postId)
+        .eq("user_id", userId)
+        .single();
+
+      if (postErr || !post) {
+        return new Response(JSON.stringify({ error: "Post not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (post.status === "published") {
+        return new Response(JSON.stringify({ error: "Post already published" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Fetch profile
+      const { data: profile } = await adminClient
+        .from("profiles")
+        .select("threads_access_token, threads_user_id, threads_token_expires_at")
+        .eq("id", userId)
+        .single();
+
+      if (!profile) {
+        return new Response(JSON.stringify({ error: "Profile not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const result = await publishSinglePost(adminClient, post, profile);
+
+      if (result.success) {
+        await adminClient.from("scheduled_posts").update({
+          status: "published",
+          threads_media_id: result.threads_media_id,
+          published_at: new Date().toISOString(),
+          error_message: null,
+        }).eq("id", postId);
+
+        return new Response(JSON.stringify({ success: true, threads_media_id: result.threads_media_id }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        await adminClient.from("scheduled_posts").update({
+          status: "failed",
+          error_message: result.error,
+        }).eq("id", postId);
+
+        return new Response(JSON.stringify({ error: result.error }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // === Batch publish flow (existing behavior) ===
     const now = new Date().toISOString();
     const { data: duePosts, error: fetchErr } = await adminClient
       .from("scheduled_posts")
@@ -43,10 +184,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Group by user to check daily limits and tokens
     const userIds = [...new Set(duePosts.map((p) => p.user_id))];
 
-    // Fetch profiles for all relevant users
     const { data: profiles } = await adminClient
       .from("profiles")
       .select("id, threads_access_token, threads_user_id, threads_token_expires_at")
@@ -54,7 +193,6 @@ Deno.serve(async (req) => {
 
     const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
 
-    // Check today's published count per user
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
     const { data: todayCounts } = await adminClient
@@ -77,7 +215,6 @@ Deno.serve(async (req) => {
       const post = duePosts[i];
       const profile = profileMap.get(post.user_id);
 
-      // Check profile exists
       if (!profile) {
         await adminClient.from("scheduled_posts").update({
           status: "failed", error_message: "User profile not found",
@@ -87,30 +224,6 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Check token exists
-      if (!profile.threads_access_token || !profile.threads_user_id) {
-        await adminClient.from("scheduled_posts").update({
-          status: "failed", error_message: "Threads not connected — connect your account first",
-        }).eq("id", post.id);
-        failed++;
-        errors.push(`${post.id}: Threads not connected`);
-        continue;
-      }
-
-      // Check token expiry
-      if (profile.threads_token_expires_at) {
-        const expiresAt = new Date(profile.threads_token_expires_at);
-        if (expiresAt <= new Date()) {
-          await adminClient.from("scheduled_posts").update({
-            status: "failed", error_message: "Token expired — reconnect Threads",
-          }).eq("id", post.id);
-          failed++;
-          errors.push(`${post.id}: Token expired`);
-          continue;
-        }
-      }
-
-      // Check daily limit (30 per user per day)
       const userCount = publishedToday.get(post.user_id) || 0;
       if (userCount >= 30) {
         await adminClient.from("scheduled_posts").update({
@@ -121,72 +234,25 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      try {
-        // Step 1: Create media container
-        const createParams = new URLSearchParams({
-          media_type: "TEXT",
-          text: post.text_content || "",
-          access_token: profile.threads_access_token,
-        });
+      const result = await publishSinglePost(adminClient, post, profile);
 
-        const createRes = await fetch(
-          `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads`,
-          { method: "POST", body: createParams }
-        );
-        const createData = await createRes.json();
-
-        if (!createRes.ok || !createData.id) {
-          const errMsg = createData.error?.message || JSON.stringify(createData);
-          await adminClient.from("scheduled_posts").update({
-            status: "failed", error_message: `Container creation failed: ${errMsg}`,
-          }).eq("id", post.id);
-          failed++;
-          errors.push(`${post.id}: ${errMsg}`);
-          if (i < duePosts.length - 1) await sleep(3000);
-          continue;
-        }
-
-        // Step 2: Wait for container processing
-        await sleep(2000);
-
-        // Step 3: Publish
-        const publishParams = new URLSearchParams({
-          creation_id: createData.id,
-          access_token: profile.threads_access_token,
-        });
-
-        const publishRes = await fetch(
-          `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads_publish`,
-          { method: "POST", body: publishParams }
-        );
-        const publishData = await publishRes.json();
-
-        if (!publishRes.ok || !publishData.id) {
-          const errMsg = publishData.error?.message || JSON.stringify(publishData);
-          await adminClient.from("scheduled_posts").update({
-            status: "failed", error_message: `Publishing failed: ${errMsg}`,
-          }).eq("id", post.id);
-          failed++;
-          errors.push(`${post.id}: ${errMsg}`);
-        } else {
-          await adminClient.from("scheduled_posts").update({
-            status: "published",
-            threads_media_id: publishData.id,
-            published_at: new Date().toISOString(),
-            error_message: null,
-          }).eq("id", post.id);
-          published++;
-          publishedToday.set(post.user_id, userCount + 1);
-        }
-      } catch (e: any) {
+      if (result.success) {
         await adminClient.from("scheduled_posts").update({
-          status: "failed", error_message: `Unexpected error: ${e.message}`,
+          status: "published",
+          threads_media_id: result.threads_media_id,
+          published_at: new Date().toISOString(),
+          error_message: null,
+        }).eq("id", post.id);
+        published++;
+        publishedToday.set(post.user_id, userCount + 1);
+      } else {
+        await adminClient.from("scheduled_posts").update({
+          status: "failed", error_message: result.error,
         }).eq("id", post.id);
         failed++;
-        errors.push(`${post.id}: ${e.message}`);
+        errors.push(`${post.id}: ${result.error}`);
       }
 
-      // Delay between posts
       if (i < duePosts.length - 1) await sleep(3000);
     }
 

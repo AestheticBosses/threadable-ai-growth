@@ -33,7 +33,18 @@ import {
   AlertTriangle,
   Target,
   CalendarClock,
+  Send,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { WeeklyCalendar } from "@/components/queue/WeeklyCalendar";
 import { PostStatusIndicator } from "@/components/queue/PostStatusIndicator";
 import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
@@ -83,14 +94,7 @@ function scoreBg(score: number | null): string {
   return "bg-destructive/10";
 }
 
-const BREAKDOWN_LABELS: Record<string, string> = {
-  hook_strength: "Hook Strength",
-  emotional_triggers: "Emotional Triggers",
-  vivid_scene: "Vivid Scene",
-  niche_specificity: "Niche Specificity",
-  voice_match: "Voice Match",
-  data_aligned: "Data-Aligned",
-};
+// No longer using hardcoded labels — breakdown now contains question text from playbook
 
 const TABS = ["all", "draft", "approved", "scheduled", "published", "failed"] as const;
 type TabVal = (typeof TABS)[number];
@@ -113,7 +117,8 @@ const Queue = () => {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [pendingApproveId, setPendingApproveId] = useState<string | null>(null);
   const [schedulingAll, setSchedulingAll] = useState(false);
-
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null);
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -409,7 +414,33 @@ const Queue = () => {
     }
   };
 
-  // Bulk actions
+  // Post Now — publish immediately
+  const handlePostNow = async (postId: string) => {
+    if (!session?.access_token) return;
+    setPublishingId(postId);
+    try {
+      const res = await supabase.functions.invoke("publish-post", {
+        body: { postId },
+      });
+      if (res.error) throw new Error(res.error.message || "Publishing failed");
+      const data = res.data as any;
+      if (data?.error) throw new Error(data.error);
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, status: "published", published_at: new Date().toISOString(), threads_media_id: data.threads_media_id, error_message: null }
+            : p
+        )
+      );
+      toast({ title: "Posted to Threads! 🎉" });
+    } catch (e: any) {
+      toast({ title: "Publishing failed", description: e.message, variant: "destructive" });
+    } finally {
+      setPublishingId(null);
+      setConfirmPublishId(null);
+    }
+  };
+
   const handleBulkApprove = async () => {
     const ids = Array.from(selected);
     await supabase.from("scheduled_posts").update({ status: "approved" }).in("id", ids);
@@ -685,20 +716,25 @@ const Queue = () => {
                             .filter(([key]) => key !== "total")
                             .map(([key, val]) => {
                               const item = val as any;
-                              const passed = typeof item === "object" ? item.score === 1 : !!item;
-                              const reason = typeof item === "object" ? item.reason : "";
+                              const passed = typeof item === "object" ? (item.passed ?? item.score === 1) : !!item;
+                              const label = typeof item === "object" && item.question ? item.question : key;
+                              const points = typeof item === "object" && item.points != null ? item.points : 1;
+                              const dataBacking = typeof item === "object" ? item.data_backing : "";
                               return (
                                 <div key={key} className="space-y-0.5">
                                   <div className="flex items-center gap-2 text-sm">
                                     <span className={passed ? "text-emerald-600" : "text-destructive"}>
-                                      {passed ? "✓" : "✕"}
+                                      {passed ? "✅" : "❌"}
                                     </span>
                                     <span className={passed ? "text-foreground" : "text-muted-foreground"}>
-                                      {BREAKDOWN_LABELS[key] || key}
+                                      {label}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground ml-auto">
+                                      {points > 0 ? `+${points}` : points}pt
                                     </span>
                                   </div>
-                                  {reason && (
-                                    <p className="text-xs text-muted-foreground pl-6">{reason}</p>
+                                  {dataBacking && (
+                                    <p className="text-xs text-muted-foreground pl-6 italic">{dataBacking}</p>
                                   )}
                                 </div>
                               );
@@ -767,6 +803,22 @@ const Queue = () => {
                               Edit
                             </Button>
                           )}
+                          {(post.status === "draft" || post.status === "approved") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setConfirmPublishId(post.id)}
+                              disabled={publishingId === post.id}
+                              className="gap-1 h-7 text-xs"
+                            >
+                              {publishingId === post.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Send className="h-3 w-3" />
+                              )}
+                              🚀 Post Now
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -795,6 +847,24 @@ const Queue = () => {
         }}
         onConfirm={handleApproveWithDate}
       />
+
+      {/* Post Now Confirmation */}
+      <AlertDialog open={!!confirmPublishId} onOpenChange={(open) => !open && setConfirmPublishId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post this to Threads now?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will immediately publish the post to your Threads account. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmPublishId && handlePostNow(confirmPublishId)}>
+              🚀 Post Now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 };
