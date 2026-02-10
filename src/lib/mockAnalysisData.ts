@@ -22,11 +22,11 @@ export interface CorrelationRow {
   rViews: number;
   rLikes: number;
   rReposts: number;
-  rFollows: number;
   rLikeRate: number;
   rRepostRate: number;
-  rFollowRate: number;
+  rEngRate: number;
   count: number;
+  [key: string]: string | number;
 }
 
 const THREAD_DATA_RAW: MockThreadInput[] = [
@@ -117,10 +117,9 @@ export function computeCorrelations(): CorrelationRow[] {
       rViews: pearson(hasTag, threads.map((t) => t.views)),
       rLikes: pearson(hasTag, threads.map((t) => t.likes)),
       rReposts: pearson(hasTag, threads.map((t) => t.reposts)),
-      rFollows: pearson(hasTag, threads.map((t) => t.follows)),
       rLikeRate: pearson(hasTag, threads.map((t) => t.likes / Math.max(t.views, 1))),
       rRepostRate: pearson(hasTag, threads.map((t) => t.reposts / Math.max(t.views, 1))),
-      rFollowRate: pearson(hasTag, threads.map((t) => t.follows / Math.max(t.views, 1))),
+      rEngRate: pearson(hasTag, threads.map((t) => (t.likes + t.comments + t.reposts) / Math.max(t.views, 1))),
       count,
     };
   });

@@ -25,14 +25,13 @@ const ARCHETYPE_LABEL_COLORS: Record<string, string> = {
   "Window": "text-blue-400",
 };
 
-type SortKey = "index" | "title" | "views" | "likes" | "follows" | "replies" | "reposts" | "engRate";
+type SortKey = "index" | "title" | "views" | "likes" | "replies" | "reposts" | "engRate";
 
 interface EnrichedPost {
   index: number;
   title: string;
   views: number;
   likes: number;
-  follows: number;
   replies: number;
   reposts: number;
   engRate: number;
@@ -45,7 +44,6 @@ function enrichPosts(posts: AnalyzedPost[]): EnrichedPost[] {
     title: (p.text_content ?? "").slice(0, 80) || "(no text)",
     views: p.views ?? 0,
     likes: p.likes ?? 0,
-    follows: (p as any).follows ?? 0,
     replies: p.replies ?? 0,
     reposts: p.reposts ?? 0,
     engRate: p.engagement_rate ?? 0,
@@ -57,20 +55,23 @@ function computeKPIs(posts: EnrichedPost[]) {
   const n = posts.length;
   if (n === 0) return null;
   const totalViews = posts.reduce((s, p) => s + p.views, 0);
-  const totalFollows = posts.reduce((s, p) => s + p.follows, 0);
+  const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
   const totalReposts = posts.reduce((s, p) => s + p.reposts, 0);
   const sortedViews = [...posts].sort((a, b) => a.views - b.views);
   const medianViews = n % 2 === 0
     ? Math.round((sortedViews[n / 2 - 1].views + sortedViews[n / 2].views) / 2)
     : sortedViews[Math.floor(n / 2)].views;
-  const topPost = [...posts].sort((a, b) => b.engRate - a.engRate)[0];
+  // Filter out posts with < 50 views for top eng rate
+  const qualifiedPosts = posts.filter((p) => p.views >= 50);
+  const topPost = qualifiedPosts.length > 0
+    ? [...qualifiedPosts].sort((a, b) => b.engRate - a.engRate)[0]
+    : [...posts].sort((a, b) => b.engRate - a.engRate)[0];
 
   return {
     totalPosts: n,
     avgViews: Math.round(totalViews / n),
     medianViews,
-    totalFollows,
-    followRate: totalViews > 0 ? parseFloat(((totalFollows / totalViews) * 100).toFixed(2)) : 0,
+    totalLikes,
     totalReposts,
     repostRate: totalViews > 0 ? parseFloat(((totalReposts / totalViews) * 100).toFixed(2)) : 0,
     topEngRate: topPost.engRate,
@@ -83,20 +84,17 @@ function computeArchetypeStats(posts: EnrichedPost[]) {
   return archetypes.map((archetype) => {
     const group = posts.filter((p) => p.archetype === archetype);
     const n = group.length;
-    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgFollows: 0, avgReposts: 0, medianViews: 0, followRate: 0 };
+    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgReposts: 0, medianViews: 0 };
     const sorted = [...group].sort((a, b) => a.views - b.views);
     const median = n % 2 === 0 ? (sorted[n / 2 - 1].views + sorted[n / 2].views) / 2 : sorted[Math.floor(n / 2)].views;
     const totalViews = group.reduce((s, p) => s + p.views, 0);
-    const totalFollows = group.reduce((s, p) => s + p.follows, 0);
     return {
       archetype,
       count: n,
       avgViews: Math.round(totalViews / n),
       avgLikes: Math.round(group.reduce((s, p) => s + p.likes, 0) / n),
-      avgFollows: Math.round(totalFollows / n),
       avgReposts: Math.round(group.reduce((s, p) => s + p.reposts, 0) / n),
       medianViews: Math.round(median),
-      followRate: totalViews > 0 ? parseFloat(((totalFollows / totalViews) * 100).toFixed(2)) : 0,
     };
   });
 }
@@ -124,7 +122,6 @@ export function AnalysisOverview() {
       title: t.title,
       views: t.views,
       likes: t.likes,
-      follows: t.follows,
       replies: t.comments,
       reposts: t.reposts,
       engRate: t.engRate,
@@ -172,7 +169,7 @@ export function AnalysisOverview() {
     { label: "Total Posts", value: displayKpis.totalPosts, sub: "Analyzed" },
     { label: "Avg Views", value: (displayKpis as any).avgViews?.toLocaleString(), sub: "per post" },
     { label: "Median Views", value: (displayKpis as any).medianViews?.toLocaleString(), sub: "center value" },
-    { label: "Total Follows", value: ((displayKpis as any).totalFollows ?? 0).toLocaleString(), sub: `${(displayKpis as any).followRate ?? 0}% rate` },
+    { label: "Total Likes", value: ((displayKpis as any).totalLikes ?? 0).toLocaleString(), sub: "all posts" },
     { label: "Total Reposts", value: ((displayKpis as any).totalReposts ?? 0).toLocaleString(), sub: `${(displayKpis as any).repostRate ?? 0}% rate` },
     { label: "Top Eng Rate", value: `${(displayKpis as any).topEngRate}%`, sub: (displayKpis as any).topEngPost },
   ];
@@ -182,7 +179,6 @@ export function AnalysisOverview() {
     { key: "title", label: "Post" },
     { key: "views", label: "Views" },
     { key: "likes", label: "Likes" },
-    { key: "follows", label: "Follows" },
     { key: "replies", label: "Replies" },
     { key: "reposts", label: "Reposts" },
     { key: "engRate", label: "Eng%" },
@@ -217,10 +213,8 @@ export function AnalysisOverview() {
                   ["Posts", a.count],
                   ["Avg Views", (a.avgViews ?? 0).toLocaleString()],
                   ["Avg Likes", (a.avgLikes ?? 0).toLocaleString()],
-                  ["Avg Follows", (a.avgFollows ?? 0).toLocaleString()],
                   ["Avg Reposts", (a.avgReposts ?? 0)],
                   ["Median Views", (a.medianViews ?? 0).toLocaleString()],
-                  ["Follow Rate", `${a.followRate ?? 0}%`],
                 ].map(([label, val]) => (
                   <div key={label as string} className="flex justify-between">
                     <span className="text-[hsl(260,10%,50%)]">{label}</span>
@@ -258,7 +252,6 @@ export function AnalysisOverview() {
                   <td className="px-3 py-2 text-[hsl(0,0%,88%)] max-w-[300px] truncate">{t.title}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.views.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.likes.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.follows.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.replies}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.reposts}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(142,71%,60%)]">{t.engRate}%</td>

@@ -38,10 +38,9 @@ function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
   const views = posts.map((p) => p.views ?? 0);
   const likes = posts.map((p) => p.likes ?? 0);
   const reposts = posts.map((p) => p.reposts ?? 0);
-  const follows = posts.map((p) => (p as any).follows ?? 0);
   const likeRate = posts.map((p) => (p.likes ?? 0) / Math.max(p.views ?? 1, 1));
   const repostRate = posts.map((p) => (p.reposts ?? 0) / Math.max(p.views ?? 1, 1));
-  const followRate = posts.map((p) => ((p as any).follows ?? 0) / Math.max(p.views ?? 1, 1));
+  const engRate = posts.map((p) => ((p.likes ?? 0) + (p.replies ?? 0) + (p.reposts ?? 0)) / Math.max(p.views ?? 1, 1));
 
   return variables.map((v) => {
     const xs = posts.map(v.extract);
@@ -51,10 +50,9 @@ function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
       rViews: pearson(xs, views),
       rLikes: pearson(xs, likes),
       rReposts: pearson(xs, reposts),
-      rFollows: pearson(xs, follows),
       rLikeRate: pearson(xs, likeRate),
       rRepostRate: pearson(xs, repostRate),
-      rFollowRate: pearson(xs, followRate),
+      rEngRate: pearson(xs, engRate),
       count,
     };
   });
@@ -92,7 +90,7 @@ export function RegressionAnalysis() {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
       all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
       all.push({ variable: c.variable, metric: "Reposts", value: c.rReposts });
-      all.push({ variable: c.variable, metric: "Follows", value: c.rFollows });
+      all.push({ variable: c.variable, metric: "Eng%", value: c.rEngRate });
     });
     return all.sort((a, b) => b.value - a.value).slice(0, 4);
   }, [correlations]);
@@ -102,19 +100,18 @@ export function RegressionAnalysis() {
     correlations.forEach((c) => {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
       all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
-      all.push({ variable: c.variable, metric: "Follows", value: c.rFollows });
+      all.push({ variable: c.variable, metric: "Eng%", value: c.rEngRate });
     });
     return all.sort((a, b) => a.value - b.value).slice(0, 4);
   }, [correlations]);
 
-  const cols: { key: keyof CorrelationRow; label: string }[] = [
+  const cols: { key: string; label: string }[] = [
     { key: "rViews", label: "r(Views)" },
     { key: "rLikes", label: "r(Likes)" },
     { key: "rReposts", label: "r(Reposts)" },
-    { key: "rFollows", label: "r(Follows)" },
     { key: "rLikeRate", label: "r(Like%)" },
     { key: "rRepostRate", label: "r(Repost%)" },
-    { key: "rFollowRate", label: "r(Follow%)" },
+    { key: "rEngRate", label: "r(Eng%)" },
   ];
 
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
@@ -145,9 +142,9 @@ export function RegressionAnalysis() {
             {correlations.map((row, i) => (
               <tr key={row.variable} className={`border-b border-[hsl(260,20%,14%)] ${i % 2 === 0 ? "bg-[hsl(260,15%,7%)]" : "bg-[hsl(260,15%,9%)]"}`}>
                 <td className="px-3 py-2 text-[hsl(0,0%,88%)] font-medium whitespace-nowrap">{row.variable}</td>
-                {cols.map((c) => (
-                  <CorrCell key={c.key} value={row[c.key] as number} />
-                ))}
+                 {cols.map((c) => (
+                   <CorrCell key={c.key} value={(row as any)[c.key] as number ?? 0} />
+                 ))}
                 <td className="px-3 py-2 font-mono text-center text-[hsl(260,10%,55%)]">{row.count}</td>
               </tr>
             ))}
