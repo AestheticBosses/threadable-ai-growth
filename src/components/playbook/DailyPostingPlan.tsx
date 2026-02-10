@@ -31,6 +31,18 @@ const BADGE_COLORS = [
   "bg-rose-500/15 text-rose-400 border-rose-500/30",
 ];
 
+const FUNNEL_BADGE: Record<string, string> = {
+  TOF: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+  MOF: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  BOF: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+};
+
+const FUNNEL_BAR_COLORS: Record<string, string> = {
+  TOF: "bg-violet-500",
+  MOF: "bg-blue-500",
+  BOF: "bg-emerald-500",
+};
+
 interface ArchetypeInfo {
   name: string;
   emoji: string;
@@ -40,27 +52,22 @@ interface ArchetypeInfo {
 
 function getTimeSlots(count: number): string[] {
   if (count <= TIME_WINDOWS.length) {
-    // Evenly distribute across available windows
     const step = TIME_WINDOWS.length / count;
     return Array.from({ length: count }, (_, i) => TIME_WINDOWS[Math.min(Math.floor(i * step), TIME_WINDOWS.length - 1)].label);
   }
-  // More posts than windows: cycle through
   return Array.from({ length: count }, (_, i) => TIME_WINDOWS[i % TIME_WINDOWS.length].label);
 }
 
 function distributeArchetypes(archetypes: ArchetypeInfo[], postsPerDay: number, dayIndex: number): ArchetypeInfo[] {
-  // Calculate how many posts each archetype gets per day based on percentage
   const totalPct = archetypes.reduce((s, a) => s + a.percentage, 0) || 100;
   const rawCounts = archetypes.map((a) => ({
     ...a,
     raw: (a.percentage / totalPct) * postsPerDay,
   }));
 
-  // Floor all, then distribute remainders
   let floored = rawCounts.map((a) => ({ ...a, count: Math.floor(a.raw) }));
   let remaining = postsPerDay - floored.reduce((s, a) => s + a.count, 0);
 
-  // Sort by fractional part descending, rotate by dayIndex for variety
   const byFraction = [...floored]
     .map((a, i) => ({ ...a, frac: a.raw - a.count, origIdx: i }))
     .sort((a, b) => b.frac - a.frac);
@@ -70,26 +77,34 @@ function distributeArchetypes(archetypes: ArchetypeInfo[], postsPerDay: number, 
     byFraction[idx].count++;
   }
 
-  // Rebuild ordered list
   byFraction.forEach((b) => {
     floored[b.origIdx].count = b.count;
   });
 
-  // Build the slot assignments
-  const slots: ArchetypeInfo[] = [];
-  // Interleave archetypes for variety (rotate starting point by day)
-  let archetypeQueue: ArchetypeInfo[] = [];
+  const archetypeQueue: ArchetypeInfo[] = [];
   floored.forEach((a) => {
     for (let j = 0; j < a.count; j++) {
       archetypeQueue.push(a);
     }
   });
 
-  // Rotate the queue by dayIndex for day-to-day variety
   const rotateBy = dayIndex % (archetypeQueue.length || 1);
-  archetypeQueue = [...archetypeQueue.slice(rotateBy), ...archetypeQueue.slice(0, rotateBy)];
+  return [...archetypeQueue.slice(rotateBy), ...archetypeQueue.slice(0, rotateBy)];
+}
 
-  return archetypeQueue;
+function assignFunnelStages(count: number, tofPct: number, mofPct: number, bofPct: number, dayIndex: number): string[] {
+  const tofCount = Math.round((tofPct / 100) * count);
+  const bofCount = Math.round((bofPct / 100) * count);
+  const mofCount = count - tofCount - bofCount;
+
+  const stages: string[] = [];
+  for (let i = 0; i < tofCount; i++) stages.push("TOF");
+  for (let i = 0; i < mofCount; i++) stages.push("MOF");
+  for (let i = 0; i < bofCount; i++) stages.push("BOF");
+
+  // Rotate by day for variety
+  const rotateBy = dayIndex % (stages.length || 1);
+  return [...stages.slice(rotateBy), ...stages.slice(0, rotateBy)];
 }
 
 interface DailyPostingPlanProps {
@@ -97,11 +112,13 @@ interface DailyPostingPlanProps {
   archetypes: DiscoveredArchetype[] | undefined;
   postsPerDay: number;
   onPostsPerDayChange: (n: number) => void;
+  tofPct: number;
+  mofPct: number;
+  bofPct: number;
 }
 
-export function DailyPostingPlan({ playbook, archetypes, postsPerDay, onPostsPerDayChange }: DailyPostingPlanProps) {
+export function DailyPostingPlan({ playbook, archetypes, postsPerDay, onPostsPerDayChange, tofPct, mofPct, bofPct }: DailyPostingPlanProps) {
   const archetypeInfos: ArchetypeInfo[] = useMemo(() => {
-    // Prefer discovered archetypes for percentages, fall back to playbook templates
     if (archetypes?.length) {
       return archetypes.map((a, i) => ({
         name: a.name,
@@ -126,17 +143,18 @@ export function DailyPostingPlan({ playbook, archetypes, postsPerDay, onPostsPer
     const timeSlots = getTimeSlots(postsPerDay);
     return DAYS.map((day, dayIdx) => {
       const assigned = distributeArchetypes(archetypeInfos, postsPerDay, dayIdx);
+      const funnelStages = assignFunnelStages(postsPerDay, tofPct, mofPct, bofPct, dayIdx);
       return {
         day,
         slots: assigned.map((arch, slotIdx) => ({
           time: timeSlots[slotIdx],
           archetype: arch,
+          funnel: funnelStages[slotIdx] || "TOF",
         })),
       };
     });
-  }, [archetypeInfos, postsPerDay]);
+  }, [archetypeInfos, postsPerDay, tofPct, mofPct, bofPct]);
 
-  // Weekly totals per archetype
   const weeklyTotals = useMemo(() => {
     const counts: Record<string, { emoji: string; count: number }> = {};
     weeklyPlan.forEach((d) =>
@@ -168,6 +186,28 @@ export function DailyPostingPlan({ playbook, archetypes, postsPerDay, onPostsPer
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      {/* Funnel mix bar */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Funnel Mix</p>
+        <div className="flex h-6 rounded-md overflow-hidden border border-border">
+          {tofPct > 0 && (
+            <div className={`${FUNNEL_BAR_COLORS.TOF} flex items-center justify-center text-[10px] font-bold text-white`} style={{ width: `${tofPct}%` }}>
+              TOF {tofPct}%
+            </div>
+          )}
+          {mofPct > 0 && (
+            <div className={`${FUNNEL_BAR_COLORS.MOF} flex items-center justify-center text-[10px] font-bold text-white`} style={{ width: `${mofPct}%` }}>
+              MOF {mofPct}%
+            </div>
+          )}
+          {bofPct > 0 && (
+            <div className={`${FUNNEL_BAR_COLORS.BOF} flex items-center justify-center text-[10px] font-bold text-white`} style={{ width: `${bofPct}%` }}>
+              BOF {bofPct}%
+            </div>
+          )}
         </div>
       </div>
 
@@ -210,6 +250,9 @@ export function DailyPostingPlan({ playbook, archetypes, postsPerDay, onPostsPer
                     className={`text-[10px] mt-0.5 ${BADGE_COLORS[slot.archetype.colorIdx % BADGE_COLORS.length]}`}
                   >
                     {slot.archetype.emoji} {slot.archetype.name}
+                  </Badge>
+                  <Badge className={`text-[9px] mt-0.5 ml-1 ${FUNNEL_BADGE[slot.funnel]}`}>
+                    {slot.funnel}
                   </Badge>
                 </div>
               ))}

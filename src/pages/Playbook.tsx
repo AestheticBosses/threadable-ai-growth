@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -8,6 +8,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { usePlaybookData, useArchetypeDiscovery } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,13 +29,13 @@ const ARCHETYPE_BADGE_COLORS = [
   "bg-blue-500/15 text-blue-400 border-blue-500/30",
   "bg-rose-500/15 text-rose-400 border-rose-500/30",
 ];
-const ARCHETYPE_LABEL_COLORS = [
-  "text-violet-400",
-  "text-emerald-400",
-  "text-yellow-400",
-  "text-blue-400",
-  "text-rose-400",
-];
+
+const FUNNEL_GOALS: Record<string, { label: string; tof: number; mof: number; bof: number }> = {
+  grow: { label: "Grow followers fast", tof: 70, mof: 20, bof: 10 },
+  authority: { label: "Build authority & trust", tof: 40, mof: 40, bof: 20 },
+  sales: { label: "Drive sales & leads", tof: 30, mof: 30, bof: 40 },
+  custom: { label: "Custom", tof: 50, mof: 30, bof: 20 },
+};
 
 const Playbook = () => {
   usePageTitle("Playbook", "Your validated content strategy playbook");
@@ -46,13 +48,86 @@ const Playbook = () => {
   const { data: playbook, isLoading } = usePlaybookData();
   const { data: discoveredArchetypes } = useArchetypeDiscovery();
 
+  // Funnel state
+  const [funnelGoal, setFunnelGoal] = useState("grow");
+  const [tofPct, setTofPct] = useState(70);
+  const [mofPct, setMofPct] = useState(20);
+  const [bofPct, setBofPct] = useState(10);
+  const [savingFunnel, setSavingFunnel] = useState(false);
+
+  // Load profile funnel settings
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("funnel_goal, funnel_tof_pct, funnel_mof_pct, funnel_bof_pct")
+      .eq("id", user.id)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setFunnelGoal((data as any).funnel_goal || "grow");
+          setTofPct((data as any).funnel_tof_pct ?? 70);
+          setMofPct((data as any).funnel_mof_pct ?? 20);
+          setBofPct((data as any).funnel_bof_pct ?? 10);
+        }
+      });
+  }, [user]);
+
+  const handleGoalChange = (goal: string) => {
+    setFunnelGoal(goal);
+    if (goal !== "custom") {
+      const preset = FUNNEL_GOALS[goal];
+      setTofPct(preset.tof);
+      setMofPct(preset.mof);
+      setBofPct(preset.bof);
+    }
+  };
+
+  const handleCustomSlider = (stage: "tof" | "mof" | "bof", value: number) => {
+    if (stage === "tof") {
+      const remaining = 100 - value;
+      const mofRatio = mofPct / (mofPct + bofPct || 1);
+      setTofPct(value);
+      setMofPct(Math.round(remaining * mofRatio));
+      setBofPct(remaining - Math.round(remaining * mofRatio));
+    } else if (stage === "mof") {
+      const remaining = 100 - value;
+      const tofRatio = tofPct / (tofPct + bofPct || 1);
+      setMofPct(value);
+      setTofPct(Math.round(remaining * tofRatio));
+      setBofPct(remaining - Math.round(remaining * tofRatio));
+    } else {
+      const remaining = 100 - value;
+      const tofRatio = tofPct / (tofPct + mofPct || 1);
+      setBofPct(value);
+      setTofPct(Math.round(remaining * tofRatio));
+      setMofPct(remaining - Math.round(remaining * tofRatio));
+    }
+  };
+
+  const saveFunnel = async () => {
+    if (!user) return;
+    setSavingFunnel(true);
+    await supabase
+      .from("profiles")
+      .update({
+        funnel_goal: funnelGoal,
+        funnel_tof_pct: tofPct,
+        funnel_mof_pct: mofPct,
+        funnel_bof_pct: bofPct,
+      } as any)
+      .eq("id", user.id);
+    setSavingFunnel(false);
+    toast({ title: "Funnel mix saved ✅" });
+  };
+
   const handleGeneratePlaybook = async () => {
     if (!user) return;
     setGenerating(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
-      const { data, error } = await supabase.functions.invoke("run-analysis", {
+      const { error } = await supabase.functions.invoke("run-analysis", {
         body: {},
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
@@ -109,7 +184,6 @@ const Playbook = () => {
     );
   }
 
-  // No playbook yet — show generate prompt
   if (!playbook) {
     return (
       <AppLayout>
@@ -120,17 +194,8 @@ const Playbook = () => {
             <p className="text-muted-foreground max-w-md">
               Generate a data-driven content playbook based on your discovered archetypes and performance data.
             </p>
-            <Button
-              size="lg"
-              onClick={handleGeneratePlaybook}
-              disabled={generating}
-              className="gap-2 px-8"
-            >
-              {generating ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Sparkles className="h-5 w-5" />
-              )}
+            <Button size="lg" onClick={handleGeneratePlaybook} disabled={generating} className="gap-2 px-8">
+              {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
               {generating ? "Claude is running full analysis…" : "🧠 Run Full Analysis"}
             </Button>
           </div>
@@ -145,53 +210,97 @@ const Playbook = () => {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              Your Content Playbook
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Personalized strategy built from your data.
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Your Content Playbook</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Personalized strategy built from your data.</p>
           </div>
           <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={handleGeneratePlaybook}
-              disabled={generating}
-              className="gap-2"
-            >
+            <Button variant="outline" onClick={handleGeneratePlaybook} disabled={generating} className="gap-2">
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               {generating ? "Regenerating…" : "🔄 Regenerate"}
             </Button>
-            <Button
-              onClick={handleGenerateContent}
-              disabled={generatingContent}
-              className="gap-2"
-            >
+            <Button onClick={handleGenerateContent} disabled={generatingContent} className="gap-2">
               {generatingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               {generatingContent ? "Generating…" : `✨ Generate ${postsPerDay * 7} Posts`}
             </Button>
           </div>
         </div>
 
-        {/* SECTION 1: Daily Posting Plan */}
+        {/* SECTION: Funnel Goal */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">
-            Daily Posting Plan
-          </h2>
+          <h2 className="text-lg font-semibold text-foreground">Funnel Strategy</h2>
+          <Card>
+            <CardContent className="p-5 space-y-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted-foreground">Goal:</span>
+                  <Select value={funnelGoal} onValueChange={handleGoalChange}>
+                    <SelectTrigger className="w-52 h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(FUNNEL_GOALS).map(([key, { label }]) => (
+                        <SelectItem key={key} value={key}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button size="sm" variant="outline" onClick={saveFunnel} disabled={savingFunnel} className="gap-1">
+                  {savingFunnel ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  Save Mix
+                </Button>
+              </div>
+
+              {funnelGoal === "custom" && (
+                <div className="space-y-3">
+                  {(["tof", "mof", "bof"] as const).map((stage) => {
+                    const val = stage === "tof" ? tofPct : stage === "mof" ? mofPct : bofPct;
+                    const label = stage === "tof" ? "TOF (Reach)" : stage === "mof" ? "MOF (Trust)" : "BOF (Convert)";
+                    const color = stage === "tof" ? "text-violet-400" : stage === "mof" ? "text-blue-400" : "text-emerald-400";
+                    return (
+                      <div key={stage} className="flex items-center gap-3">
+                        <span className={`text-sm font-medium w-28 ${color}`}>{label}</span>
+                        <Slider
+                          value={[val]}
+                          min={0}
+                          max={100}
+                          step={5}
+                          onValueChange={([v]) => handleCustomSlider(stage, v)}
+                          className="flex-1"
+                        />
+                        <span className="text-sm font-mono w-10 text-right">{val}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p><span className="text-violet-400 font-medium">TOF</span> — Go viral, get new eyeballs, grow followers. No CTA.</p>
+                <p><span className="text-blue-400 font-medium">MOF</span> — Build credibility, show expertise. Soft CTA.</p>
+                <p><span className="text-emerald-400 font-medium">BOF</span> — Drive DMs, applications, sales. Direct CTA.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        {/* SECTION: Daily Posting Plan */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Daily Posting Plan</h2>
           <DailyPostingPlan
             playbook={playbook}
             archetypes={discoveredArchetypes?.archetypes}
             postsPerDay={postsPerDay}
             onPostsPerDayChange={setPostsPerDay}
+            tofPct={tofPct}
+            mofPct={mofPct}
+            bofPct={bofPct}
           />
         </section>
 
-        {/* SECTION 2: Pre-Post Checklist */}
+        {/* SECTION: Pre-Post Checklist */}
         {playbook.checklist && (
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
-              Pre-Post Checklist (Score 4+ Before Posting)
-            </h2>
+            <h2 className="text-lg font-semibold text-foreground">Pre-Post Checklist (Score 4+ Before Posting)</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {playbook.checklist.map((c, i) => (
                 <Card key={i}>
@@ -217,7 +326,7 @@ const Playbook = () => {
           </section>
         )}
 
-        {/* SECTION 3: Templates */}
+        {/* SECTION: Templates */}
         {playbook.templates && (
           <section className="space-y-4">
             <h2 className="text-lg font-semibold text-foreground">Templates by Archetype</h2>
@@ -227,9 +336,7 @@ const Playbook = () => {
                   <CardContent className="p-5 space-y-3">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{t.emoji}</span>
-                      <Badge className={`text-xs ${ARCHETYPE_BADGE_COLORS[i % ARCHETYPE_BADGE_COLORS.length]}`}>
-                        {t.archetype}
-                      </Badge>
+                      <Badge className={`text-xs ${ARCHETYPE_BADGE_COLORS[i % ARCHETYPE_BADGE_COLORS.length]}`}>{t.archetype}</Badge>
                     </div>
                     <pre className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed rounded-lg p-4 border border-border" style={{ background: "rgba(0,0,0,0.3)" }}>
                       {t.template}
@@ -247,12 +354,10 @@ const Playbook = () => {
           </section>
         )}
 
-        {/* SECTION 4: Rules */}
+        {/* SECTION: Rules */}
         {playbook.rules && (
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">
-              Rules — Validated by Your Data
-            </h2>
+            <h2 className="text-lg font-semibold text-foreground">Rules — Validated by Your Data</h2>
             <div className="rounded-lg border-2 border-destructive/40 p-5 space-y-3" style={{ background: "rgba(239,68,68,0.06)" }}>
               <ol className="space-y-3">
                 {playbook.rules.map((r, i) => (
@@ -269,7 +374,7 @@ const Playbook = () => {
           </section>
         )}
 
-        {/* SECTION 5: Generation Guidelines */}
+        {/* SECTION: Generation Guidelines */}
         {playbook.generation_guidelines && (
           <section className="space-y-4">
             <h2 className="text-lg font-semibold text-foreground">Content Generation Guidelines</h2>
