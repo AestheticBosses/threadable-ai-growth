@@ -31,7 +31,11 @@ import {
   X,
   AlertTriangle,
   Target,
+  CalendarClock,
 } from "lucide-react";
+import { WeeklyCalendar } from "@/components/queue/WeeklyCalendar";
+import { PostStatusIndicator } from "@/components/queue/PostStatusIndicator";
+import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
 
 type Post = {
   id: string;
@@ -43,6 +47,9 @@ type Post = {
   user_edited: boolean | null;
   pre_post_score: number | null;
   score_breakdown: Record<string, any> | null;
+  threads_media_id: string | null;
+  published_at: string | null;
+  error_message: string | null;
   created_at: string;
 };
 
@@ -51,6 +58,7 @@ const STATUS_COLORS: Record<string, string> = {
   approved: "bg-emerald-500/10 text-emerald-600",
   scheduled: "bg-primary/10 text-primary",
   published: "bg-violet-500/10 text-violet-600",
+  failed: "bg-destructive/10 text-destructive",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -83,7 +91,7 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   data_aligned: "Data-Aligned",
 };
 
-const TABS = ["all", "draft", "approved", "scheduled", "published"] as const;
+const TABS = ["all", "draft", "approved", "scheduled", "published", "failed"] as const;
 type TabVal = (typeof TABS)[number];
 
 const Queue = () => {
@@ -99,16 +107,33 @@ const Queue = () => {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [scoringId, setScoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date" | "status" | "category">("date");
+  const [threadsUsername, setThreadsUsername] = useState<string | null>(null);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [pendingApproveId, setPendingApproveId] = useState<string | null>(null);
+  const [schedulingAll, setSchedulingAll] = useState(false);
 
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
       .from("scheduled_posts")
-      .select("id, text_content, content_category, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, created_at")
+      .select("id, text_content, content_category, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at")
       .eq("user_id", user.id)
       .order("scheduled_for", { ascending: true });
     setPosts((data as Post[]) || []);
     setLoading(false);
+  }, [user]);
+
+  // Load profile for threads username
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("threads_username")
+      .eq("id", user.id)
+      .single()
+      .then(({ data }) => {
+        if (data?.threads_username) setThreadsUsername(data.threads_username);
+      });
   }, [user]);
 
   useEffect(() => {
@@ -127,10 +152,10 @@ const Queue = () => {
 
   const todayCount = posts.filter((p) => {
     if (!p.scheduled_for) return false;
-    const d = new Date(p.scheduled_for);
-    const now = new Date();
-    return d.toDateString() === now.toDateString();
+    return new Date(p.scheduled_for).toDateString() === new Date().toDateString();
   }).length;
+
+  const draftCount = posts.filter((p) => p.status === "draft").length;
 
   // Generate posts
   const handleGenerate = async (count: number) => {
@@ -162,10 +187,46 @@ const Queue = () => {
     }
   };
 
-  // Approve
+  // Approve — check if scheduled_for is set, if not show date picker
   const handleApprove = async (id: string) => {
+    const post = posts.find((p) => p.id === id);
+    if (!post?.scheduled_for) {
+      setPendingApproveId(id);
+      setScheduleDialogOpen(true);
+      return;
+    }
     await supabase.from("scheduled_posts").update({ status: "approved" }).eq("id", id);
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: "approved" } : p)));
+  };
+
+  // Approve with scheduled date from dialog
+  const handleApproveWithDate = async (date: Date) => {
+    if (!pendingApproveId) return;
+    await supabase
+      .from("scheduled_posts")
+      .update({ status: "approved", scheduled_for: date.toISOString() })
+      .eq("id", pendingApproveId);
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === pendingApproveId
+          ? { ...p, status: "approved", scheduled_for: date.toISOString() }
+          : p
+      )
+    );
+    setPendingApproveId(null);
+    toast({ title: "Post approved & scheduled" });
+  };
+
+  // Retry failed post
+  const handleRetry = async (id: string) => {
+    await supabase
+      .from("scheduled_posts")
+      .update({ status: "approved", error_message: null })
+      .eq("id", id);
+    setPosts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, status: "approved", error_message: null } : p))
+    );
+    toast({ title: "Post queued for retry" });
   };
 
   // Delete
@@ -197,7 +258,6 @@ const Queue = () => {
         newScore = scoreData.score;
         newBreakdown = scoreData.breakdown;
       }
-
       await supabase
         .from("scheduled_posts")
         .update({
@@ -207,7 +267,6 @@ const Queue = () => {
           score_breakdown: newBreakdown as any,
         })
         .eq("id", id);
-
       setPosts((prev) =>
         prev.map((p) =>
           p.id === id
@@ -239,12 +298,10 @@ const Queue = () => {
       );
       if (!res.ok) throw new Error("Scoring failed");
       const { score, breakdown } = await res.json();
-
       await supabase
         .from("scheduled_posts")
         .update({ pre_post_score: score, score_breakdown: breakdown })
         .eq("id", post.id);
-
       setPosts((prev) =>
         prev.map((p) => (p.id === post.id ? { ...p, pre_post_score: score, score_breakdown: breakdown } : p))
       );
@@ -299,6 +356,57 @@ const Queue = () => {
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, scheduled_for: date.toISOString() } : p)));
   };
 
+  // Schedule all drafts — spread evenly across the week at optimal times
+  const handleScheduleAllDrafts = async () => {
+    const drafts = posts.filter((p) => p.status === "draft");
+    if (drafts.length === 0) return;
+    setSchedulingAll(true);
+    try {
+      // Default optimal times
+      const optimalTimes = ["08:00", "12:00", "17:00", "20:00"];
+      const now = new Date();
+      const startDay = new Date(now);
+      startDay.setDate(startDay.getDate() + 1);
+
+      const updates: { id: string; scheduled_for: string }[] = [];
+      let dayOffset = 0;
+      let timeIdx = 0;
+
+      for (const draft of drafts) {
+        const schedDate = new Date(startDay);
+        schedDate.setDate(schedDate.getDate() + dayOffset);
+        const [h, m] = optimalTimes[timeIdx].split(":").map(Number);
+        schedDate.setHours(h, m, 0, 0);
+        updates.push({ id: draft.id, scheduled_for: schedDate.toISOString() });
+        timeIdx++;
+        if (timeIdx >= optimalTimes.length) {
+          timeIdx = 0;
+          dayOffset++;
+        }
+      }
+
+      // Update each post
+      for (const upd of updates) {
+        await supabase
+          .from("scheduled_posts")
+          .update({ scheduled_for: upd.scheduled_for, status: "approved" })
+          .eq("id", upd.id);
+      }
+
+      setPosts((prev) =>
+        prev.map((p) => {
+          const upd = updates.find((u) => u.id === p.id);
+          return upd ? { ...p, scheduled_for: upd.scheduled_for, status: "approved" } : p;
+        })
+      );
+      toast({ title: `${updates.length} drafts scheduled & approved!` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setSchedulingAll(false);
+    }
+  };
+
   // Bulk actions
   const handleBulkApprove = async () => {
     const ids = Array.from(selected);
@@ -345,6 +453,24 @@ const Queue = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Schedule All Drafts */}
+            {draftCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={schedulingAll}
+                onClick={handleScheduleAllDrafts}
+                className="gap-1"
+              >
+                {schedulingAll ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CalendarClock className="h-3.5 w-3.5" />
+                )}
+                Schedule All Drafts ({draftCount})
+              </Button>
+            )}
+
             {/* Sort */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -383,14 +509,17 @@ const Queue = () => {
           </div>
         </div>
 
+        {/* Weekly Calendar */}
+        <WeeklyCalendar posts={posts} />
+
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-border">
+        <div className="flex gap-1 border-b border-border overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                "px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px",
+                "px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px whitespace-nowrap",
                 activeTab === tab
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -436,7 +565,6 @@ const Queue = () => {
               <Card key={post.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    {/* Checkbox */}
                     <Checkbox
                       checked={selected.has(post.id)}
                       onCheckedChange={() => toggleSelect(post.id)}
@@ -475,7 +603,7 @@ const Queue = () => {
                             Low score
                           </Badge>
                         )}
-                        {post.scheduled_for && (
+                        {post.scheduled_for && post.status !== "published" && post.status !== "failed" && (
                           <Popover>
                             <PopoverTrigger asChild>
                               <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto">
@@ -494,6 +622,17 @@ const Queue = () => {
                           </Popover>
                         )}
                       </div>
+
+                      {/* Status indicator */}
+                      <PostStatusIndicator
+                        status={post.status}
+                        scheduledFor={post.scheduled_for}
+                        publishedAt={post.published_at}
+                        threadsMediaId={post.threads_media_id}
+                        threadsUsername={threadsUsername}
+                        errorMessage={post.error_message}
+                        onRetry={() => handleRetry(post.id)}
+                      />
 
                       {/* Post text */}
                       {editingId === post.id ? (
@@ -573,34 +712,38 @@ const Queue = () => {
                               Approve
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRegenerate(post)}
-                            disabled={regeneratingId === post.id}
-                            className="gap-1 h-7 text-xs"
-                          >
-                            {regeneratingId === post.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                            Regenerate
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleScorePost(post)}
-                            disabled={scoringId === post.id}
-                            className="gap-1 h-7 text-xs"
-                          >
-                            {scoringId === post.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Target className="h-3 w-3" />
-                            )}
-                            Score This Post
-                          </Button>
+                          {post.status !== "published" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRegenerate(post)}
+                                disabled={regeneratingId === post.id}
+                                className="gap-1 h-7 text-xs"
+                              >
+                                {regeneratingId === post.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-3 w-3" />
+                                )}
+                                Regenerate
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleScorePost(post)}
+                                disabled={scoringId === post.id}
+                                className="gap-1 h-7 text-xs"
+                              >
+                                {scoringId === post.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Target className="h-3 w-3" />
+                                )}
+                                Score
+                              </Button>
+                            </>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -608,17 +751,19 @@ const Queue = () => {
                             className="gap-1 h-7 text-xs"
                           >
                             <BarChart3 className="h-3 w-3" />
-                            {expandedScoreId === post.id ? "Hide Score" : "Why this score?"}
+                            {expandedScoreId === post.id ? "Hide" : "Why this score?"}
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => { setEditingId(post.id); setEditText(post.text_content || ""); }}
-                            className="gap-1 h-7 text-xs"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            Edit
-                          </Button>
+                          {post.status !== "published" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => { setEditingId(post.id); setEditText(post.text_content || ""); }}
+                              className="gap-1 h-7 text-xs"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -637,6 +782,16 @@ const Queue = () => {
           </div>
         )}
       </div>
+
+      {/* Schedule Dialog */}
+      <ScheduleDialog
+        open={scheduleDialogOpen}
+        onOpenChange={(open) => {
+          setScheduleDialogOpen(open);
+          if (!open) setPendingApproveId(null);
+        }}
+        onConfirm={handleApproveWithDate}
+      />
     </AppLayout>
   );
 };
