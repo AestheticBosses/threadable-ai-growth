@@ -1,4 +1,4 @@
-import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
+import { NavLink as RouterNavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Lightbulb,
@@ -8,11 +8,13 @@ import {
   Menu,
   X,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -29,8 +31,18 @@ interface AppSidebarProps {
 export function AppLayout({ children }: AppSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login");
+  };
+
+  const userEmail = user?.email ?? "user@example.com";
+  const userInitial = userEmail.charAt(0).toUpperCase();
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
@@ -64,31 +76,37 @@ export function AppLayout({ children }: AppSidebarProps) {
         ))}
       </nav>
 
-      {/* User */}
-      <div className="border-t border-sidebar-border p-3">
+      {/* User + Sign Out */}
+      <div className="border-t border-sidebar-border p-3 space-y-2">
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-              U
+              {userInitial}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-primary truncate">User</p>
-            <p className="text-xs text-sidebar-muted truncate">user@example.com</p>
+            <p className="text-sm font-medium text-sidebar-primary truncate">
+              {userEmail}
+            </p>
           </div>
         </div>
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </button>
       </div>
     </div>
   );
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-56 md:flex-col bg-sidebar border-r border-sidebar-border">
         {sidebarContent}
       </aside>
 
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm md:hidden"
@@ -96,7 +114,6 @@ export function AppLayout({ children }: AppSidebarProps) {
         />
       )}
 
-      {/* Mobile Sidebar */}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-56 bg-sidebar transform transition-transform duration-200 ease-in-out md:hidden",
@@ -112,16 +129,9 @@ export function AppLayout({ children }: AppSidebarProps) {
         {sidebarContent}
       </aside>
 
-      {/* Main content */}
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Mobile header */}
         <header className="flex h-14 items-center border-b px-4 md:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setMobileOpen(true)}
-            className="mr-2"
-          >
+          <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="mr-2">
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
