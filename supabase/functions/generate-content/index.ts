@@ -132,6 +132,7 @@ Summary: ${voiceProfile.overall_summary || "N/A"}`
 
     // Build playbook context
     let playbookContext = "";
+    let checklistContext = "";
     if (playbookData) {
       const scheduleText = (playbookData.weekly_schedule || [])
         .map((s: any) => `${s.day}: ${s.archetype} (${s.notes})`)
@@ -159,6 +160,22 @@ GENERATION GUIDELINES:
 - Avg length: ${guidelines.avg_length || "N/A"}
 - Key vocabulary: ${(guidelines.vocabulary || []).join(", ") || "N/A"}
 - Avoid: ${(guidelines.avoid || []).join(", ") || "N/A"}`;
+
+      // Build checklist context for self-scoring
+      if (playbookData.checklist && playbookData.checklist.length > 0) {
+        const checklistItems = playbookData.checklist
+          .map((c: any, i: number) => `${i + 1}. ${c.question} (+${c.points}pt) — Evidence: ${c.data_backing}`)
+          .join("\n");
+        const maxPoints = playbookData.checklist.reduce((s: number, c: any) => s + Math.max(0, c.points), 0);
+        checklistContext = `
+
+QUALITY CHECKLIST (self-score each post before returning):
+${checklistItems}
+
+Max possible: ${maxPoints} points (normalized to 6-point scale, threshold = 4/6).
+Before returning each post, mentally score it against this checklist.
+Only include posts that would score 4+ out of 6. If a post scores below 4, rewrite it until it scores 4+.`;
+      }
     }
 
     const actualCount = regeneratePostId ? 1 : postsCount;
@@ -195,7 +212,8 @@ RULES:
 9. No generic motivational crap. Be specific and real.
 10. Write like a real person, not a brand.
 11. Follow the playbook weekly schedule if available — match archetype to day.
-12. Use the playbook templates as structural guides.${categoryHint}`;
+12. Use the playbook templates as structural guides.${categoryHint}
+${checklistContext}`;
 
     const generatePosts = async (count: number): Promise<any[]> => {
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
