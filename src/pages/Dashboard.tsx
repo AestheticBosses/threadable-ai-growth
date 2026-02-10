@@ -67,11 +67,11 @@ const Dashboard = () => {
         ) : posts.length === 0 ? (
           <EmptyState
             icon={<BarChart3 className="h-7 w-7 text-muted-foreground" />}
-            title="No Posts Analyzed Yet"
-            description="Run an analysis to start seeing your performance metrics here."
+            title="No data yet!"
+            description="Connect your Threads account and build your first strategy to see your analytics here."
             action={
-              <Button onClick={() => navigate("/analyze")} className="mt-2">
-                Run Analysis
+              <Button onClick={() => navigate("/onboarding")} className="mt-2">
+                Get Started
               </Button>
             }
           />

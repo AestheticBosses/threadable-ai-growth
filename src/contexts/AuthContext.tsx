@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   onboardingCompleted: boolean | null;
+  hasStrategy: boolean | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null);
+  const [hasStrategy, setHasStrategy] = useState<boolean | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -26,6 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("id", userId)
       .single();
     setOnboardingCompleted(data?.onboarding_complete ?? false);
+
+    const { count } = await supabase
+      .from("content_strategies")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId);
+    setHasStrategy((count ?? 0) > 0);
   };
 
   const refreshProfile = async () => {
@@ -35,22 +43,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          // Use setTimeout to avoid potential deadlock with Supabase client
           setTimeout(() => fetchProfile(session.user.id), 0);
         } else {
           setOnboardingCompleted(null);
+          setHasStrategy(null);
         }
         setLoading(false);
       }
     );
 
-    // Then check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -68,10 +74,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setUser(null);
     setOnboardingCompleted(null);
+    setHasStrategy(null);
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, onboardingCompleted, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, loading, onboardingCompleted, hasStrategy, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
