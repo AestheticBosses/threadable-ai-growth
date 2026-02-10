@@ -1,9 +1,52 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
+import { useRegressionInsights, type RegressionInsight } from "@/hooks/useStrategyData";
 import { usePostsAnalyzed, type AnalyzedPost } from "@/hooks/usePostsAnalyzed";
 import { computeCorrelations as computeMockCorrelations } from "@/lib/mockAnalysisData";
 import type { CorrelationRow } from "@/lib/mockAnalysisData";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, Sparkles } from "lucide-react";
 
+/* ── Metric color coding ── */
+const METRIC_COLORS: Record<string, string> = {
+  views: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  likes: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  reposts: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  replies: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+};
+
+const STRENGTH_COLORS: Record<string, string> = {
+  strong: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  moderate: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  weak: "bg-muted text-muted-foreground border-border",
+};
+
+/* ── AI Insight Card ── */
+function InsightCard({ insight }: { insight: RegressionInsight }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{insight.category}</span>
+        <div className="flex gap-1.5">
+          <Badge variant="outline" className={`text-[10px] ${METRIC_COLORS[insight.metric_impacted] ?? "bg-muted text-muted-foreground border-border"}`}>
+            {insight.metric_impacted}
+          </Badge>
+          <Badge variant="outline" className={`text-[10px] ${STRENGTH_COLORS[insight.strength] ?? STRENGTH_COLORS.weak}`}>
+            {insight.strength}
+          </Badge>
+        </div>
+      </div>
+      <p className="text-sm font-medium text-foreground">{insight.insight}</p>
+      <p className="text-xs text-muted-foreground leading-relaxed">{insight.evidence}</p>
+      {insight.recommendation && (
+        <p className="text-xs text-primary font-medium">→ {insight.recommendation}</p>
+      )}
+    </div>
+  );
+}
+
+/* ── Raw Pearson table (collapsible) ── */
 function pearson(xs: number[], ys: number[]): number {
   const n = xs.length;
   if (n < 3) return 0;
@@ -34,27 +77,16 @@ function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
     { key: "has_controversy", label: "Controversy / Hot Take", extract: (p) => (p as any).has_controversy ? 1 : 0 },
     { key: "emotion_count", label: "2+ Emotional Triggers", extract: (p) => ((p as any).emotion_count ?? 0) >= 2 ? 1 : 0 },
   ];
-
   const views = posts.map((p) => p.views ?? 0);
   const likes = posts.map((p) => p.likes ?? 0);
   const reposts = posts.map((p) => p.reposts ?? 0);
   const likeRate = posts.map((p) => (p.likes ?? 0) / Math.max(p.views ?? 1, 1));
   const repostRate = posts.map((p) => (p.reposts ?? 0) / Math.max(p.views ?? 1, 1));
   const engRate = posts.map((p) => ((p.likes ?? 0) + (p.replies ?? 0) + (p.reposts ?? 0)) / Math.max(p.views ?? 1, 1));
-
   return variables.map((v) => {
     const xs = posts.map(v.extract);
     const count = xs.filter((x) => x > 0).length;
-    return {
-      variable: v.label,
-      rViews: pearson(xs, views),
-      rLikes: pearson(xs, likes),
-      rReposts: pearson(xs, reposts),
-      rLikeRate: pearson(xs, likeRate),
-      rRepostRate: pearson(xs, repostRate),
-      rEngRate: pearson(xs, engRate),
-      count,
-    };
+    return { variable: v.label, rViews: pearson(xs, views), rLikes: pearson(xs, likes), rReposts: pearson(xs, reposts), rLikeRate: pearson(xs, likeRate), rRepostRate: pearson(xs, repostRate), rEngRate: pearson(xs, engRate), count };
   });
 }
 
@@ -62,7 +94,7 @@ function corrColor(r: number): string {
   if (r >= 0.5) return "text-emerald-400 bg-emerald-500/15";
   if (r >= 0.3) return "text-emerald-300 bg-emerald-500/8";
   if (r >= 0.1) return "text-yellow-400 bg-yellow-500/8";
-  if (r > -0.1) return "text-[hsl(260,10%,50%)]";
+  if (r > -0.1) return "text-muted-foreground";
   if (r > -0.3) return "text-orange-400 bg-orange-500/8";
   return "text-red-400 bg-red-500/10";
 }
@@ -75,8 +107,9 @@ function CorrCell({ value }: { value: number }) {
   );
 }
 
-export function RegressionAnalysis() {
+function RawCorrelationsTable() {
   const { data: posts, isLoading } = usePostsAnalyzed();
+  const [open, setOpen] = useState(false);
   const useReal = (posts?.length ?? 0) > 0;
 
   const correlations = useMemo(() => {
@@ -84,28 +117,7 @@ export function RegressionAnalysis() {
     return computeMockCorrelations();
   }, [posts, useReal]);
 
-  const topPositive = useMemo(() => {
-    const all: { variable: string; metric: string; value: number }[] = [];
-    correlations.forEach((c) => {
-      all.push({ variable: c.variable, metric: "Views", value: c.rViews });
-      all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
-      all.push({ variable: c.variable, metric: "Reposts", value: c.rReposts });
-      all.push({ variable: c.variable, metric: "Eng%", value: c.rEngRate });
-    });
-    return all.sort((a, b) => b.value - a.value).slice(0, 4);
-  }, [correlations]);
-
-  const negatives = useMemo(() => {
-    const all: { variable: string; metric: string; value: number }[] = [];
-    correlations.forEach((c) => {
-      all.push({ variable: c.variable, metric: "Views", value: c.rViews });
-      all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
-      all.push({ variable: c.variable, metric: "Eng%", value: c.rEngRate });
-    });
-    return all.sort((a, b) => a.value - b.value).slice(0, 4);
-  }, [correlations]);
-
-  const cols: { key: string; label: string }[] = [
+  const cols = [
     { key: "rViews", label: "r(Views)" },
     { key: "rLikes", label: "r(Likes)" },
     { key: "rReposts", label: "r(Reposts)" },
@@ -114,75 +126,83 @@ export function RegressionAnalysis() {
     { key: "rEngRate", label: "r(Eng%)" },
   ];
 
+  if (isLoading) return null;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full py-2">
+        <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        Raw Pearson Correlations
+        <span className="text-xs text-muted-foreground ml-1">
+          ({useReal ? `${posts!.length} posts` : "mock data"})
+        </span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="overflow-x-auto rounded-lg border border-border mt-2">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border">
+                <th className="px-3 py-2.5 text-left font-semibold text-muted-foreground uppercase tracking-wider">Variable</th>
+                {cols.map((c) => (
+                  <th key={c.key} className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{c.label}</th>
+                ))}
+                <th className="px-3 py-2.5 text-center font-semibold text-muted-foreground uppercase tracking-wider">Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {correlations.map((row, i) => (
+                <tr key={row.variable} className={`border-b border-border ${i % 2 === 0 ? "bg-card/50" : "bg-card"}`}>
+                  <td className="px-3 py-2 text-foreground font-medium whitespace-nowrap">{row.variable}</td>
+                  {cols.map((c) => (
+                    <CorrCell key={c.key} value={(row as any)[c.key] as number ?? 0} />
+                  ))}
+                  <td className="px-3 py-2 font-mono text-center text-muted-foreground">{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/* ── Main Component ── */
+export function RegressionAnalysis() {
+  const { data: regressionData, isLoading } = useRegressionInsights();
+  const insights = regressionData?.insights;
+
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <div className="space-y-8">
-      <div>
-        <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)]">Pearson Correlation Coefficients</h3>
-        <p className="text-sm text-[hsl(260,10%,50%)] mt-1">
-          {useReal
-            ? `Real correlations computed from ${posts!.length} posts. Values range from -1 (inverse) to +1 (strong positive).`
-            : "Mock correlations. Fetch your real posts to see actual data."}
-        </p>
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-[hsl(260,20%,18%)]">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="bg-[hsl(260,15%,12%)] border-b border-[hsl(260,20%,18%)]">
-              <th className="px-3 py-2.5 text-left font-semibold text-[hsl(260,10%,55%)] uppercase tracking-wider">Variable</th>
-              {cols.map((c) => (
-                <th key={c.key} className="px-3 py-2.5 text-center font-semibold text-[hsl(260,10%,55%)] uppercase tracking-wider whitespace-nowrap">{c.label}</th>
-              ))}
-              <th className="px-3 py-2.5 text-center font-semibold text-[hsl(260,10%,55%)] uppercase tracking-wider">Count</th>
-            </tr>
-          </thead>
-          <tbody>
-            {correlations.map((row, i) => (
-              <tr key={row.variable} className={`border-b border-[hsl(260,20%,14%)] ${i % 2 === 0 ? "bg-[hsl(260,15%,7%)]" : "bg-[hsl(260,15%,9%)]"}`}>
-                <td className="px-3 py-2 text-[hsl(0,0%,88%)] font-medium whitespace-nowrap">{row.variable}</td>
-                 {cols.map((c) => (
-                   <CorrCell key={c.key} value={(row as any)[c.key] as number ?? 0} />
-                 ))}
-                <td className="px-3 py-2 font-mono text-center text-[hsl(260,10%,55%)]">{row.count}</td>
-              </tr>
+      {/* AI-Powered Insights */}
+      {insights && insights.length > 0 ? (
+        <>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">AI-Powered Regression Insights</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Deep analysis of what drives your content performance, powered by Claude.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {insights.map((insight, i) => (
+              <InsightCard key={i} insight={insight} />
             ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-lg border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
-          <h4 className="text-sm font-bold text-emerald-400 mb-3">✅ Strongest Positive Drivers</h4>
-          <ul className="space-y-2">
-            {topPositive.map((t, i) => (
-              <li key={i} className="text-sm text-[hsl(0,0%,80%)]">
-                <span className="font-medium text-[hsl(0,0%,92%)]">{t.variable}</span>
-                <span className="text-[hsl(260,10%,50%)]"> → </span>
-                <span className="font-mono text-emerald-400">r={t.value > 0 ? "+" : ""}{t.value.toFixed(2)}</span>
-                <span className="text-[hsl(260,10%,50%)]"> on {t.metric}</span>
-              </li>
-            ))}
-          </ul>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
+          <Sparkles className="h-10 w-10 text-primary" />
+          <p className="text-foreground font-medium">No regression insights yet</p>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Click "🧠 Run Full Analysis" on the Dashboard to get AI-powered regression insights that go beyond simple correlations.
+          </p>
         </div>
+      )}
 
-        <div className="rounded-lg border-2 border-red-500/40 bg-red-500/5 p-5">
-          <h4 className="text-sm font-bold text-red-400 mb-3">⚠️ Surprising Non-Factors & Negatives</h4>
-          <ul className="space-y-2">
-            {negatives.map((t, i) => (
-              <li key={i} className="text-sm text-[hsl(0,0%,80%)]">
-                <span className="font-medium text-[hsl(0,0%,92%)]">{t.variable}</span>
-                <span className="text-[hsl(260,10%,50%)]"> → </span>
-                <span className={`font-mono ${t.value < -0.1 ? "text-red-400" : "text-[hsl(260,10%,45%)]"}`}>
-                  r={t.value > 0 ? "+" : ""}{t.value.toFixed(2)}
-                </span>
-                <span className="text-[hsl(260,10%,50%)]"> on {t.metric}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+      {/* Raw Correlations (always available as collapsible) */}
+      <RawCorrelationsTable />
     </div>
   );
 }
