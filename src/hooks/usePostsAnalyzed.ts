@@ -51,7 +51,6 @@ export function usePostsAnalyzed() {
         .from("posts_analyzed")
         .select("*")
         .eq("user_id", userId)
-        .eq("source", "own")
         .not("text_content", "is", null)
         .order("views", { ascending: false });
       if (error) throw error;

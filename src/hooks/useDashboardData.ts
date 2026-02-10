@@ -45,7 +45,6 @@ export function useDashboardData(filters: DashboardFilters) {
         .from("posts_analyzed")
         .select("*")
         .eq("user_id", userId)
-        .eq("source", "own")
         .gte("posted_at", rangeStart.toISOString())
         .lte("posted_at", rangeEnd.toISOString())
         .order("posted_at", { ascending: true });
@@ -63,7 +62,6 @@ export function useDashboardData(filters: DashboardFilters) {
         .from("posts_analyzed")
         .select("*")
         .eq("user_id", userId)
-        .eq("source", "own")
         .gte("posted_at", prevRangeStart.toISOString())
         .lt("posted_at", rangeStart.toISOString())
         .order("posted_at", { ascending: true });
@@ -127,8 +125,7 @@ export function useDashboardData(filters: DashboardFilters) {
       const { count, error } = await supabase
         .from("posts_analyzed")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("source", "own");
+        .eq("user_id", userId);
       if (error) throw error;
       return count ?? 0;
     },

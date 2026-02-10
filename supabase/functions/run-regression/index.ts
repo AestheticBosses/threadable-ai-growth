@@ -73,8 +73,7 @@ Deno.serve(async (req) => {
     const { data: posts, error: postsErr } = await adminClient
       .from("posts_analyzed")
       .select("*")
-      .eq("user_id", userId)
-      .eq("source", "own");
+      .eq("user_id", userId);
 
     if (postsErr) throw postsErr;
     if (!posts || posts.length < 5) {

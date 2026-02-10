@@ -220,7 +220,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     .from("posts_analyzed")
     .select("*")
     .eq("user_id", userId)
-    .eq("source", "own")
     .gte("posted_at", thisWeekStart.toISOString())
     .lte("posted_at", now.toISOString())
     .order("posted_at", { ascending: true });
@@ -229,7 +228,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     .from("posts_analyzed")
     .select("*")
     .eq("user_id", userId)
-    .eq("source", "own")
     .gte("posted_at", prevWeekStart.toISOString())
     .lt("posted_at", thisWeekStart.toISOString())
     .order("posted_at", { ascending: true });
@@ -303,8 +301,7 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
   const { data: allPosts } = await adminClient
     .from("posts_analyzed")
     .select("*")
-    .eq("user_id", userId)
-    .eq("source", "own");
+    .eq("user_id", userId);
 
   let regressionInsights: any = null;
   if (allPosts && allPosts.length >= 5) {
