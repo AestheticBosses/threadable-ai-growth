@@ -119,6 +119,22 @@ export function useDashboardData(filters: DashboardFilters) {
     enabled: !!userId,
   });
 
+  // Count all posts (regardless of date filter) to know if user has ANY data
+  const allPostsCountQuery = useQuery({
+    queryKey: ["dashboard-all-posts-count", userId],
+    queryFn: async () => {
+      if (!userId) return 0;
+      const { count, error } = await supabase
+        .from("posts_analyzed")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("source", "own");
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!userId,
+  });
+
   // Compute posting streak from published posts
   const publishedPostsQuery = useQuery({
     queryKey: ["dashboard-streak", userId],
@@ -239,6 +255,7 @@ export function useDashboardData(filters: DashboardFilters) {
     streak,
     periodStats,
     periodChanges,
-    isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading || profileQuery.isLoading,
+    allPostsCount: allPostsCountQuery.data ?? 0,
+    isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading || profileQuery.isLoading || allPostsCountQuery.isLoading,
   };
 }

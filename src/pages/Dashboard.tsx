@@ -3,7 +3,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
-import { StreakBanner } from "@/components/dashboard/StreakBanner";
 import { EmptyState } from "@/components/EmptyState";
 import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
@@ -35,7 +34,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [range, setRange] = useState<DateRange>("30");
+  const [range, setRange] = useState<DateRange>("90");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
@@ -54,6 +53,7 @@ const Dashboard = () => {
     streak,
     periodStats,
     periodChanges,
+    allPostsCount,
     isLoading,
   } = useDashboardData({ range, customFrom, customTo });
 
@@ -74,6 +74,7 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
       queryClient.invalidateQueries({ queryKey: ["posts-analyzed-own"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-all-posts-count"] });
     } catch (err) {
       toast.error("Failed to fetch posts from Threads");
     } finally {
@@ -89,6 +90,9 @@ const Dashboard = () => {
     { label: "Quotes", value: periodStats.quotes, change: periodChanges.quotes, icon: Quote },
     { label: "Posts", value: periodStats.posts, change: periodChanges.posts, icon: FileText },
   ];
+
+  // Has any data at all (regardless of date filter)
+  const hasAnyData = allPostsCount > 0;
 
   return (
     <AppLayout>
@@ -124,11 +128,8 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[1,2].map(i => <Skeleton key={i} className="h-64 rounded-lg" />)}
-            </div>
           </div>
-        ) : posts.length === 0 ? (
+        ) : !hasAnyData ? (
           <EmptyState
             icon={<BarChart3 className="h-7 w-7 text-muted-foreground" />}
             title="No data yet!"
@@ -148,35 +149,37 @@ const Dashboard = () => {
         ) : (
           <>
             {/* Account Overview Bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border border-border bg-card p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 rounded-lg border border-[hsl(0,0%,100%,0.06)] bg-[hsl(0,0%,100%,0.02)] p-4">
               <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12">
+                <Avatar className="h-12 w-12 border border-[hsl(0,0%,100%,0.1)]">
                   <AvatarImage src={(profile as any)?.threads_profile_picture_url ?? undefined} />
-                  <AvatarFallback>
-                    <User className="h-5 w-5" />
+                  <AvatarFallback className="bg-[hsl(0,0%,100%,0.05)]">
+                    <User className="h-5 w-5 text-muted-foreground" />
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-semibold text-foreground text-sm">
-                    {profile?.full_name ?? "Your Account"}
+                    {profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
                   </p>
-                  {profile?.threads_username && (
+                  {profile?.threads_username ? (
                     <p className="text-xs text-muted-foreground">@{profile.threads_username}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">{user?.email ?? "Connect Threads to see profile data"}</p>
                   )}
                 </div>
               </div>
               <div className="flex items-center gap-6 ml-0 sm:ml-auto">
-                {latestFollowers !== null && (
-                  <div className="text-sm">
-                    <span className="text-muted-foreground">Followers: </span>
-                    <span className="font-bold text-foreground">{latestFollowers.toLocaleString()}</span>
-                    {followerChange !== null && followerChange !== 0 && (
-                      <span className={`ml-1.5 text-xs font-medium ${followerChange > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {followerChange > 0 ? "+" : ""}{followerChange}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Followers: </span>
+                  <span className="font-bold text-foreground">
+                    {latestFollowers !== null ? latestFollowers.toLocaleString() : "—"}
+                  </span>
+                  {followerChange !== null && followerChange !== 0 && (
+                    <span className={`ml-1.5 text-xs font-medium ${followerChange > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {followerChange > 0 ? "+" : ""}{followerChange}
+                    </span>
+                  )}
+                </div>
                 {streak >= 2 && (
                   <div className="flex items-center gap-1 text-sm">
                     <Flame className="h-4 w-4 text-primary" />
@@ -189,7 +192,7 @@ const Dashboard = () => {
             {/* Period Stats — 6 Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {statCards.map((s) => (
-                <div key={s.label} className="rounded-lg border border-border bg-card p-4">
+                <div key={s.label} className="rounded-lg border border-[hsl(0,0%,100%,0.06)] bg-[hsl(0,0%,100%,0.02)] p-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{s.label}</span>
                     <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -201,17 +204,21 @@ const Dashboard = () => {
             </div>
 
             {/* Charts */}
-            <DashboardCharts posts={posts} followerSnapshots={followerSnapshots} />
+            {posts.length > 0 && (
+              <DashboardCharts posts={posts} followerSnapshots={followerSnapshots} />
+            )}
 
             {/* Weekly Report */}
             <WeeklyReportCard latest={latestReport} previous={previousReport} />
           </>
         )}
 
-        {/* Analysis Overview — archetype cards + posts table */}
-        <div className="pt-4">
-          <AnalysisOverview />
-        </div>
+        {/* Analysis Overview — archetype cards + posts table (always shown if data exists) */}
+        {hasAnyData && (
+          <div className="pt-4">
+            <AnalysisOverview />
+          </div>
+        )}
       </div>
     </AppLayout>
   );
