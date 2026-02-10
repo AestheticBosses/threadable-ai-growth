@@ -14,6 +14,11 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
+import { RegressionAnalysis } from "@/components/strategy/RegressionAnalysis";
+import { GrowthSignals } from "@/components/strategy/GrowthSignals";
+import { FrameworkTab } from "@/components/strategy/FrameworkTab";
+import { PlaybookTab } from "@/components/strategy/PlaybookTab";
 import { ContentArchetypes } from "@/components/strategy/ContentArchetypes";
 import { ScoringChecklist } from "@/components/strategy/ScoringChecklist";
 import { WeeklyScheduleSection } from "@/components/strategy/WeeklyScheduleSection";
@@ -30,6 +35,17 @@ type StrategyJson = {
   avoid?: string[];
 };
 
+const TABS = [
+  { id: "overview", label: "Overview" },
+  { id: "regression", label: "Regression" },
+  { id: "growth", label: "Growth Signals" },
+  { id: "framework", label: "Framework" },
+  { id: "playbook", label: "Playbook" },
+  { id: "strategy", label: "Strategy" },
+] as const;
+
+type TabId = typeof TABS[number]["id"];
+
 const Strategy = () => {
   usePageTitle("Content Strategy", "Your data-driven weekly content plan");
   const navigate = useNavigate();
@@ -38,6 +54,7 @@ const Strategy = () => {
   const [generating, setGenerating] = useState(false);
   const [hasInsights, setHasInsights] = useState(false);
   const [strategy, setStrategy] = useState<StrategyJson | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
 
   const loadStrategy = useCallback(async () => {
     if (!user) return;
@@ -161,45 +178,71 @@ const Strategy = () => {
     );
   }
 
+  const isDarkTab = activeTab !== "strategy";
+
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-10">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Content Strategy</h1>
-            <p className="mt-1 text-muted-foreground">Your archetype-driven weekly content plan.</p>
+      <div className={`min-h-screen ${isDarkTab ? "bg-[hsl(240,20%,4%)]" : ""}`}>
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className={`text-2xl font-bold tracking-tight ${isDarkTab ? "text-[hsl(0,0%,95%)]" : "text-foreground"}`}>
+                Content Strategy
+              </h1>
+              <p className={`mt-1 ${isDarkTab ? "text-[hsl(260,10%,50%)]" : "text-muted-foreground"}`}>
+                Your archetype-driven weekly content plan.
+              </p>
+            </div>
+            <Button variant="outline" onClick={generateStrategy} disabled={generating} className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              Regenerate
+            </Button>
           </div>
-          <Button variant="outline" onClick={generateStrategy} disabled={generating} className="gap-2">
-            <Sparkles className="h-4 w-4" />
-            Regenerate
-          </Button>
-        </div>
 
-        {/* Section 1: Content Archetypes */}
-        <ContentArchetypes />
+          {/* Tab Navigation */}
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
+                  activeTab === tab.id
+                    ? isDarkTab || tab.id !== "strategy"
+                      ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                      : "bg-primary/10 text-primary border border-primary/30"
+                    : isDarkTab
+                      ? "text-[hsl(260,10%,45%)] hover:text-[hsl(260,10%,65%)] hover:bg-[hsl(260,15%,10%)]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Section 2: Scoring Checklist */}
-        <ScoringChecklist />
-
-        {/* Section 3: Weekly Schedule */}
-        <WeeklyScheduleSection schedule={strategy.weekly_schedule} />
-
-        {/* Section 4: Hook Formulas */}
-        <HookFormulas hooks={strategy.hooks_to_use} />
-
-        {/* Section 5: Topics */}
-        <TopicsSection topics={strategy.topics_for_this_week} />
-
-        {/* Section 6: Avoid */}
-        <AvoidSection items={strategy.avoid ?? []} />
-
-        {/* Section 7: CTA */}
-        <div className="pt-4">
-          <Button size="lg" onClick={() => navigate("/queue")} className="gap-2">
-            Generate This Week's Content
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+          {/* Tab Content */}
+          {activeTab === "overview" && <AnalysisOverview />}
+          {activeTab === "regression" && <RegressionAnalysis />}
+          {activeTab === "growth" && <GrowthSignals />}
+          {activeTab === "framework" && <FrameworkTab />}
+          {activeTab === "playbook" && <PlaybookTab />}
+          {activeTab === "strategy" && (
+            <div className="space-y-10">
+              <ContentArchetypes />
+              <ScoringChecklist />
+              <WeeklyScheduleSection schedule={strategy.weekly_schedule} />
+              <HookFormulas hooks={strategy.hooks_to_use} />
+              <TopicsSection topics={strategy.topics_for_this_week} />
+              <AvoidSection items={strategy.avoid ?? []} />
+              <div className="pt-4">
+                <Button size="lg" onClick={() => navigate("/queue")} className="gap-2">
+                  Generate This Week's Content
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </AppLayout>
