@@ -109,7 +109,7 @@ const Onboarding = () => {
 
       if (error) throw error;
       await refreshProfile();
-      navigate("/dashboard", { replace: true });
+      navigate("/analyze", { replace: true });
     } catch (e: any) {
       toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
     } finally {

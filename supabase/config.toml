@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.fetch-user-posts]
 verify_jwt = false
+
+[functions.fetch-competitor-posts]
+verify_jwt = false
