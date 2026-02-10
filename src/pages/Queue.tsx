@@ -29,6 +29,8 @@ import {
   CalendarIcon,
   BarChart3,
   X,
+  AlertTriangle,
+  Target,
 } from "lucide-react";
 
 type Post = {
@@ -40,7 +42,7 @@ type Post = {
   ai_generated: boolean | null;
   user_edited: boolean | null;
   pre_post_score: number | null;
-  score_breakdown: Record<string, boolean> | null;
+  score_breakdown: Record<string, any> | null;
   created_at: string;
 };
 
@@ -73,12 +75,12 @@ function scoreBg(score: number | null): string {
 }
 
 const BREAKDOWN_LABELS: Record<string, string> = {
-  under_500_chars: "Under 500 characters",
-  strong_hook: "Strong opening hook",
-  has_formatting: "Good line break formatting",
-  credibility_marker: "Credibility marker present",
-  optimal_length: "Optimal word count",
-  no_generic_filler: "No generic filler",
+  hook_strength: "Hook Strength",
+  emotional_triggers: "Emotional Triggers",
+  vivid_scene: "Vivid Scene",
+  niche_specificity: "Niche Specificity",
+  voice_match: "Voice Match",
+  data_aligned: "Data-Aligned",
 };
 
 const TABS = ["all", "draft", "approved", "scheduled", "published"] as const;
@@ -95,6 +97,7 @@ const Queue = () => {
   const [editText, setEditText] = useState("");
   const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [scoringId, setScoringId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"date" | "status" | "category">("date");
 
   const loadPosts = useCallback(async () => {
@@ -172,47 +175,85 @@ const Queue = () => {
     setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
 
-  // Save edit
+  // Save edit — re-score via score-post
   const handleSaveEdit = async (id: string) => {
     if (!session?.access_token) return;
-    // Re-score
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-content`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ rescore_text: editText }),
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/score-post`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: editText }),
+        }
+      );
+      let newScore: number | null = null;
+      let newBreakdown: Record<string, any> | null = null;
+      if (res.ok) {
+        const scoreData = await res.json();
+        newScore = scoreData.score;
+        newBreakdown = scoreData.breakdown;
       }
-    );
-    let newScore: number | null = null;
-    let newBreakdown: Record<string, boolean> | null = null;
-    if (res.ok) {
-      const scoreData = await res.json();
-      newScore = scoreData.score;
-      newBreakdown = scoreData.breakdown;
+
+      await supabase
+        .from("scheduled_posts")
+        .update({
+          text_content: editText,
+          user_edited: true,
+          pre_post_score: newScore,
+          score_breakdown: newBreakdown as any,
+        })
+        .eq("id", id);
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? { ...p, text_content: editText, user_edited: true, pre_post_score: newScore, score_breakdown: newBreakdown }
+            : p
+        )
+      );
+      setEditingId(null);
+    } catch (e: any) {
+      toast({ title: "Error scoring", description: e.message, variant: "destructive" });
     }
+  };
 
-    await supabase
-      .from("scheduled_posts")
-      .update({
-        text_content: editText,
-        user_edited: true,
-        pre_post_score: newScore,
-        score_breakdown: newBreakdown as any,
-      })
-      .eq("id", id);
+  // Score a single post
+  const handleScorePost = async (post: Post) => {
+    if (!session?.access_token || !post.text_content) return;
+    setScoringId(post.id);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/score-post`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: post.text_content }),
+        }
+      );
+      if (!res.ok) throw new Error("Scoring failed");
+      const { score, breakdown } = await res.json();
 
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? { ...p, text_content: editText, user_edited: true, pre_post_score: newScore, score_breakdown: newBreakdown }
-          : p
-      )
-    );
-    setEditingId(null);
+      await supabase
+        .from("scheduled_posts")
+        .update({ pre_post_score: score, score_breakdown: breakdown })
+        .eq("id", post.id);
+
+      setPosts((prev) =>
+        prev.map((p) => (p.id === post.id ? { ...p, pre_post_score: score, score_breakdown: breakdown } : p))
+      );
+      toast({ title: `Scored ${score}/6` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setScoringId(null);
+    }
   };
 
   // Regenerate single post
@@ -428,6 +469,12 @@ const Queue = () => {
                         {post.user_edited && (
                           <Badge variant="outline" className="text-xs">Edited</Badge>
                         )}
+                        {post.pre_post_score != null && post.pre_post_score < 4 && (
+                          <Badge variant="secondary" className="text-xs bg-yellow-500/10 text-yellow-600 gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Low score
+                          </Badge>
+                        )}
                         {post.scheduled_for && (
                           <Popover>
                             <PopoverTrigger asChild>
@@ -490,18 +537,30 @@ const Queue = () => {
                       {expandedScoreId === post.id && post.score_breakdown && (
                         <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
                           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Score Breakdown
+                            Score Breakdown ({(post.score_breakdown as any)?.total ?? post.pre_post_score ?? "?"}/6)
                           </p>
-                          {Object.entries(post.score_breakdown).map(([key, passed]) => (
-                            <div key={key} className="flex items-center gap-2 text-sm">
-                              <span className={passed ? "text-emerald-600" : "text-destructive"}>
-                                {passed ? "✓" : "✕"}
-                              </span>
-                              <span className={passed ? "text-foreground" : "text-muted-foreground"}>
-                                {BREAKDOWN_LABELS[key] || key}
-                              </span>
-                            </div>
-                          ))}
+                          {Object.entries(post.score_breakdown)
+                            .filter(([key]) => key !== "total")
+                            .map(([key, val]) => {
+                              const item = val as any;
+                              const passed = typeof item === "object" ? item.score === 1 : !!item;
+                              const reason = typeof item === "object" ? item.reason : "";
+                              return (
+                                <div key={key} className="space-y-0.5">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className={passed ? "text-emerald-600" : "text-destructive"}>
+                                      {passed ? "✓" : "✕"}
+                                    </span>
+                                    <span className={passed ? "text-foreground" : "text-muted-foreground"}>
+                                      {BREAKDOWN_LABELS[key] || key}
+                                    </span>
+                                  </div>
+                                  {reason && (
+                                    <p className="text-xs text-muted-foreground pl-6">{reason}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
                         </div>
                       )}
 
@@ -527,6 +586,20 @@ const Queue = () => {
                               <RefreshCw className="h-3 w-3" />
                             )}
                             Regenerate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleScorePost(post)}
+                            disabled={scoringId === post.id}
+                            className="gap-1 h-7 text-xs"
+                          >
+                            {scoringId === post.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Target className="h-3 w-3" />
+                            )}
+                            Score This Post
                           </Button>
                           <Button
                             size="sm"
