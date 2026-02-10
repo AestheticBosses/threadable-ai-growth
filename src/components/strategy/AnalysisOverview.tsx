@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
 import { usePostsAnalyzed, type AnalyzedPost, type Archetype } from "@/hooks/usePostsAnalyzed";
-import { getMockThreads, getOverviewKPIs, getArchetypeStats, getDistributionInsight } from "@/lib/mockAnalysisData";
 import { ArrowUp, ArrowDown } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import type { DateRange } from "@/hooks/useDashboardData";
 
 const ARCHETYPE_DB_TO_DISPLAY: Record<string, Archetype> = {
   vault_drop: "Vault Drop",
@@ -36,6 +35,13 @@ interface EnrichedPost {
   reposts: number;
   engRate: number;
   archetype: Archetype;
+  postedAt: string | null;
+}
+
+interface AnalysisOverviewProps {
+  range?: DateRange;
+  customFrom?: Date;
+  customTo?: Date;
 }
 
 function enrichPosts(posts: AnalyzedPost[]): EnrichedPost[] {
@@ -48,35 +54,29 @@ function enrichPosts(posts: AnalyzedPost[]): EnrichedPost[] {
     reposts: p.reposts ?? 0,
     engRate: p.engagement_rate ?? 0,
     archetype: ARCHETYPE_DB_TO_DISPLAY[(p as any).archetype ?? "truth"] ?? "Truth Bomb",
+    postedAt: p.posted_at,
   }));
 }
 
-function computeKPIs(posts: EnrichedPost[]) {
-  const n = posts.length;
-  if (n === 0) return null;
-  const totalViews = posts.reduce((s, p) => s + p.views, 0);
-  const totalLikes = posts.reduce((s, p) => s + p.likes, 0);
-  const totalReposts = posts.reduce((s, p) => s + p.reposts, 0);
-  const sortedViews = [...posts].sort((a, b) => a.views - b.views);
-  const medianViews = n % 2 === 0
-    ? Math.round((sortedViews[n / 2 - 1].views + sortedViews[n / 2].views) / 2)
-    : sortedViews[Math.floor(n / 2)].views;
-  // Filter out posts with < 50 views for top eng rate
-  const qualifiedPosts = posts.filter((p) => p.views >= 50);
-  const topPost = qualifiedPosts.length > 0
-    ? [...qualifiedPosts].sort((a, b) => b.engRate - a.engRate)[0]
-    : [...posts].sort((a, b) => b.engRate - a.engRate)[0];
-
-  return {
-    totalPosts: n,
-    avgViews: Math.round(totalViews / n),
-    medianViews,
-    totalLikes,
-    totalReposts,
-    repostRate: totalViews > 0 ? parseFloat(((totalReposts / totalViews) * 100).toFixed(2)) : 0,
-    topEngRate: topPost.engRate,
-    topEngPost: topPost.title.slice(0, 40) + "...",
-  };
+function filterByRange(posts: EnrichedPost[], range?: DateRange, customFrom?: Date, customTo?: Date): EnrichedPost[] {
+  if (!range || range === "all") return posts;
+  const now = new Date();
+  let start: Date;
+  if (range === "custom" && customFrom) {
+    start = customFrom;
+    const end = customTo ?? now;
+    return posts.filter((p) => {
+      if (!p.postedAt) return false;
+      const d = new Date(p.postedAt);
+      return d >= start && d <= end;
+    });
+  }
+  const days = parseInt(range, 10);
+  start = new Date(now.getTime() - days * 86400000);
+  return posts.filter((p) => {
+    if (!p.postedAt) return false;
+    return new Date(p.postedAt) >= start;
+  });
 }
 
 function computeArchetypeStats(posts: EnrichedPost[]) {
@@ -99,54 +99,24 @@ function computeArchetypeStats(posts: EnrichedPost[]) {
   });
 }
 
-export function AnalysisOverview() {
+export function AnalysisOverview({ range, customFrom, customTo }: AnalysisOverviewProps) {
   const { data: rawPosts, isLoading } = usePostsAnalyzed();
-  const useReal = (rawPosts?.length ?? 0) > 0;
 
-  const enriched = useMemo(() => useReal ? enrichPosts(rawPosts!) : null, [rawPosts, useReal]);
-  const kpis = useMemo(() => useReal && enriched ? computeKPIs(enriched) : null, [enriched, useReal]);
-  const archetypeStats = useMemo(() => useReal && enriched ? computeArchetypeStats(enriched) : null, [enriched, useReal]);
-
-  // Mock fallbacks
-  const mockKpis = useMemo(() => useReal ? null : getOverviewKPIs(), [useReal]);
-  const mockArchetypeStats = useMemo(() => useReal ? null : getArchetypeStats(), [useReal]);
-  const mockDist = useMemo(() => useReal ? null : getDistributionInsight(), [useReal]);
-  const mockThreads = useMemo(() => useReal ? null : getMockThreads(), [useReal]);
+  const enriched = useMemo(() => rawPosts && rawPosts.length > 0 ? enrichPosts(rawPosts) : [], [rawPosts]);
+  const filtered = useMemo(() => filterByRange(enriched, range, customFrom, customTo), [enriched, range, customFrom, customTo]);
+  const archetypeStats = useMemo(() => computeArchetypeStats(filtered), [filtered]);
 
   const [sortKey, setSortKey] = useState<SortKey>("views");
   const [sortAsc, setSortAsc] = useState(false);
 
   const sorted = useMemo(() => {
-    const items = useReal ? enriched! : (mockThreads ?? []).map((t, i) => ({
-      index: t.id,
-      title: t.title,
-      views: t.views,
-      likes: t.likes,
-      replies: t.comments,
-      reposts: t.reposts,
-      engRate: t.engRate,
-      archetype: t.archetype as Archetype,
-    }));
-    return [...items].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
-      if (typeof av === "string") return sortAsc ? (av as string).localeCompare(bv as unknown as string) : (bv as unknown as string).localeCompare(av);
+      if (typeof av === "string") return sortAsc ? (av as string).localeCompare(bv as string) : (bv as string).localeCompare(av as string);
       return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
-  }, [enriched, mockThreads, sortKey, sortAsc, useReal]);
-
-  // Compute distribution insight from real data
-  const distInsight = useMemo(() => {
-    if (!useReal || !enriched || enriched.length < 3) return mockDist;
-    const sortedByViews = [...enriched].sort((a, b) => b.views - a.views);
-    const totalViews = enriched.reduce((s, p) => s + p.views, 0);
-    const top3Views = sortedByViews.slice(0, 3).reduce((s, p) => s + p.views, 0);
-    const top3Pct = totalViews > 0 ? Math.round((top3Views / totalViews) * 100) : 0;
-    const sortedAsc = [...enriched].sort((a, b) => a.views - b.views);
-    const n = sortedAsc.length;
-    const median = n % 2 === 0 ? Math.round((sortedAsc[n / 2 - 1].views + sortedAsc[n / 2].views) / 2) : sortedAsc[Math.floor(n / 2)].views;
-    return { top3Pct, median };
-  }, [useReal, enriched, mockDist]);
+  }, [filtered, sortKey, sortAsc]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) setSortAsc(!sortAsc);
@@ -159,20 +129,16 @@ export function AnalysisOverview() {
   };
 
   if (isLoading) {
-    return <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}</div>;
+    return (
+      <div className="space-y-4">
+        {[1, 2].map((i) => (
+          <div key={i} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', height: '80px' }} />
+        ))}
+      </div>
+    );
   }
 
-  const displayKpis = useReal ? kpis! : mockKpis!;
-  const displayArchetypes = useReal ? archetypeStats! : mockArchetypeStats!;
-
-  const kpiCards = [
-    { label: "Total Posts", value: displayKpis.totalPosts, sub: "Analyzed" },
-    { label: "Avg Views", value: (displayKpis as any).avgViews?.toLocaleString(), sub: "per post" },
-    { label: "Median Views", value: (displayKpis as any).medianViews?.toLocaleString(), sub: "center value" },
-    { label: "Total Likes", value: ((displayKpis as any).totalLikes ?? 0).toLocaleString(), sub: "all posts" },
-    { label: "Total Reposts", value: ((displayKpis as any).totalReposts ?? 0).toLocaleString(), sub: `${(displayKpis as any).repostRate ?? 0}% rate` },
-    { label: "Top Eng Rate", value: `${(displayKpis as any).topEngRate}%`, sub: (displayKpis as any).topEngPost },
-  ];
+  if (enriched.length === 0) return null;
 
   const columns: { key: SortKey; label: string }[] = [
     { key: "index", label: "#" },
@@ -185,40 +151,29 @@ export function AnalysisOverview() {
   ];
 
   return (
-    <div className="space-y-8">
-      {useReal && (
-        <p className="text-xs text-emerald-400 font-medium">✅ Showing real data from your Threads account</p>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {kpiCards.map((k) => (
-          <div key={k.label} className="rounded-lg border border-[hsl(260,20%,20%)] bg-[hsl(260,15%,10%)] p-4">
-            <p className="text-xs text-[hsl(260,10%,55%)] font-medium uppercase tracking-wider">{k.label}</p>
-            <p className="text-2xl font-bold font-mono text-[hsl(0,0%,95%)] mt-1">{k.value}</p>
-            <p className="text-xs text-[hsl(260,10%,45%)] mt-0.5">{k.sub}</p>
-          </div>
-        ))}
-      </div>
-
+    <div className="space-y-6">
       {/* Archetype Performance */}
       <div>
-        <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)] mb-4">Archetype Performance Comparison</h3>
+        <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>Archetype Performance</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {displayArchetypes.map((a: any) => (
-            <div key={a.archetype} className={`rounded-lg border-2 ${ARCHETYPE_COLORS[a.archetype]} bg-[hsl(260,15%,8%)] p-4`}>
+          {archetypeStats.map((a) => (
+            <div
+              key={a.archetype}
+              className={`border-2 ${ARCHETYPE_COLORS[a.archetype]}`}
+              style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', padding: '14px' }}
+            >
               <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[a.archetype]} mb-3`}>{a.archetype}</h4>
               <div className="space-y-1.5 text-xs">
                 {[
                   ["Posts", a.count],
                   ["Avg Views", (a.avgViews ?? 0).toLocaleString()],
                   ["Avg Likes", (a.avgLikes ?? 0).toLocaleString()],
-                  ["Avg Reposts", (a.avgReposts ?? 0)],
+                  ["Avg Reposts", a.avgReposts ?? 0],
                   ["Median Views", (a.medianViews ?? 0).toLocaleString()],
                 ].map(([label, val]) => (
                   <div key={label as string} className="flex justify-between">
-                    <span className="text-[hsl(260,10%,50%)]">{label}</span>
-                    <span className="font-mono font-bold text-[hsl(0,0%,90%)]">{val}</span>
+                    <span style={{ color: '#8a8680' }}>{label}</span>
+                    <span style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace", fontWeight: 700 }}>{val}</span>
                   </div>
                 ))}
               </div>
@@ -227,18 +182,24 @@ export function AnalysisOverview() {
         </div>
       </div>
 
-      {/* Sortable Table */}
+      {/* All Analyzed Posts Table */}
       <div>
-        <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)] mb-4">All Analyzed Posts</h3>
-        <div className="overflow-x-auto rounded-lg border border-[hsl(260,20%,18%)]">
+        <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600, marginBottom: '12px' }}>
+          All Analyzed Posts
+          <span style={{ color: '#8a8680', fontSize: '12px', fontWeight: 400, marginLeft: '8px' }}>
+            {filtered.length} post{filtered.length !== 1 ? "s" : ""}
+          </span>
+        </h3>
+        <div className="overflow-x-auto" style={{ borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
           <table className="w-full text-xs">
             <thead>
-              <tr className="bg-[hsl(260,15%,12%)] border-b border-[hsl(260,20%,18%)]">
+              <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                 {columns.map((c) => (
                   <th
                     key={c.key}
                     onClick={() => handleSort(c.key)}
-                    className="px-3 py-2.5 text-left font-semibold text-[hsl(260,10%,55%)] uppercase tracking-wider cursor-pointer hover:text-[hsl(260,80%,70%)] transition-colors whitespace-nowrap"
+                    className="px-3 py-2.5 text-left cursor-pointer hover:text-purple-400 transition-colors whitespace-nowrap"
+                    style={{ color: '#8a8680', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '10px' }}
                   >
                     {c.label} <SortIcon col={c.key} />
                   </th>
@@ -247,32 +208,55 @@ export function AnalysisOverview() {
             </thead>
             <tbody>
               {sorted.map((t, i) => (
-                <tr key={t.index + "-" + i} className={`border-b border-[hsl(260,20%,14%)] ${i % 2 === 0 ? "bg-[hsl(260,15%,7%)]" : "bg-[hsl(260,15%,9%)]"} hover:bg-[hsl(260,20%,15%)] transition-colors`}>
-                  <td className="px-3 py-2 font-mono text-[hsl(260,10%,45%)]">{t.index}</td>
-                  <td className="px-3 py-2 text-[hsl(0,0%,88%)] max-w-[300px] truncate">{t.title}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.views.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.likes.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.replies}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.reposts}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(142,71%,60%)]">{t.engRate}%</td>
+                <tr
+                  key={t.index + "-" + i}
+                  style={{
+                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent',
+                  }}
+                  className="hover:bg-[rgba(255,255,255,0.04)] transition-colors"
+                >
+                  <td className="px-3 py-2" style={{ color: '#8a8680', fontFamily: "'Space Mono', monospace" }}>{t.index}</td>
+                  <td className="px-3 py-2 max-w-[300px] truncate" style={{ color: '#e8e4de' }}>{t.title}</td>
+                  <td className="px-3 py-2" style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace" }}>{t.views.toLocaleString()}</td>
+                  <td className="px-3 py-2" style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace" }}>{t.likes.toLocaleString()}</td>
+                  <td className="px-3 py-2" style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace" }}>{t.replies}</td>
+                  <td className="px-3 py-2" style={{ color: '#e8e4de', fontFamily: "'Space Mono', monospace" }}>{t.reposts}</td>
+                  <td className="px-3 py-2" style={{ color: '#34d399', fontFamily: "'Space Mono', monospace" }}>{t.engRate}%</td>
                 </tr>
               ))}
+              {sorted.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center" style={{ color: '#8a8680' }}>
+                    No posts in this date range
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
       {/* Distribution Insight */}
-      {distInsight && (
-        <div className="rounded-lg border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
-          <h4 className="text-sm font-bold text-emerald-400 mb-2">📊 Distribution Insight — Power Law</h4>
-          <p className="text-sm text-[hsl(0,0%,80%)] leading-relaxed">
-            Your top 3 posts account for <span className="font-bold font-mono text-emerald-400">{distInsight.top3Pct}%</span> of all views.
-            Your median is <span className="font-bold font-mono text-emerald-400">{distInsight.median.toLocaleString()}</span> views.
-            This is <strong>NORMAL</strong>. The strategy is to post enough that your breakout posts carry the weight.
-          </p>
-        </div>
-      )}
+      {filtered.length >= 3 && (() => {
+        const sortedByViews = [...filtered].sort((a, b) => b.views - a.views);
+        const totalViews = filtered.reduce((s, p) => s + p.views, 0);
+        const top3Views = sortedByViews.slice(0, 3).reduce((s, p) => s + p.views, 0);
+        const top3Pct = totalViews > 0 ? Math.round((top3Views / totalViews) * 100) : 0;
+        const sortedAsc = [...filtered].sort((a, b) => a.views - b.views);
+        const n = sortedAsc.length;
+        const median = n % 2 === 0 ? Math.round((sortedAsc[n / 2 - 1].views + sortedAsc[n / 2].views) / 2) : sortedAsc[Math.floor(n / 2)].views;
+        return (
+          <div style={{ border: '2px solid rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.05)', borderRadius: '10px', padding: '16px' }}>
+            <h4 style={{ fontSize: '13px', fontWeight: 700, color: '#34d399', marginBottom: '6px' }}>📊 Distribution Insight — Power Law</h4>
+            <p style={{ fontSize: '13px', color: '#c4c0ba', lineHeight: 1.6 }}>
+              Your top 3 posts account for <span style={{ fontWeight: 700, fontFamily: "'Space Mono', monospace", color: '#34d399' }}>{top3Pct}%</span> of all views.
+              Your median is <span style={{ fontWeight: 700, fontFamily: "'Space Mono', monospace", color: '#34d399' }}>{median.toLocaleString()}</span> views.
+              This is <strong>NORMAL</strong>. The strategy is to post enough that your breakout posts carry the weight.
+            </p>
+          </div>
+        );
+      })()}
     </div>
   );
 }

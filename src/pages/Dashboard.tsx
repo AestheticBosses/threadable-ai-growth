@@ -2,12 +2,11 @@ import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
-import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
 import { EmptyState } from "@/components/EmptyState";
 import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Flame, Eye, Heart, MessageCircle, Repeat2, Quote, FileText } from "lucide-react";
+import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,16 +39,10 @@ const Dashboard = () => {
 
   const {
     posts,
-    totalViews,
-    avgEngagement,
-    postsPublished,
-    latestReport,
-    previousReport,
     followerSnapshots,
     latestFollowers,
     followerChange,
     profile,
-    streak,
     periodStats,
     periodChanges,
     allPostsCount,
@@ -90,15 +83,11 @@ const Dashboard = () => {
     { label: "Posts", value: periodStats.posts, change: periodChanges.posts, icon: FileText },
   ];
 
-  // Has any data at all (regardless of date filter)
   const hasAnyData = allPostsCount > 0;
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-        <div style={{ color: 'red', padding: 20, fontSize: 16, background: 'black', border: '2px solid red', marginBottom: 12 }}>
-          DEBUG: Dashboard rendered. hasAnyData = {String(hasAnyData)}, postsCount = {posts?.length ?? 'null'}, isLoading = {String(isLoading)}, allPostsCount = {String(allPostsCount)}, userId = {String(user?.id ?? 'none')}
-        </div>
+      <div className="p-4 sm:p-6 lg:p-8 space-y-5">
         {/* Header with date selector */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -143,53 +132,48 @@ const Dashboard = () => {
           />
         ) : (
           <>
-            {/* Account Overview Bar */}
-            
+            {/* Section 1: Account Header — compact single row */}
             <div
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}
-              className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '10px 16px' }}
+              className="flex items-center gap-3"
             >
-              <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12 border border-[hsl(0,0%,100%,0.1)]">
-                  <AvatarImage src={(profile as any)?.threads_profile_picture_url ?? undefined} />
-                  <AvatarFallback style={{ background: 'rgba(255,255,255,0.05)' }}>
-                    <User className="h-5 w-5" style={{ color: '#8a8680' }} />
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <p style={{ color: '#e8e4de', fontWeight: 600, fontSize: '14px' }}>
-                    {(profile as any)?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
-                  </p>
-                  {profile?.threads_username ? (
-                    <p style={{ color: '#8a8680', fontSize: '12px' }}>@{profile.threads_username}</p>
-                  ) : (
-                    <p style={{ color: '#8a8680', fontSize: '12px' }}>{user?.email ?? "Connect Threads to see profile data"}</p>
-                  )}
-                </div>
+              <Avatar className="h-9 w-9 border border-[hsl(0,0%,100%,0.1)]">
+                <AvatarImage src={(profile as any)?.threads_profile_picture_url ?? undefined} />
+                <AvatarFallback style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <User className="h-4 w-4" style={{ color: '#8a8680' }} />
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex items-center gap-1.5">
+                <span style={{ color: '#e8e4de', fontWeight: 600, fontSize: '14px' }}>
+                  {(profile as any)?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
+                </span>
+                {profile?.threads_username && (
+                  <span style={{ color: '#8a8680', fontSize: '13px' }}>@{profile.threads_username}</span>
+                )}
               </div>
-              <div className="flex items-center gap-6 ml-0 sm:ml-auto">
-                <div style={{ fontSize: '14px' }}>
-                  <span style={{ color: '#8a8680' }}>Followers: </span>
-                  <span style={{ color: '#e8e4de', fontWeight: 700 }}>
-                    {latestFollowers !== null ? latestFollowers.toLocaleString() : ((profile as any)?.follower_count?.toLocaleString() ?? "—")}
+              <div className="ml-auto flex items-center gap-1.5">
+                <span style={{ color: '#8a8680', fontSize: '13px' }}>Followers</span>
+                <span style={{ color: '#e8e4de', fontWeight: 700, fontSize: '18px', fontFamily: "'Space Mono', monospace" }}>
+                  {latestFollowers !== null ? latestFollowers.toLocaleString() : ((profile as any)?.follower_count?.toLocaleString() ?? "—")}
+                </span>
+                {followerChange !== null && followerChange !== 0 && (
+                  <span
+                    style={{
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: followerChange > 0 ? '#34d399' : '#f87171',
+                      background: followerChange > 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    {followerChange > 0 ? "+" : ""}{followerChange}
                   </span>
-                  {followerChange !== null && followerChange !== 0 && (
-                    <span style={{ marginLeft: '6px', fontSize: '12px', fontWeight: 500, color: followerChange > 0 ? '#34d399' : '#f87171' }}>
-                      {followerChange > 0 ? "+" : ""}{followerChange}
-                    </span>
-                  )}
-                </div>
-                {streak >= 2 && (
-                  <div className="flex items-center gap-1" style={{ fontSize: '14px' }}>
-                    <Flame className="h-4 w-4 text-primary" />
-                    <span className="font-semibold text-primary">{streak} day streak</span>
-                  </div>
                 )}
               </div>
             </div>
 
-            {/* Period Stats — 6 Cards */}
-            
+            {/* Section 2: Period Stats — 6 Cards */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {statCards.map((s) => (
                 <div
@@ -210,17 +194,12 @@ const Dashboard = () => {
             {posts.length > 0 && (
               <DashboardCharts posts={posts} followerSnapshots={followerSnapshots} />
             )}
-
-            {/* Weekly Report */}
-            <WeeklyReportCard latest={latestReport} previous={previousReport} />
           </>
         )}
 
-        {/* Analysis Overview — archetype cards + posts table (always shown if data exists) */}
+        {/* Section 3 & 4: Archetype Performance + All Analyzed Posts (filtered by date range) */}
         {hasAnyData && (
-          <div className="pt-4">
-            <AnalysisOverview />
-          </div>
+          <AnalysisOverview range={range} customFrom={customFrom} customTo={customTo} />
         )}
       </div>
     </AppLayout>
