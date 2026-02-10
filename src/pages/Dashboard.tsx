@@ -7,6 +7,7 @@ import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { useArchetypeDiscovery } from "@/hooks/useStrategyData";
 import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -17,25 +18,6 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { subDays, startOfDay } from "date-fns";
-
-interface DiscoveredArchetype {
-  name: string;
-  emoji: string;
-  description: string;
-  drives: string;
-  avg_views: number;
-  avg_engagement: number;
-  key_ingredients: string[];
-  template: string;
-  recommended_percentage: number;
-  example_posts: string[];
-}
-
-interface ArchetypeDiscovery {
-  archetypes: DiscoveredArchetype[];
-  weekly_schedule: { day: string; archetype: string; notes: string }[];
-  rules: string[];
-}
 
 function PctChange({ value }: { value: number }) {
   if (value === 0) return <span className="text-xs text-muted-foreground">—</span>;
@@ -59,7 +41,7 @@ function getRangeDates(range: DateRange, customFrom?: Date, customTo?: Date) {
 
 function filterPostsByRange<T extends { posted_at: string | null }>(posts: T[], range: DateRange, customFrom?: Date, customTo?: Date): T[] {
   const { start, end } = getRangeDates(range, customFrom, customTo);
-  if (!start) return posts; // "all" — no filter
+  if (!start) return posts;
   return posts.filter((p) => {
     if (!p.posted_at) return false;
     const d = new Date(p.posted_at);
@@ -70,6 +52,15 @@ function filterPostsByRange<T extends { posted_at: string | null }>(posts: T[], 
 function sumField<T>(arr: T[], field: keyof T): number {
   return arr.reduce((sum, p) => sum + (Number((p as any)[field]) || 0), 0);
 }
+
+const ARCHETYPE_COLORS = [
+  "border-violet-500/50", "border-emerald-500/50", "border-yellow-500/50",
+  "border-blue-500/50", "border-rose-500/50",
+];
+const ARCHETYPE_LABEL_COLORS = [
+  "text-violet-400", "text-emerald-400", "text-yellow-400",
+  "text-blue-400", "text-rose-400",
+];
 
 const Dashboard = () => {
   usePageTitle("Dashboard", "Your Threads analytics and performance overview");
@@ -82,10 +73,9 @@ const Dashboard = () => {
   const [fetching, setFetching] = useState(false);
   const [discovering, setDiscovering] = useState(false);
 
-  // Single data source — the same query that powers Archetype cards & posts table
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
+  const { data: discoveredArchetypes } = useArchetypeDiscovery();
 
-  // Profile data (independent query)
   const profileQuery = useQuery({
     queryKey: ["dashboard-profile", user?.id],
     queryFn: async () => {
@@ -100,7 +90,6 @@ const Dashboard = () => {
     enabled: !!user?.id,
   });
 
-  // Follower snapshots
   const followerQuery = useQuery({
     queryKey: ["dashboard-follower-snapshots", user?.id],
     queryFn: async () => {
@@ -115,33 +104,14 @@ const Dashboard = () => {
     enabled: !!user?.id,
   });
 
-  // Discovered archetypes query
-  const archetypeQuery = useQuery({
-    queryKey: ["discovered-archetypes", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/content_strategies?user_id=eq.${user.id}&strategy_type=eq.archetype_discovery&select=strategy_data&limit=1`,
-        { headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` } }
-      );
-      const rows = await res.json();
-      return (rows?.[0]?.strategy_data as ArchetypeDiscovery) ?? null;
-    },
-    enabled: !!user?.id,
-  });
-
-  const discoveredArchetypes = archetypeQuery.data;
-
   const profile = profileQuery.data;
   const followerSnapshots = followerQuery.data ?? [];
   const latestFollowers = followerSnapshots.length > 0 ? followerSnapshots[followerSnapshots.length - 1].follower_count : null;
   const earliestFollowers = followerSnapshots.length > 0 ? followerSnapshots[0].follower_count : null;
   const followerChange = latestFollowers !== null && earliestFollowers !== null ? latestFollowers - earliestFollowers : null;
 
-  // Filter posts by date range — single source of truth
   const posts = useMemo(() => allPosts ? filterPostsByRange(allPosts, range, customFrom, customTo) : [], [allPosts, range, customFrom, customTo]);
 
-  // Previous period for % change
   const prevPosts = useMemo(() => {
     if (!allPosts || range === "all") return [];
     const { start, end } = getRangeDates(range, customFrom, customTo);
@@ -242,43 +212,22 @@ const Dashboard = () => {
   const hasAnyData = (allPosts?.length ?? 0) > 0;
   const isLoading = postsLoading && !allPosts;
 
-  const ARCHETYPE_COLORS = [
-    "border-violet-500/50", "border-emerald-500/50", "border-yellow-500/50",
-    "border-blue-500/50", "border-rose-500/50",
-  ];
-  const ARCHETYPE_LABEL_COLORS = [
-    "text-violet-400", "text-emerald-400", "text-yellow-400",
-    "text-blue-400", "text-rose-400",
-  ];
-
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-5">
-        {/* Header with date selector */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your Threads analytics at a glance.</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <Button
-              onClick={handleFetchPosts}
-              disabled={fetching}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground"
-            >
+            <Button onClick={handleFetchPosts} disabled={fetching} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
               {fetching ? "Fetching…" : "Fetch My Posts"}
             </Button>
-            <Button
-              onClick={handleDiscoverArchetypes}
-              disabled={discovering || !hasAnyData}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              {discovering ? (
-                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4 mr-1.5" />
-              )}
+            <Button onClick={handleDiscoverArchetypes} disabled={discovering || !hasAnyData} className="bg-purple-600 hover:bg-purple-700 text-white">
+              {discovering ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
               {discovering ? "Analyzing…" : "✨ Discover Archetypes"}
             </Button>
             <DateRangeSelector
@@ -291,15 +240,11 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Loading overlay for archetype discovery */}
+        {/* Discovery loading */}
         {discovering && (
-          <div style={{ background: 'rgba(147,51,234,0.08)', border: '1px solid rgba(147,51,234,0.3)', borderRadius: '10px', padding: '16px' }}
-            className="flex items-center gap-3"
-          >
+          <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 flex items-center gap-3">
             <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-            <span style={{ color: '#c4b5fd', fontSize: '14px', fontWeight: 500 }}>
-              Claude is analyzing your content patterns…
-            </span>
+            <span className="text-sm font-medium text-purple-300">Claude is analyzing your content patterns…</span>
           </div>
         )}
 
@@ -310,9 +255,7 @@ const Dashboard = () => {
             description="Connect your Threads account and click 'Fetch My Posts' to pull in your real analytics data."
             action={
               <div className="flex gap-3 mt-2">
-                <Button onClick={() => navigate("/onboarding")} variant="outline">
-                  Connect Threads
-                </Button>
+                <Button onClick={() => navigate("/onboarding")} variant="outline">Connect Threads</Button>
                 <Button onClick={handleFetchPosts} disabled={fetching} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                   <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
                   {fetching ? "Fetching…" : "Fetch My Posts"}
@@ -322,59 +265,42 @@ const Dashboard = () => {
           />
         ) : (
           <>
-            {/* Section 1: Account Header */}
-            <div
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '10px 16px' }}
-              className="flex items-center gap-3"
-            >
-              <Avatar className="h-9 w-9 border border-[hsl(0,0%,100%,0.1)]">
+            {/* Account Header */}
+            <div className="rounded-xl border border-border bg-card/50 px-4 py-2.5 flex items-center gap-3">
+              <Avatar className="h-9 w-9 border border-border">
                 <AvatarImage src={profile?.threads_profile_picture_url ?? undefined} />
-                <AvatarFallback style={{ background: 'rgba(255,255,255,0.05)' }}>
-                  <User className="h-4 w-4" style={{ color: '#8a8680' }} />
-                </AvatarFallback>
+                <AvatarFallback className="bg-muted"><User className="h-4 w-4 text-muted-foreground" /></AvatarFallback>
               </Avatar>
               <div className="flex items-center gap-1.5">
-                <span style={{ color: '#e8e4de', fontWeight: 600, fontSize: '14px' }}>
+                <span className="text-sm font-semibold text-foreground">
                   {profile?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Your Account"}
                 </span>
                 {profile?.threads_username && (
-                  <span style={{ color: '#8a8680', fontSize: '13px' }}>@{profile.threads_username}</span>
+                  <span className="text-sm text-muted-foreground">@{profile.threads_username}</span>
                 )}
               </div>
               <div className="ml-auto flex items-center gap-1.5">
-                <span style={{ color: '#8a8680', fontSize: '13px' }}>Followers</span>
-                <span style={{ color: '#e8e4de', fontWeight: 700, fontSize: '18px', fontFamily: "'Space Mono', monospace" }}>
+                <span className="text-xs text-muted-foreground">Followers</span>
+                <span className="text-lg font-bold text-foreground font-mono">
                   {latestFollowers !== null ? latestFollowers.toLocaleString() : (profile?.follower_count?.toLocaleString() ?? "—")}
                 </span>
                 {followerChange !== null && followerChange !== 0 && (
-                  <span
-                    style={{
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      color: followerChange > 0 ? '#34d399' : '#f87171',
-                      background: followerChange > 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
-                      padding: '1px 6px',
-                      borderRadius: '4px',
-                    }}
-                  >
+                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${followerChange > 0 ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"}`}>
                     {followerChange > 0 ? "+" : ""}{followerChange}
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Section 2: Period Stats — 6 Cards */}
+            {/* Period Stats */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {statCards.map((s) => (
-                <div
-                  key={s.label}
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}
-                >
+                <div key={s.label} className="rounded-xl border border-border bg-card/50 p-4">
                   <div className="flex items-center justify-between mb-1">
-                    <span style={{ color: '#8a8680', fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
-                    <s.icon className="h-3.5 w-3.5" style={{ color: '#8a8680' }} />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{s.label}</span>
+                    <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
-                  <p style={{ color: '#e8e4de', fontSize: '24px', fontWeight: 700, fontFamily: "'Space Mono', monospace" }}>{s.value.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-foreground font-mono">{s.value.toLocaleString()}</p>
                   <PctChange value={s.change} />
                 </div>
               ))}
@@ -387,10 +313,10 @@ const Dashboard = () => {
           </>
         )}
 
-        {/* Section 3: Discovered Archetypes */}
+        {/* Discovered Archetypes */}
         {hasAnyData && (
           <div className="space-y-3">
-            <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600 }}>
+            <h3 className="text-base font-semibold text-foreground">
               {discoveredArchetypes ? "Your Content Archetypes" : "Content Archetypes"}
             </h3>
             {discoveredArchetypes?.archetypes ? (
@@ -398,38 +324,24 @@ const Dashboard = () => {
                 {discoveredArchetypes.archetypes.map((a, i) => (
                   <div
                     key={a.name}
-                    className={`border-2 ${ARCHETYPE_COLORS[i % ARCHETYPE_COLORS.length]}`}
-                    style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', padding: '16px' }}
+                    className={`border-2 ${ARCHETYPE_COLORS[i % ARCHETYPE_COLORS.length]} rounded-xl bg-card/50 p-4`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[i % ARCHETYPE_LABEL_COLORS.length]}`}>
                         {a.emoji} {a.name}
                       </h4>
-                      <Badge variant="outline" className="text-xs" style={{ color: '#8a8680', borderColor: 'rgba(255,255,255,0.15)' }}>
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
                         {a.recommended_percentage}%
                       </Badge>
                     </div>
-                    <p style={{ color: '#c4c0ba', fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
-                      {a.description}
-                    </p>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between">
-                        <span style={{ color: '#8a8680' }}>Drives</span>
-                        <span style={{ color: '#e8e4de', fontWeight: 600 }}>{a.drives}</span>
-                      </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed mb-2.5">{a.description}</p>
+                    <div className="flex justify-between text-xs mb-2">
+                      <span className="text-muted-foreground">Drives</span>
+                      <span className="font-semibold text-foreground">{a.drives}</span>
                     </div>
-                    <div className="flex flex-wrap gap-1 mt-3">
+                    <div className="flex flex-wrap gap-1">
                       {a.key_ingredients.map((ing) => (
-                        <span
-                          key={ing}
-                          style={{
-                            fontSize: '10px',
-                            color: '#c4c0ba',
-                            background: 'rgba(255,255,255,0.06)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                          }}
-                        >
+                        <span key={ing} className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
                           {ing}
                         </span>
                       ))}
@@ -438,20 +350,12 @@ const Dashboard = () => {
                 ))}
               </div>
             ) : (
-              <div
-                style={{
-                  background: 'rgba(147,51,234,0.05)',
-                  border: '1px dashed rgba(147,51,234,0.3)',
-                  borderRadius: '10px',
-                  padding: '24px',
-                  textAlign: 'center',
-                }}
-              >
+              <div className="rounded-xl border border-dashed border-purple-500/30 bg-purple-500/5 p-6 text-center">
                 <Sparkles className="h-6 w-6 mx-auto mb-2 text-purple-400" />
-                <p style={{ color: '#c4b5fd', fontSize: '14px', fontWeight: 500 }}>
+                <p className="text-sm font-medium text-purple-300">
                   Click "✨ Discover Archetypes" to let AI analyze your content patterns
                 </p>
-                <p style={{ color: '#8a8680', fontSize: '12px', marginTop: '4px' }}>
+                <p className="text-xs text-muted-foreground mt-1">
                   Claude will analyze your top posts and discover your unique content types
                 </p>
               </div>
@@ -459,7 +363,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Section 4: All Analyzed Posts Table */}
+        {/* Posts Table */}
         {hasAnyData && (
           <AnalysisOverview range={range} customFrom={customFrom} customTo={customTo} />
         )}

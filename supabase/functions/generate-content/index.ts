@@ -89,31 +89,31 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch profile + strategy + top posts
-    const [profileRes, strategyRes, postsRes] = await Promise.all([
+    // Fetch profile + strategy + top posts + playbook
+    const [profileRes, strategyRes, postsRes, playbookRes] = await Promise.all([
       adminClient.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
-      adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).single(),
+      adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       adminClient.from("posts_analyzed").select("text_content, engagement_rate, views").eq("user_id", userId).order("engagement_rate", { ascending: false }).limit(5),
+      adminClient.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").limit(1).maybeSingle(),
     ]);
 
     const profile = profileRes.data;
     const strategy = strategyRes.data;
     const topPosts = postsRes.data || [];
+    const playbookData = (playbookRes.data?.strategy_data as any) || null;
 
     if (!profile) {
       return new Response(JSON.stringify({ error: "Profile not found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!strategy?.strategy_json) {
-      return new Response(JSON.stringify({ error: "No strategy found. Generate a strategy first." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+
+    // Use playbook strategy_id if no weekly strategy exists
+    const strategyId = strategy?.id || null;
 
     const voiceProfile = profile.voice_profile as any;
-    const insights = strategy.regression_insights as any;
-    const strategyJson = strategy.strategy_json as any;
+    const insights = strategy?.regression_insights as any;
+    const strategyJson = strategy?.strategy_json as any;
 
     const insightsBullets = (insights?.human_readable_insights || []).map((i: string) => `• ${i}`).join("\n");
     const topPostsRef = topPosts.map((p: any, i: number) => `${i + 1}. "${(p.text_content || "").slice(0, 300)}"`).join("\n");
@@ -130,6 +130,37 @@ Quirks: ${(voiceProfile.unique_quirks || []).join(", ")}
 Summary: ${voiceProfile.overall_summary || "N/A"}`
       : "No voice profile available — write in a natural, conversational tone.";
 
+    // Build playbook context
+    let playbookContext = "";
+    if (playbookData) {
+      const scheduleText = (playbookData.weekly_schedule || [])
+        .map((s: any) => `${s.day}: ${s.archetype} (${s.notes})`)
+        .join("\n");
+      const templateText = (playbookData.templates || [])
+        .map((t: any) => `${t.archetype}: ${t.template}`)
+        .join("\n\n");
+      const rulesText = (playbookData.rules || [])
+        .map((r: any, i: number) => `${i + 1}. ${r.rule}`)
+        .join("\n");
+      const guidelines = playbookData.generation_guidelines || {};
+
+      playbookContext = `
+PLAYBOOK WEEKLY SCHEDULE:
+${scheduleText}
+
+PLAYBOOK TEMPLATES:
+${templateText}
+
+PLAYBOOK RULES:
+${rulesText}
+
+GENERATION GUIDELINES:
+- Tone: ${guidelines.tone || "N/A"}
+- Avg length: ${guidelines.avg_length || "N/A"}
+- Key vocabulary: ${(guidelines.vocabulary || []).join(", ") || "N/A"}
+- Avoid: ${(guidelines.avoid || []).join(", ") || "N/A"}`;
+    }
+
     const actualCount = regeneratePostId ? 1 : postsCount;
     const categoryHint = regenerateCategory ? `\nContent category MUST be: ${regenerateCategory}` : "";
 
@@ -145,8 +176,9 @@ END GOAL: ${profile.end_goal || "Not specified"}
 WHAT PERFORMS BEST (from data analysis):
 ${insightsBullets || "No data available yet"}
 
-CONTENT STRATEGY FOR THIS WEEK:
-${JSON.stringify(strategyJson, null, 2)}
+CONTENT STRATEGY:
+${strategyJson ? JSON.stringify(strategyJson, null, 2) : "No weekly strategy available."}
+${playbookContext}
 
 STYLE REFERENCE (their actual top posts):
 ${topPostsRef || "No posts available"}
@@ -161,7 +193,9 @@ RULES:
 7. Vary content types — mix authority, storytelling, engagement, and CTAs.
 8. Every 5th post should have a soft CTA.
 9. No generic motivational crap. Be specific and real.
-10. Write like a real person, not a brand.${categoryHint}`;
+10. Write like a real person, not a brand.
+11. Follow the playbook weekly schedule if available — match archetype to day.
+12. Use the playbook templates as structural guides.${categoryHint}`;
 
     const generatePosts = async (count: number): Promise<any[]> => {
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -268,7 +302,7 @@ RULES:
         ai_generated: true,
         pre_post_score: bestResult.score,
         score_breakdown: bestResult.breakdown,
-        strategy_id: strategy.id,
+        strategy_id: strategyId,
       };
 
       if (regeneratePostId) {
