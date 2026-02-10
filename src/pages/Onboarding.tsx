@@ -6,16 +6,15 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ArrowLeft, ArrowRight, AtSign } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, AtSign, Sparkles, TrendingUp } from "lucide-react";
 
 const STEPS = [
   "Connect Threads",
+  "Experience",
   "Your Niche",
   "Dream Client",
   "End Goal",
 ];
-
-
 
 const Onboarding = () => {
   const navigate = useNavigate();
@@ -27,11 +26,11 @@ const Onboarding = () => {
 
   const [threadsConnected, setThreadsConnected] = useState(false);
   const [threadsUsername, setThreadsUsername] = useState("");
+  const [isEstablished, setIsEstablished] = useState<boolean | null>(null);
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
 
-  // On load: check if user already has threads connected
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) return;
@@ -50,13 +49,11 @@ const Onboarding = () => {
     loadProfile();
   }, [user]);
 
-  // Handle OAuth callback params
   useEffect(() => {
     const connected = searchParams.get("threads_connected");
     const error = searchParams.get("threads_error");
 
     if (connected === "true") {
-      // Refetch profile to get the username stored by the callback
       const refetch = async () => {
         if (!user) return;
         const { data } = await supabase
@@ -81,12 +78,14 @@ const Onboarding = () => {
   const isStepValid = () => {
     switch (step) {
       case 0:
-        return true; // connect is optional for now
+        return true;
       case 1:
-        return niche.trim().length > 0;
+        return isEstablished !== null;
       case 2:
-        return dreamClient.trim().length > 0;
+        return niche.trim().length > 0;
       case 3:
+        return dreamClient.trim().length > 0;
+      case 4:
         return endGoal.trim().length > 0;
       default:
         return false;
@@ -103,13 +102,19 @@ const Onboarding = () => {
           niche: niche.trim(),
           dream_client: dreamClient.trim(),
           end_goal: endGoal.trim(),
+          is_established: isEstablished,
           onboarding_complete: true,
         })
         .eq("id", user.id);
 
       if (error) throw error;
       await refreshProfile();
-      navigate("/analyze", { replace: true });
+
+      if (isEstablished) {
+        navigate("/analyze", { replace: true });
+      } else {
+        navigate("/analyze", { replace: true });
+      }
     } catch (e: any) {
       toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
     } finally {
@@ -118,7 +123,7 @@ const Onboarding = () => {
   };
 
   const handleNext = () => {
-    if (step === 3) {
+    if (step === 4) {
       handleComplete();
     } else {
       setStep((s) => s + 1);
@@ -170,7 +175,7 @@ const Onboarding = () => {
                 )}
               </div>
               <span
-                className={`text-xs font-medium transition-colors ${
+                className={`text-xs font-medium transition-colors text-center ${
                   i <= step ? "text-foreground" : "text-muted-foreground"
                 }`}
               >
@@ -203,7 +208,7 @@ const Onboarding = () => {
                 </p>
               </>
             ) : (
-              <div className="flex items-center justify-center gap-2 text-lg font-medium" style={{ color: "hsl(var(--success))" }}>
+              <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
                 <Check className="h-5 w-5" />
                 Connected as @{threadsUsername} ✓
               </div>
@@ -212,6 +217,57 @@ const Onboarding = () => {
         )}
 
         {step === 1 && (
+          <div className="space-y-6 text-center">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              How long have you been posting on Threads?
+            </h1>
+            <p className="text-muted-foreground">
+              This helps us personalize your strategy.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <button
+                onClick={() => setIsEstablished(false)}
+                className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
+                  isEstablished === false
+                    ? "border-primary bg-primary/5 shadow-md"
+                    : "border-border hover:border-primary/40"
+                }`}
+              >
+                <Sparkles className={`h-8 w-8 ${isEstablished === false ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className="text-base font-semibold text-foreground">I'm brand new</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Less than 2 weeks on Threads</p>
+                </div>
+              </button>
+              <button
+                onClick={() => setIsEstablished(true)}
+                className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
+                  isEstablished === true
+                    ? "border-primary bg-primary/5 shadow-md"
+                    : "border-border hover:border-primary/40"
+                }`}
+              >
+                <TrendingUp className={`h-8 w-8 ${isEstablished === true ? "text-primary" : "text-muted-foreground"}`} />
+                <div>
+                  <p className="text-base font-semibold text-foreground">I've been posting for a while</p>
+                  <p className="mt-1 text-sm text-muted-foreground">I have existing posts to analyze</p>
+                </div>
+              </button>
+            </div>
+            {isEstablished === true && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+                Great! Once your Threads account is connected, we'll analyze <strong>YOUR</strong> posts to find what's already working for your audience.
+              </div>
+            )}
+            {isEstablished === false && (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+                No worries! We'll analyze top accounts in your niche to build your starting strategy.
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 2 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               What's Your Niche?
@@ -234,7 +290,7 @@ const Onboarding = () => {
           </div>
         )}
 
-        {step === 2 && (
+        {step === 3 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Who's Your Dream Client?
@@ -258,7 +314,7 @@ const Onboarding = () => {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               What's Your End Goal?
@@ -300,7 +356,7 @@ const Onboarding = () => {
             disabled={!isStepValid() || saving}
             className="gap-2 px-6"
           >
-            {step === 3 ? (
+            {step === 4 ? (
               saving ? "Saving…" : "Launch My Growth Engine →"
             ) : (
               <>
