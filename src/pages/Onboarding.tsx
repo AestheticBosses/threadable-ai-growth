@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -15,16 +15,38 @@ const STEPS = [
   "End Goal",
 ];
 
+
+
 const Onboarding = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshProfile } = useAuth();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const [threadsConnected, setThreadsConnected] = useState(false);
+  const [threadsUsername, setThreadsUsername] = useState("");
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
+
+  // Handle OAuth callback params
+  useEffect(() => {
+    const connected = searchParams.get("threads_connected");
+    const username = searchParams.get("username");
+    const error = searchParams.get("threads_error");
+
+    if (connected === "true" && username) {
+      setThreadsConnected(true);
+      setThreadsUsername(username);
+      toast({ title: "Threads connected!", description: `Connected as @${username}` });
+      // Clean up URL params
+      setSearchParams({}, { replace: true });
+    } else if (error) {
+      toast({ title: "Threads connection failed", description: `Error: ${error}`, variant: "destructive" });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const isStepValid = () => {
     switch (step) {
@@ -73,8 +95,21 @@ const Onboarding = () => {
     }
   };
 
-  const handleConnectThreads = () => {
-    toast({ title: "OAuth coming soon", description: "Threads integration will be wired up next." });
+  const handleConnectThreads = async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/threads-auth-url?user_id=${user.id}`
+      );
+      const json = await res.json();
+      if (json.url) {
+        window.location.href = json.url;
+      } else {
+        throw new Error(json.error || "Failed to get auth URL");
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
   };
 
   return (
@@ -140,7 +175,7 @@ const Onboarding = () => {
             ) : (
               <div className="flex items-center justify-center gap-2 text-lg font-medium" style={{ color: "hsl(var(--success))" }}>
                 <Check className="h-5 w-5" />
-                Connected as @username ✓
+                Connected as @{threadsUsername} ✓
               </div>
             )}
           </div>
