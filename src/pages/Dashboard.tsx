@@ -6,6 +6,7 @@ import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
 import { StreakBanner } from "@/components/dashboard/StreakBanner";
 import { EmptyState } from "@/components/EmptyState";
+import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,7 +44,7 @@ const Dashboard = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your Threads analytics at a glance.</p>
           </div>
           <DateRangeSelector
@@ -92,6 +93,11 @@ const Dashboard = () => {
             <WeeklyReportCard latest={latestReport} previous={previousReport} />
           </>
         )}
+
+        {/* Analysis Overview — mock data section */}
+        <div className="pt-4">
+          <AnalysisOverview />
+        </div>
       </div>
     </AppLayout>
   );

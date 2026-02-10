@@ -5,38 +5,32 @@ import {
   CalendarClock,
   Mic2,
   Settings,
-  Menu,
-  X,
   Zap,
   LogOut,
   MoreHorizontal,
-  BarChart3,
 } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { title: "Strategy", path: "/strategy", icon: Lightbulb },
+  { title: "Insights", path: "/insights", icon: Lightbulb },
   { title: "Content Queue", path: "/queue", icon: CalendarClock },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
-// Bottom tab items for mobile — limited to 4 + "More"
 const mobileTabItems = [
   { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { title: "Queue", path: "/queue", icon: CalendarClock },
-  { title: "Strategy", path: "/strategy", icon: Lightbulb },
+  { title: "Insights", path: "/insights", icon: Lightbulb },
 ];
 
 const moreItems = [
   { title: "Voice", path: "/voice", icon: Mic2 },
-  { title: "Analyze", path: "/analyze", icon: BarChart3 },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
@@ -45,7 +39,6 @@ interface AppSidebarProps {
 }
 
 export function AppLayout({ children }: AppSidebarProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -69,7 +62,7 @@ export function AppLayout({ children }: AppSidebarProps) {
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
           <Zap className="h-4 w-4 text-primary-foreground" />
         </div>
-        <span className="text-sm font-semibold text-sidebar-primary tracking-tight">
+        <span className="text-sm font-semibold text-foreground tracking-tight">
           Threadable.ai
         </span>
       </div>
@@ -80,7 +73,6 @@ export function AppLayout({ children }: AppSidebarProps) {
           <RouterNavLink
             key={item.path}
             to={item.path}
-            onClick={() => setMobileOpen(false)}
             className={cn(
               "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
               isActive(item.path)
@@ -103,7 +95,7 @@ export function AppLayout({ children }: AppSidebarProps) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-primary truncate">
+            <p className="text-sm font-medium text-foreground truncate">
               {userEmail}
             </p>
           </div>
@@ -120,20 +112,20 @@ export function AppLayout({ children }: AppSidebarProps) {
   );
 
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-56 md:flex-col bg-sidebar border-r border-sidebar-border">
         {sidebarContent}
       </aside>
 
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Mobile top header — no hamburger, just logo */}
-        <header className="flex h-14 items-center border-b px-4 md:hidden">
+        {/* Mobile top header */}
+        <header className="flex h-14 items-center border-b border-border px-4 md:hidden">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
               <Zap className="h-3.5 w-3.5 text-primary-foreground" />
             </div>
-            <span className="text-sm font-semibold tracking-tight">Threadable.ai</span>
+            <span className="text-sm font-semibold tracking-tight text-foreground">Threadable.ai</span>
           </div>
         </header>
 
@@ -144,12 +136,11 @@ export function AppLayout({ children }: AppSidebarProps) {
         {/* Mobile Bottom Tab Bar */}
         {isMobile && (
           <>
-            {/* More menu overlay */}
             {moreOpen && (
-              <div className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm" onClick={() => setMoreOpen(false)} />
+              <div className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm" onClick={() => setMoreOpen(false)} />
             )}
             {moreOpen && (
-              <div className="fixed bottom-16 right-2 z-50 rounded-lg border bg-card shadow-lg p-2 space-y-1 min-w-[180px]">
+              <div className="fixed bottom-16 right-2 z-50 rounded-lg border border-border bg-card shadow-lg p-2 space-y-1 min-w-[180px]">
                 {moreItems.map((item) => (
                   <button
                     key={item.path}
@@ -158,7 +149,7 @@ export function AppLayout({ children }: AppSidebarProps) {
                       "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
                       isActive(item.path)
                         ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted"
+                        : "text-foreground hover:bg-accent"
                     )}
                   >
                     <item.icon className="h-4 w-4" />

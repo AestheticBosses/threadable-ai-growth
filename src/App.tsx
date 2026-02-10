@@ -9,7 +9,7 @@ import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import Analyze from "./pages/Analyze";
 import Dashboard from "./pages/Dashboard";
-import Strategy from "./pages/Strategy";
+import Insights from "./pages/Insights";
 import Queue from "./pages/Queue";
 import Voice from "./pages/Voice";
 import SettingsPage from "./pages/SettingsPage";
@@ -30,7 +30,8 @@ const App = () => (
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/analyze" element={<ProtectedRoute><Analyze /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/strategy" element={<ProtectedRoute><Strategy /></ProtectedRoute>} />
+            <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
+            <Route path="/strategy" element={<Navigate to="/dashboard" replace />} />
             <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><Voice /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
