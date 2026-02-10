@@ -65,22 +65,35 @@ Deno.serve(async (req) => {
 
     console.log("Threads user:", profile.threads_user_id)
 
-    const threadsUrl = `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads?fields=id,text,timestamp,media_type&access_token=${profile.threads_access_token}&limit=30`
-    const threadsRes = await fetch(threadsUrl)
-    const threadsJson = await threadsRes.json()
+    // Paginate through ALL posts
+    let allPosts: any[] = []
+    let nextUrl: string | null = `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads?fields=id,text,timestamp,media_type&access_token=${profile.threads_access_token}&limit=100`
 
-    console.log("Threads status:", threadsRes.status)
+    while (nextUrl) {
+      const threadsRes = await fetch(nextUrl)
+      const threadsJson = await threadsRes.json()
 
-    if (threadsJson.error) {
-      console.error("Threads error:", JSON.stringify(threadsJson.error))
-      return new Response(JSON.stringify({ error: threadsJson.error.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      if (threadsJson.error) {
+        console.error("Threads error:", JSON.stringify(threadsJson.error))
+        if (allPosts.length === 0) {
+          return new Response(JSON.stringify({ error: threadsJson.error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+        break
+      }
+
+      if (threadsJson.data) {
+        allPosts = allPosts.concat(threadsJson.data)
+      }
+
+      nextUrl = threadsJson.paging?.next || null
+      console.log("Fetched page, total posts so far:", allPosts.length)
     }
 
-    const posts = threadsJson.data || []
-    console.log("Posts found:", posts.length)
+    const posts = allPosts
+    console.log("Total posts fetched:", posts.length)
 
     // Cleanup: delete mock/placeholder posts for this user
     const { error: cleanupErr } = await adminClient
