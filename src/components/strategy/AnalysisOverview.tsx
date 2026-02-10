@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
+import { usePostsAnalyzed, classifyArchetype, type AnalyzedPost, type Archetype } from "@/hooks/usePostsAnalyzed";
 import { getMockThreads, getOverviewKPIs, getArchetypeStats, getDistributionInsight } from "@/lib/mockAnalysisData";
-import type { MockThread } from "@/lib/mockAnalysisData";
 import { ArrowUp, ArrowDown } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   "Vault Drop": "border-violet-500/50",
@@ -17,24 +18,121 @@ const ARCHETYPE_LABEL_COLORS: Record<string, string> = {
   "Window": "text-blue-400",
 };
 
-type SortKey = keyof MockThread;
+type SortKey = "index" | "title" | "views" | "likes" | "replies" | "reposts" | "engRate";
+
+interface EnrichedPost {
+  index: number;
+  title: string;
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  engRate: number;
+  archetype: Archetype;
+}
+
+function enrichPosts(posts: AnalyzedPost[]): EnrichedPost[] {
+  return posts.map((p, i) => ({
+    index: i + 1,
+    title: (p.text_content ?? "").slice(0, 80) || "(no text)",
+    views: p.views ?? 0,
+    likes: p.likes ?? 0,
+    replies: p.replies ?? 0,
+    reposts: p.reposts ?? 0,
+    engRate: p.engagement_rate ?? 0,
+    archetype: classifyArchetype(p.text_content),
+  }));
+}
+
+function computeKPIs(posts: EnrichedPost[]) {
+  const n = posts.length;
+  if (n === 0) return null;
+  const totalViews = posts.reduce((s, p) => s + p.views, 0);
+  const totalReposts = posts.reduce((s, p) => s + p.reposts, 0);
+  const sortedViews = [...posts].sort((a, b) => a.views - b.views);
+  const medianViews = n % 2 === 0
+    ? Math.round((sortedViews[n / 2 - 1].views + sortedViews[n / 2].views) / 2)
+    : sortedViews[Math.floor(n / 2)].views;
+  const topPost = [...posts].sort((a, b) => b.engRate - a.engRate)[0];
+
+  return {
+    totalPosts: n,
+    avgViews: Math.round(totalViews / n),
+    medianViews,
+    totalReposts,
+    topEngRate: topPost.engRate,
+    topEngPost: topPost.title.slice(0, 40) + "...",
+  };
+}
+
+function computeArchetypeStats(posts: EnrichedPost[]) {
+  const archetypes: Archetype[] = ["Vault Drop", "Truth Bomb", "Hot Take", "Window"];
+  return archetypes.map((archetype) => {
+    const group = posts.filter((p) => p.archetype === archetype);
+    const n = group.length;
+    if (n === 0) return { archetype, count: 0, avgViews: 0, avgLikes: 0, avgReposts: 0, medianViews: 0, avgEngRate: 0 };
+    const sorted = [...group].sort((a, b) => a.views - b.views);
+    const median = n % 2 === 0 ? (sorted[n / 2 - 1].views + sorted[n / 2].views) / 2 : sorted[Math.floor(n / 2)].views;
+    return {
+      archetype,
+      count: n,
+      avgViews: Math.round(group.reduce((s, p) => s + p.views, 0) / n),
+      avgLikes: Math.round(group.reduce((s, p) => s + p.likes, 0) / n),
+      avgReposts: Math.round(group.reduce((s, p) => s + p.reposts, 0) / n),
+      medianViews: Math.round(median),
+      avgEngRate: parseFloat((group.reduce((s, p) => s + p.engRate, 0) / n).toFixed(2)),
+    };
+  });
+}
 
 export function AnalysisOverview() {
-  const kpis = getOverviewKPIs();
-  const archetypeStats = getArchetypeStats();
-  const dist = getDistributionInsight();
-  const threads = getMockThreads();
+  const { data: rawPosts, isLoading } = usePostsAnalyzed();
+  const useReal = (rawPosts?.length ?? 0) > 0;
+
+  const enriched = useMemo(() => useReal ? enrichPosts(rawPosts!) : null, [rawPosts, useReal]);
+  const kpis = useMemo(() => useReal ? computeKPIs(enriched!) : null, [enriched, useReal]);
+  const archetypeStats = useMemo(() => useReal ? computeArchetypeStats(enriched!) : null, [enriched, useReal]);
+
+  // Mock fallbacks
+  const mockKpis = useMemo(() => useReal ? null : getOverviewKPIs(), [useReal]);
+  const mockArchetypeStats = useMemo(() => useReal ? null : getArchetypeStats(), [useReal]);
+  const mockDist = useMemo(() => useReal ? null : getDistributionInsight(), [useReal]);
+  const mockThreads = useMemo(() => useReal ? null : getMockThreads(), [useReal]);
 
   const [sortKey, setSortKey] = useState<SortKey>("views");
   const [sortAsc, setSortAsc] = useState(false);
 
   const sorted = useMemo(() => {
-    return [...threads].sort((a, b) => {
+    const items = useReal ? enriched! : (mockThreads ?? []).map((t, i) => ({
+      index: t.id,
+      title: t.title,
+      views: t.views,
+      likes: t.likes,
+      replies: t.comments,
+      reposts: t.reposts,
+      engRate: t.engRate,
+      archetype: t.archetype as Archetype,
+    }));
+    return [...items].sort((a, b) => {
       const av = a[sortKey] as number;
       const bv = b[sortKey] as number;
-      return sortAsc ? av - bv : bv - av;
+      if (typeof av === "string") return sortAsc ? (av as string).localeCompare(bv as unknown as string) : (bv as unknown as string).localeCompare(av);
+      return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
-  }, [threads, sortKey, sortAsc]);
+  }, [enriched, mockThreads, sortKey, sortAsc, useReal]);
+
+  // Compute distribution insight from real data (must be before early return)
+  const distInsight = useMemo(() => {
+    if (!useReal || !enriched || enriched.length < 3) return mockDist;
+    const sortedByViews = [...enriched].sort((a, b) => b.views - a.views);
+    const totalViews = enriched.reduce((s, p) => s + p.views, 0);
+    const top3Views = sortedByViews.slice(0, 3).reduce((s, p) => s + p.views, 0);
+    const top3Pct = totalViews > 0 ? Math.round((top3Views / totalViews) * 100) : 0;
+    const sortedAsc = [...enriched].sort((a, b) => a.views - b.views);
+    const n = sortedAsc.length;
+    const median = n % 2 === 0 ? Math.round((sortedAsc[n / 2 - 1].views + sortedAsc[n / 2].views) / 2) : sortedAsc[Math.floor(n / 2)].views;
+    return { top3Pct, median };
+  }, [useReal, enriched, mockDist]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) setSortAsc(!sortAsc);
@@ -46,31 +144,48 @@ export function AnalysisOverview() {
     return sortAsc ? <ArrowUp className="inline h-3 w-3" /> : <ArrowDown className="inline h-3 w-3" />;
   };
 
-  const kpiCards = [
-    { label: "Total Posts", value: kpis.totalPosts, sub: "Analyzed" },
-    { label: "Avg Views", value: kpis.avgViews.toLocaleString(), sub: "per thread" },
-    { label: "Median Views", value: kpis.medianViews.toLocaleString(), sub: "more accurate center" },
-    { label: "Total Follows", value: kpis.totalFollows.toLocaleString(), sub: `${kpis.followRate}% rate` },
-    { label: "Total Reposts", value: kpis.totalReposts.toLocaleString(), sub: `${kpis.repostRate}% rate` },
-    { label: "Top Eng Rate", value: `${kpis.topEngRate}%`, sub: kpis.topEngPost },
-  ];
+  if (isLoading) {
+    return <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}</div>;
+  }
+
+  const displayKpis = useReal ? kpis! : mockKpis!;
+  const displayArchetypes = useReal ? archetypeStats! : mockArchetypeStats!;
+
+  const kpiCards = useReal
+    ? [
+        { label: "Total Posts", value: displayKpis.totalPosts, sub: "Analyzed" },
+        { label: "Avg Views", value: displayKpis.avgViews.toLocaleString(), sub: "per post" },
+        { label: "Median Views", value: displayKpis.medianViews.toLocaleString(), sub: "center value" },
+        { label: "Total Reposts", value: displayKpis.totalReposts.toLocaleString(), sub: "shares" },
+        { label: "Top Eng Rate", value: `${displayKpis.topEngRate}%`, sub: displayKpis.topEngPost },
+      ]
+    : [
+        { label: "Total Posts", value: (displayKpis as any).totalPosts, sub: "Analyzed" },
+        { label: "Avg Views", value: (displayKpis as any).avgViews.toLocaleString(), sub: "per thread" },
+        { label: "Median Views", value: (displayKpis as any).medianViews.toLocaleString(), sub: "more accurate center" },
+        { label: "Total Follows", value: (displayKpis as any).totalFollows.toLocaleString(), sub: `${(displayKpis as any).followRate}% rate` },
+        { label: "Total Reposts", value: (displayKpis as any).totalReposts.toLocaleString(), sub: `${(displayKpis as any).repostRate}% rate` },
+        { label: "Top Eng Rate", value: `${(displayKpis as any).topEngRate}%`, sub: (displayKpis as any).topEngPost },
+      ];
 
   const columns: { key: SortKey; label: string }[] = [
-    { key: "id", label: "#" },
-    { key: "title", label: "Thread Title" },
+    { key: "index", label: "#" },
+    { key: "title", label: "Post" },
     { key: "views", label: "Views" },
     { key: "likes", label: "Likes" },
-    { key: "comments", label: "Comments" },
+    { key: "replies", label: "Replies" },
     { key: "reposts", label: "Reposts" },
-    { key: "follows", label: "Follows" },
     { key: "engRate", label: "Eng%" },
-    { key: "followRate", label: "Follow%" },
   ];
 
   return (
     <div className="space-y-8">
+      {useReal && (
+        <p className="text-xs text-emerald-400 font-medium">✅ Showing real data from your Threads account</p>
+      )}
+
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {kpiCards.map((k) => (
           <div key={k.label} className="rounded-lg border border-[hsl(260,20%,20%)] bg-[hsl(260,15%,10%)] p-4">
             <p className="text-xs text-[hsl(260,10%,55%)] font-medium uppercase tracking-wider">{k.label}</p>
@@ -80,22 +195,22 @@ export function AnalysisOverview() {
         ))}
       </div>
 
-      {/* Archetype Performance Comparison */}
+      {/* Archetype Performance */}
       <div>
         <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)] mb-4">Archetype Performance Comparison</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {archetypeStats.map((a) => (
+          {displayArchetypes.map((a: any) => (
             <div key={a.archetype} className={`rounded-lg border-2 ${ARCHETYPE_COLORS[a.archetype]} bg-[hsl(260,15%,8%)] p-4`}>
               <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[a.archetype]} mb-3`}>{a.archetype}</h4>
               <div className="space-y-1.5 text-xs">
                 {[
-                  ["Threads", a.count],
-                  ["Avg Views", a.avgViews.toLocaleString()],
-                  ["Avg Likes", a.avgLikes.toLocaleString()],
-                  ["Avg Follows", a.avgFollows],
-                  ["Avg Reposts", a.avgReposts],
-                  ["Median Views", a.medianViews.toLocaleString()],
-                  ["Follow Rate", `${a.followRate}%`],
+                  ["Posts", a.count],
+                  ["Avg Views", (a.avgViews ?? 0).toLocaleString()],
+                  ["Avg Likes", (a.avgLikes ?? 0).toLocaleString()],
+                  ["Avg Reposts", (a.avgReposts ?? 0)],
+                  ["Median Views", (a.medianViews ?? 0).toLocaleString()],
+                  ...(a.avgEngRate !== undefined ? [["Avg Eng%", `${a.avgEngRate}%`]] : []),
+                  ...(a.followRate !== undefined ? [["Follow Rate", `${a.followRate}%`]] : []),
                 ].map(([label, val]) => (
                   <div key={label as string} className="flex justify-between">
                     <span className="text-[hsl(260,10%,50%)]">{label}</span>
@@ -128,16 +243,14 @@ export function AnalysisOverview() {
             </thead>
             <tbody>
               {sorted.map((t, i) => (
-                <tr key={t.id} className={`border-b border-[hsl(260,20%,14%)] ${i % 2 === 0 ? "bg-[hsl(260,15%,7%)]" : "bg-[hsl(260,15%,9%)]"} hover:bg-[hsl(260,20%,15%)] transition-colors`}>
-                  <td className="px-3 py-2 font-mono text-[hsl(260,10%,45%)]">{t.id}</td>
+                <tr key={t.index + "-" + i} className={`border-b border-[hsl(260,20%,14%)] ${i % 2 === 0 ? "bg-[hsl(260,15%,7%)]" : "bg-[hsl(260,15%,9%)]"} hover:bg-[hsl(260,20%,15%)] transition-colors`}>
+                  <td className="px-3 py-2 font-mono text-[hsl(260,10%,45%)]">{t.index}</td>
                   <td className="px-3 py-2 text-[hsl(0,0%,88%)] max-w-[300px] truncate">{t.title}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.views.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.likes.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.comments}</td>
+                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.replies}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.reposts}</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(0,0%,90%)]">{t.follows}</td>
                   <td className="px-3 py-2 font-mono text-[hsl(142,71%,60%)]">{t.engRate}%</td>
-                  <td className="px-3 py-2 font-mono text-[hsl(260,80%,70%)]">{t.followRate}%</td>
                 </tr>
               ))}
             </tbody>
@@ -146,14 +259,16 @@ export function AnalysisOverview() {
       </div>
 
       {/* Distribution Insight */}
-      <div className="rounded-lg border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
-        <h4 className="text-sm font-bold text-emerald-400 mb-2">📊 Distribution Insight — Power Law</h4>
-        <p className="text-sm text-[hsl(0,0%,80%)] leading-relaxed">
-          Your top 3 threads account for <span className="font-bold font-mono text-emerald-400">{dist.top3Pct}%</span> of all views.
-          Your median is <span className="font-bold font-mono text-emerald-400">{dist.median.toLocaleString()}</span> views.
-          This is <strong>NORMAL</strong>. The strategy is to post enough that your breakout threads carry the weight.
-        </p>
-      </div>
+      {distInsight && (
+        <div className="rounded-lg border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
+          <h4 className="text-sm font-bold text-emerald-400 mb-2">📊 Distribution Insight — Power Law</h4>
+          <p className="text-sm text-[hsl(0,0%,80%)] leading-relaxed">
+            Your top 3 posts account for <span className="font-bold font-mono text-emerald-400">{distInsight.top3Pct}%</span> of all views.
+            Your median is <span className="font-bold font-mono text-emerald-400">{distInsight.median.toLocaleString()}</span> views.
+            This is <strong>NORMAL</strong>. The strategy is to post enough that your breakout posts carry the weight.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

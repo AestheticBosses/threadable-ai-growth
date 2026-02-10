@@ -1,5 +1,7 @@
 import { useMemo } from "react";
+import { usePostsAnalyzed, type AnalyzedPost } from "@/hooks/usePostsAnalyzed";
 import { getMockThreads } from "@/lib/mockAnalysisData";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function BarChart({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.max((value / max) * 100, 2);
@@ -13,48 +15,88 @@ function BarChart({ value, max, color }: { value: number; max: number; color: st
   );
 }
 
-export function GrowthSignals() {
-  const threads = getMockThreads();
+interface PostRow {
+  id: string | number;
+  title: string;
+  views: number;
+  reposts: number;
+  replies: number;
+  engRate: number;
+}
 
-  const topFollowRate = useMemo(() => {
-    return [...threads].sort((a, b) => b.followRate - a.followRate).slice(0, 10);
-  }, [threads]);
+function mapRealPosts(posts: AnalyzedPost[]): PostRow[] {
+  return posts.map((p) => ({
+    id: p.id,
+    title: (p.text_content ?? "").slice(0, 60) || "(no text)",
+    views: p.views ?? 0,
+    reposts: p.reposts ?? 0,
+    replies: p.replies ?? 0,
+    engRate: p.engagement_rate ?? 0,
+  }));
+}
+
+function mapMockPosts(): PostRow[] {
+  return getMockThreads().map((t) => ({
+    id: t.id,
+    title: t.title,
+    views: t.views,
+    reposts: t.reposts,
+    replies: t.comments,
+    engRate: t.engRate,
+  }));
+}
+
+export function GrowthSignals() {
+  const { data: rawPosts, isLoading } = usePostsAnalyzed();
+  const useReal = (rawPosts?.length ?? 0) > 0;
+
+  const rows = useMemo(() => useReal ? mapRealPosts(rawPosts!) : mapMockPosts(), [rawPosts, useReal]);
+
+  const topEngRate = useMemo(() => {
+    return [...rows].sort((a, b) => b.engRate - a.engRate).slice(0, 10);
+  }, [rows]);
 
   const topViralCoeff = useMemo(() => {
-    return [...threads]
-      .map((t) => ({ ...t, viralCoeff: ((t.reposts + (t.comments * 0.3)) / t.views) * 100 }))
+    return rows
+      .map((t) => ({ ...t, viralCoeff: t.views > 0 ? ((t.reposts + (t.replies * 0.3)) / t.views) * 100 : 0 }))
       .sort((a, b) => b.viralCoeff - a.viralCoeff)
       .slice(0, 10);
-  }, [threads]);
+  }, [rows]);
 
   const anomaly = useMemo(() => {
-    const medianViews = [...threads].sort((a, b) => a.views - b.views)[Math.floor(threads.length / 2)].views;
-    return threads
-      .filter((t) => t.views < medianViews && t.followRate > 3)
-      .sort((a, b) => b.followRate - a.followRate)[0] ?? null;
-  }, [threads]);
+    if (rows.length < 3) return null;
+    const sorted = [...rows].sort((a, b) => a.views - b.views);
+    const medianViews = sorted[Math.floor(rows.length / 2)].views;
+    return rows
+      .filter((t) => t.views < medianViews && t.engRate > 5)
+      .sort((a, b) => b.engRate - a.engRate)[0] ?? null;
+  }, [rows]);
 
-  const maxFollowRate = topFollowRate[0]?.followRate ?? 1;
+  const maxEngRate = topEngRate[0]?.engRate ?? 1;
   const maxViralCoeff = topViralCoeff[0]?.viralCoeff ?? 1;
+
+  if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <div className="space-y-8">
       <div>
         <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)]">Growth Signal Rankings</h3>
         <p className="text-sm text-[hsl(260,10%,50%)] mt-1">
-          Follows = your audience. Reposts = other people's audiences.
+          {useReal
+            ? `Computed from ${rows.length} real posts. Engagement rate and viral coefficient rankings.`
+            : "Showing mock data. Fetch your real posts to see actual rankings."}
         </p>
       </div>
 
-      {/* Follow Conversion Rate */}
+      {/* Engagement Rate — Top 10 */}
       <div>
-        <h4 className="text-sm font-bold text-violet-400 mb-4">Follow Conversion Rate — Top 10</h4>
+        <h4 className="text-sm font-bold text-violet-400 mb-4">Engagement Rate — Top 10</h4>
         <div className="space-y-2">
-          {topFollowRate.map((t, i) => (
+          {topEngRate.map((t, i) => (
             <div key={t.id} className="flex items-center gap-3">
               <span className="font-mono text-xs text-[hsl(260,10%,45%)] w-5 shrink-0">{i + 1}.</span>
               <span className="text-xs text-[hsl(0,0%,82%)] w-48 truncate shrink-0" title={t.title}>{t.title}</span>
-              <BarChart value={t.followRate} max={maxFollowRate} color="bg-violet-500" />
+              <BarChart value={t.engRate} max={maxEngRate} color="bg-violet-500" />
             </div>
           ))}
         </div>
@@ -62,7 +104,7 @@ export function GrowthSignals() {
 
       {/* Viral Coefficient */}
       <div>
-        <h4 className="text-sm font-bold text-emerald-400 mb-4">Viral Coefficient (Reposts+Quotes ÷ Views) — Top 10</h4>
+        <h4 className="text-sm font-bold text-emerald-400 mb-4">Viral Coefficient (Reposts+Replies ÷ Views) — Top 10</h4>
         <div className="space-y-2">
           {topViralCoeff.map((t, i) => (
             <div key={t.id} className="flex items-center gap-3">
@@ -81,9 +123,8 @@ export function GrowthSignals() {
           <p className="text-sm text-[hsl(0,0%,80%)] leading-relaxed">
             "<span className="font-medium text-[hsl(0,0%,92%)]">{anomaly.title}</span>" had only{" "}
             <span className="font-mono text-yellow-400">{anomaly.views.toLocaleString()}</span> views but a{" "}
-            <span className="font-mono text-yellow-400">{anomaly.followRate}%</span> follow rate.
-            This confirms that <strong>niche-specific content converts followers better</strong> even with lower reach.
-            Your strategy should optimize for follow rate, not just views.
+            <span className="font-mono text-yellow-400">{anomaly.engRate}%</span> engagement rate.
+            This confirms that <strong>niche-specific content converts better</strong> even with lower reach.
           </p>
         </div>
       )}
