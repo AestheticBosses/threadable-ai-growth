@@ -17,6 +17,11 @@ Deno.serve(async (req) => {
     const state = url.searchParams.get("state"); // Supabase user ID
     const error = url.searchParams.get("error");
 
+    // Meta callback URL validation: return 200 OK when no code is present
+    if (!code && !error) {
+      return new Response("OK", { status: 200, headers: corsHeaders });
+    }
+
     const APP_URL = Deno.env.get("APP_URL")!;
     const THREADS_APP_ID = Deno.env.get("THREADS_APP_ID")!;
     const THREADS_APP_SECRET = Deno.env.get("THREADS_APP_SECRET")!;
