@@ -7,6 +7,7 @@ const corsHeaders = {
 
 Deno.serve(async (req) => {
   console.log("=== FETCH USER POSTS CALLED ===")
+  console.log("Method:", req.method)
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -14,36 +15,44 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     const authHeader = req.headers.get('Authorization')
     console.log("Auth header exists:", !!authHeader)
 
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'No auth header' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const jwt = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: userError } = await adminClient.auth.getUser(jwt)
+    // Verify JWT using anon client with getClaims (Lovable Cloud pattern)
+    const token = authHeader.replace('Bearer ', '')
+    const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    })
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token)
 
-    if (userError || !user) {
-      console.error("Auth error:", userError?.message)
+    if (claimsError || !claimsData?.claims) {
+      console.error("Auth error:", claimsError?.message || "No claims")
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    console.log("User:", user.id)
+    const userId = claimsData.claims.sub as string
+    console.log("User:", userId)
+
+    // Use service role for DB operations
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: profile, error: profileError } = await adminClient
       .from('profiles')
       .select('threads_user_id, threads_access_token')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single()
 
     if (profileError || !profile?.threads_access_token) {
@@ -95,7 +104,7 @@ Deno.serve(async (req) => {
         const engRate = views > 0 ? ((likes + replies + reposts + quotes) / views) * 100 : 0
 
         const { error: upsertErr } = await adminClient.from('posts_analyzed').upsert({
-          user_id: user.id,
+          user_id: userId,
           threads_media_id: post.id,
           text_content: text,
           posted_at: post.timestamp,
