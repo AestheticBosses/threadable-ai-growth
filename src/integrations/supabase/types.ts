@@ -59,7 +59,9 @@ export type Database = {
           performance_vs_previous: Json | null
           regression_insights: Json | null
           status: string | null
+          strategy_data: Json | null
           strategy_json: Json | null
+          strategy_type: string | null
           user_id: string
           week_number: number | null
           year: number | null
@@ -70,7 +72,9 @@ export type Database = {
           performance_vs_previous?: Json | null
           regression_insights?: Json | null
           status?: string | null
+          strategy_data?: Json | null
           strategy_json?: Json | null
+          strategy_type?: string | null
           user_id: string
           week_number?: number | null
           year?: number | null
@@ -81,7 +85,9 @@ export type Database = {
           performance_vs_previous?: Json | null
           regression_insights?: Json | null
           status?: string | null
+          strategy_data?: Json | null
           strategy_json?: Json | null
+          strategy_type?: string | null
           user_id?: string
           week_number?: number | null
           year?: number | null
