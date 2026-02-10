@@ -22,10 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from("profiles")
-      .select("onboarding_completed")
-      .eq("user_id", userId)
+      .select("onboarding_complete")
+      .eq("id", userId)
       .single();
-    setOnboardingCompleted(data?.onboarding_completed ?? false);
+    setOnboardingCompleted(data?.onboarding_complete ?? false);
   };
 
   const refreshProfile = async () => {

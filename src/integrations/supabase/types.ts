@@ -14,35 +14,431 @@ export type Database = {
   }
   public: {
     Tables: {
-      profiles: {
+      competitor_accounts: {
         Row: {
-          avatar_url: string | null
-          created_at: string
-          display_name: string | null
+          added_at: string | null
+          follower_count: number | null
           id: string
-          onboarding_completed: boolean
-          updated_at: string
+          niche_relevance_score: number | null
+          threads_user_id: string | null
+          threads_username: string | null
           user_id: string
         }
         Insert: {
-          avatar_url?: string | null
-          created_at?: string
-          display_name?: string | null
+          added_at?: string | null
+          follower_count?: number | null
           id?: string
-          onboarding_completed?: boolean
-          updated_at?: string
+          niche_relevance_score?: number | null
+          threads_user_id?: string | null
+          threads_username?: string | null
           user_id: string
         }
         Update: {
-          avatar_url?: string | null
-          created_at?: string
-          display_name?: string | null
+          added_at?: string | null
+          follower_count?: number | null
           id?: string
-          onboarding_completed?: boolean
-          updated_at?: string
+          niche_relevance_score?: number | null
+          threads_user_id?: string | null
+          threads_username?: string | null
           user_id?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "competitor_accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_strategies: {
+        Row: {
+          created_at: string
+          id: string
+          performance_vs_previous: Json | null
+          regression_insights: Json | null
+          status: string | null
+          strategy_json: Json | null
+          user_id: string
+          week_number: number | null
+          year: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          performance_vs_previous?: Json | null
+          regression_insights?: Json | null
+          status?: string | null
+          strategy_json?: Json | null
+          user_id: string
+          week_number?: number | null
+          year?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          performance_vs_previous?: Json | null
+          regression_insights?: Json | null
+          status?: string | null
+          strategy_json?: Json | null
+          user_id?: string
+          week_number?: number | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_strategies_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts_analyzed: {
+        Row: {
+          char_count: number | null
+          clicks: number | null
+          content_category: string | null
+          day_of_week: string | null
+          engagement_rate: number | null
+          fetched_at: string | null
+          has_credibility_marker: boolean | null
+          has_emoji: boolean | null
+          has_hashtag: boolean | null
+          has_question: boolean | null
+          has_url: boolean | null
+          hour_posted: number | null
+          id: string
+          likes: number | null
+          line_count: number | null
+          media_type: string | null
+          posted_at: string | null
+          quotes: number | null
+          replies: number | null
+          reposts: number | null
+          sentiment_score: number | null
+          shares: number | null
+          source: string | null
+          source_username: string | null
+          starts_with_number: boolean | null
+          text_content: string | null
+          threads_media_id: string | null
+          user_id: string
+          views: number | null
+          virality_score: number | null
+          word_count: number | null
+        }
+        Insert: {
+          char_count?: number | null
+          clicks?: number | null
+          content_category?: string | null
+          day_of_week?: string | null
+          engagement_rate?: number | null
+          fetched_at?: string | null
+          has_credibility_marker?: boolean | null
+          has_emoji?: boolean | null
+          has_hashtag?: boolean | null
+          has_question?: boolean | null
+          has_url?: boolean | null
+          hour_posted?: number | null
+          id?: string
+          likes?: number | null
+          line_count?: number | null
+          media_type?: string | null
+          posted_at?: string | null
+          quotes?: number | null
+          replies?: number | null
+          reposts?: number | null
+          sentiment_score?: number | null
+          shares?: number | null
+          source?: string | null
+          source_username?: string | null
+          starts_with_number?: boolean | null
+          text_content?: string | null
+          threads_media_id?: string | null
+          user_id: string
+          views?: number | null
+          virality_score?: number | null
+          word_count?: number | null
+        }
+        Update: {
+          char_count?: number | null
+          clicks?: number | null
+          content_category?: string | null
+          day_of_week?: string | null
+          engagement_rate?: number | null
+          fetched_at?: string | null
+          has_credibility_marker?: boolean | null
+          has_emoji?: boolean | null
+          has_hashtag?: boolean | null
+          has_question?: boolean | null
+          has_url?: boolean | null
+          hour_posted?: number | null
+          id?: string
+          likes?: number | null
+          line_count?: number | null
+          media_type?: string | null
+          posted_at?: string | null
+          quotes?: number | null
+          replies?: number | null
+          reposts?: number | null
+          sentiment_score?: number | null
+          shares?: number | null
+          source?: string | null
+          source_username?: string | null
+          starts_with_number?: boolean | null
+          text_content?: string | null
+          threads_media_id?: string | null
+          user_id?: string
+          views?: number | null
+          virality_score?: number | null
+          word_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_analyzed_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          dream_client: string | null
+          email: string | null
+          end_goal: string | null
+          full_name: string | null
+          id: string
+          is_established: boolean | null
+          niche: string | null
+          onboarding_complete: boolean | null
+          threads_access_token: string | null
+          threads_token_expires_at: string | null
+          threads_user_id: string | null
+          threads_username: string | null
+          updated_at: string
+          voice_profile: Json | null
+        }
+        Insert: {
+          created_at?: string
+          dream_client?: string | null
+          email?: string | null
+          end_goal?: string | null
+          full_name?: string | null
+          id: string
+          is_established?: boolean | null
+          niche?: string | null
+          onboarding_complete?: boolean | null
+          threads_access_token?: string | null
+          threads_token_expires_at?: string | null
+          threads_user_id?: string | null
+          threads_username?: string | null
+          updated_at?: string
+          voice_profile?: Json | null
+        }
+        Update: {
+          created_at?: string
+          dream_client?: string | null
+          email?: string | null
+          end_goal?: string | null
+          full_name?: string | null
+          id?: string
+          is_established?: boolean | null
+          niche?: string | null
+          onboarding_complete?: boolean | null
+          threads_access_token?: string | null
+          threads_token_expires_at?: string | null
+          threads_user_id?: string | null
+          threads_username?: string | null
+          updated_at?: string
+          voice_profile?: Json | null
+        }
         Relationships: []
+      }
+      scheduled_posts: {
+        Row: {
+          ai_generated: boolean | null
+          content_category: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          media_type: string | null
+          media_url: string | null
+          published_at: string | null
+          scheduled_for: string | null
+          status: string | null
+          strategy_id: string | null
+          text_content: string | null
+          threads_media_id: string | null
+          user_edited: boolean | null
+          user_id: string
+        }
+        Insert: {
+          ai_generated?: boolean | null
+          content_category?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          published_at?: string | null
+          scheduled_for?: string | null
+          status?: string | null
+          strategy_id?: string | null
+          text_content?: string | null
+          threads_media_id?: string | null
+          user_edited?: boolean | null
+          user_id: string
+        }
+        Update: {
+          ai_generated?: boolean | null
+          content_category?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          media_type?: string | null
+          media_url?: string | null
+          published_at?: string | null
+          scheduled_for?: string | null
+          status?: string | null
+          strategy_id?: string | null
+          text_content?: string | null
+          threads_media_id?: string | null
+          user_edited?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_posts_strategy_id_fkey"
+            columns: ["strategy_id"]
+            isOneToOne: false
+            referencedRelation: "content_strategies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_posts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_samples: {
+        Row: {
+          created_at: string
+          id: string
+          sample_text: string | null
+          source: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          sample_text?: string | null
+          source?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          sample_text?: string | null
+          source?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_samples_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekly_reports: {
+        Row: {
+          avg_engagement_rate: number | null
+          created_at: string
+          follower_count_end: number | null
+          follower_count_start: number | null
+          follower_growth: number | null
+          id: string
+          insights: Json | null
+          strategy_adjustments: Json | null
+          top_post_id: string | null
+          total_engagement: number | null
+          total_posts: number | null
+          total_views: number | null
+          user_id: string
+          week_end: string | null
+          week_start: string | null
+          worst_post_id: string | null
+        }
+        Insert: {
+          avg_engagement_rate?: number | null
+          created_at?: string
+          follower_count_end?: number | null
+          follower_count_start?: number | null
+          follower_growth?: number | null
+          id?: string
+          insights?: Json | null
+          strategy_adjustments?: Json | null
+          top_post_id?: string | null
+          total_engagement?: number | null
+          total_posts?: number | null
+          total_views?: number | null
+          user_id: string
+          week_end?: string | null
+          week_start?: string | null
+          worst_post_id?: string | null
+        }
+        Update: {
+          avg_engagement_rate?: number | null
+          created_at?: string
+          follower_count_end?: number | null
+          follower_count_start?: number | null
+          follower_growth?: number | null
+          id?: string
+          insights?: Json | null
+          strategy_adjustments?: Json | null
+          top_post_id?: string | null
+          total_engagement?: number | null
+          total_posts?: number | null
+          total_views?: number | null
+          user_id?: string
+          week_end?: string | null
+          week_start?: string | null
+          worst_post_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_reports_top_post_id_fkey"
+            columns: ["top_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_analyzed"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_reports_worst_post_id_fkey"
+            columns: ["worst_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts_analyzed"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
