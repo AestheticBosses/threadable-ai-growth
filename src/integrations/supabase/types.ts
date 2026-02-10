@@ -282,6 +282,10 @@ export type Database = {
           end_goal: string | null
           follower_count: number | null
           full_name: string | null
+          funnel_bof_pct: number | null
+          funnel_goal: string | null
+          funnel_mof_pct: number | null
+          funnel_tof_pct: number | null
           generate_weekend_posts: boolean
           id: string
           include_credibility_markers: boolean
@@ -306,6 +310,10 @@ export type Database = {
           end_goal?: string | null
           follower_count?: number | null
           full_name?: string | null
+          funnel_bof_pct?: number | null
+          funnel_goal?: string | null
+          funnel_mof_pct?: number | null
+          funnel_tof_pct?: number | null
           generate_weekend_posts?: boolean
           id: string
           include_credibility_markers?: boolean
@@ -330,6 +338,10 @@ export type Database = {
           end_goal?: string | null
           follower_count?: number | null
           full_name?: string | null
+          funnel_bof_pct?: number | null
+          funnel_goal?: string | null
+          funnel_mof_pct?: number | null
+          funnel_tof_pct?: number | null
           generate_weekend_posts?: boolean
           id?: string
           include_credibility_markers?: boolean
@@ -353,6 +365,7 @@ export type Database = {
           content_category: string | null
           created_at: string
           error_message: string | null
+          funnel_stage: string | null
           id: string
           media_type: string | null
           media_url: string | null
@@ -372,6 +385,7 @@ export type Database = {
           content_category?: string | null
           created_at?: string
           error_message?: string | null
+          funnel_stage?: string | null
           id?: string
           media_type?: string | null
           media_url?: string | null
@@ -391,6 +405,7 @@ export type Database = {
           content_category?: string | null
           created_at?: string
           error_message?: string | null
+          funnel_stage?: string | null
           id?: string
           media_type?: string | null
           media_url?: string | null
@@ -415,6 +430,41 @@ export type Database = {
           },
           {
             foreignKeyName: "scheduled_posts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_story_vault: {
+        Row: {
+          created_at: string
+          data: Json
+          id: string
+          section: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json
+          id?: string
+          section: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          id?: string
+          section?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_story_vault_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"

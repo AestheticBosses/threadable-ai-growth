@@ -53,6 +53,7 @@ type Post = {
   id: string;
   text_content: string | null;
   content_category: string | null;
+  funnel_stage: string | null;
   scheduled_for: string | null;
   status: string | null;
   ai_generated: boolean | null;
@@ -96,8 +97,23 @@ function scoreBg(score: number | null): string {
 
 // No longer using hardcoded labels — breakdown now contains question text from playbook
 
+const FUNNEL_BADGE_COLORS: Record<string, string> = {
+  TOF: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  MOF: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  BOF: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+};
+
+const FUNNEL_LABELS: Record<string, string> = {
+  TOF: "TOF · Reach",
+  MOF: "MOF · Trust",
+  BOF: "BOF · Convert",
+};
+
 const TABS = ["all", "draft", "approved", "scheduled", "published", "failed"] as const;
 type TabVal = (typeof TABS)[number];
+
+const FUNNEL_FILTERS = ["all", "TOF", "MOF", "BOF"] as const;
+type FunnelFilter = (typeof FUNNEL_FILTERS)[number];
 
 const Queue = () => {
   usePageTitle("Content Queue", "Manage and schedule your Threads content");
@@ -119,11 +135,12 @@ const Queue = () => {
   const [schedulingAll, setSchedulingAll] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null);
+  const [funnelFilter, setFunnelFilter] = useState<FunnelFilter>("all");
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
       .from("scheduled_posts")
-      .select("id, text_content, content_category, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at")
+      .select("id, text_content, content_category, funnel_stage, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at")
       .eq("user_id", user.id)
       .order("scheduled_for", { ascending: true });
     setPosts((data as Post[]) || []);
@@ -147,9 +164,11 @@ const Queue = () => {
     loadPosts();
   }, [loadPosts]);
 
-  const filteredPosts = posts.filter((p) =>
-    activeTab === "all" ? true : p.status === activeTab
-  );
+  const filteredPosts = posts.filter((p) => {
+    const statusMatch = activeTab === "all" ? true : p.status === activeTab;
+    const funnelMatch = funnelFilter === "all" ? true : p.funnel_stage === funnelFilter;
+    return statusMatch && funnelMatch;
+  });
 
   const sortedPosts = [...filteredPosts].sort((a, b) => {
     if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
@@ -567,6 +586,27 @@ const Queue = () => {
           ))}
         </div>
 
+        {/* Funnel filter */}
+        <div className="flex gap-1.5">
+          {FUNNEL_FILTERS.map((f) => (
+            <button
+              key={f}
+              onClick={() => setFunnelFilter(f)}
+              className={cn(
+                "px-3 py-1 text-xs font-medium rounded-full border transition-colors capitalize",
+                funnelFilter === f
+                  ? f === "all" ? "border-primary bg-primary/10 text-primary" : FUNNEL_BADGE_COLORS[f]
+                  : "border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {f === "all" ? "All Funnel" : FUNNEL_LABELS[f]}
+              <span className="ml-1 opacity-60">
+                ({f === "all" ? posts.length : posts.filter((p) => p.funnel_stage === f).length})
+              </span>
+            </button>
+          ))}
+        </div>
+
         {/* Bulk actions */}
         {selected.size > 0 && (
           <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3">
@@ -620,6 +660,14 @@ const Queue = () => {
                             )}
                           >
                             {post.content_category}
+                          </Badge>
+                        )}
+                        {post.funnel_stage && (
+                          <Badge
+                            variant="outline"
+                            className={cn("text-xs", FUNNEL_BADGE_COLORS[post.funnel_stage] || "")}
+                          >
+                            {FUNNEL_LABELS[post.funnel_stage] || post.funnel_stage}
                           </Badge>
                         )}
                         <Badge
