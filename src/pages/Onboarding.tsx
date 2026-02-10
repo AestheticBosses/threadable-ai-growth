@@ -23,6 +23,7 @@ const Onboarding = () => {
   const { user, refreshProfile } = useAuth();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   const [threadsConnected, setThreadsConnected] = useState(false);
   const [threadsUsername, setThreadsUsername] = useState("");
@@ -30,23 +31,52 @@ const Onboarding = () => {
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
 
+  // On load: check if user already has threads connected
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("threads_username")
+        .eq("id", user.id)
+        .single();
+      if (data?.threads_username) {
+        setThreadsConnected(true);
+        setThreadsUsername(data.threads_username);
+        setStep(1);
+      }
+      setProfileLoading(false);
+    };
+    loadProfile();
+  }, [user]);
+
   // Handle OAuth callback params
   useEffect(() => {
     const connected = searchParams.get("threads_connected");
-    const username = searchParams.get("username");
     const error = searchParams.get("threads_error");
 
-    if (connected === "true" && username) {
-      setThreadsConnected(true);
-      setThreadsUsername(username);
-      toast({ title: "Threads connected!", description: `Connected as @${username}` });
-      // Clean up URL params
-      setSearchParams({}, { replace: true });
+    if (connected === "true") {
+      // Refetch profile to get the username stored by the callback
+      const refetch = async () => {
+        if (!user) return;
+        const { data } = await supabase
+          .from("profiles")
+          .select("threads_username")
+          .eq("id", user.id)
+          .single();
+        if (data?.threads_username) {
+          setThreadsConnected(true);
+          setThreadsUsername(data.threads_username);
+          toast({ title: "Threads connected!", description: `Connected as @${data.threads_username}` });
+        }
+        setSearchParams({}, { replace: true });
+      };
+      refetch();
     } else if (error) {
       toast({ title: "Threads connection failed", description: `Error: ${error}`, variant: "destructive" });
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, user]);
 
   const isStepValid = () => {
     switch (step) {
@@ -95,21 +125,21 @@ const Onboarding = () => {
     }
   };
 
-  const handleConnectThreads = async () => {
+  const handleConnectThreads = () => {
     if (!user) return;
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/threads-auth-url?user_id=${user.id}`
-      );
-      const json = await res.json();
-      if (json.url) {
-        window.location.href = json.url;
-      } else {
-        throw new Error(json.error || "Failed to get auth URL");
-      }
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+    const clientId = import.meta.env.VITE_THREADS_APP_ID;
+    const redirectUri = import.meta.env.VITE_THREADS_REDIRECT_URI;
+    if (!clientId || !redirectUri) {
+      toast({ title: "Configuration error", description: "Threads OAuth is not configured.", variant: "destructive" });
+      return;
     }
+    const url = new URL("https://threads.net/oauth/authorize");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("scope", "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies,threads_manage_replies");
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("state", user.id);
+    window.location.href = url.toString();
   };
 
   return (
