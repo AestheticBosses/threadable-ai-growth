@@ -29,25 +29,38 @@ export function ThreadsConnectionCard({ threadsUsername, tokenExpiresAt, onDisco
   const [savingManual, setSavingManual] = useState(false);
 
   const handleSaveManualToken = async () => {
-    if (!user || !manualUserId.trim() || !manualToken.trim()) {
+    if (!manualUserId.trim() || !manualToken.trim()) {
       toast.error("Please enter both User ID and Access Token");
       return;
     }
     setSavingManual(true);
     try {
-      const { error } = await supabase
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !authUser) {
+        console.error("Auth error:", authError);
+        toast.error("Not authenticated. Please log in again.");
+        return;
+      }
+      const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
         .from("profiles")
         .update({
           threads_user_id: manualUserId.trim(),
           threads_access_token: manualToken.trim(),
-          threads_token_expires_at: addDays(new Date(), 60).toISOString(),
+          threads_token_expires_at: expiresAt,
           onboarding_complete: true,
         })
-        .eq("id", user.id);
-      if (error) throw error;
+        .eq("id", authUser.id)
+        .select();
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+      console.log("Profile updated successfully:", data);
       toast.success("Token saved successfully!");
       navigate("/dashboard");
-    } catch {
+    } catch (err) {
+      console.error("Failed to save token:", err);
       toast.error("Failed to save token");
     } finally {
       setSavingManual(false);
