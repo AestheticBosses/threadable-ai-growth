@@ -44,16 +44,21 @@ export function usePostsAnalyzed() {
   const userId = user?.id;
 
   return useQuery({
-    queryKey: ["posts-analyzed-all", userId],
+    queryKey: ["posts-analyzed-own", userId],
     queryFn: async () => {
       if (!userId) return [];
       const { data, error } = await supabase
         .from("posts_analyzed")
         .select("*")
         .eq("user_id", userId)
+        .eq("source", "own")
+        .not("text_content", "is", null)
         .order("views", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as AnalyzedPost[];
+      // Extra client-side filter: remove empty/mock entries
+      return ((data ?? []) as AnalyzedPost[]).filter(
+        (p) => p.text_content && p.text_content.trim() !== "" && !p.text_content.startsWith("Mock post")
+      );
     },
     enabled: !!userId,
   });
