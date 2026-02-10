@@ -28,17 +28,12 @@ export function ThreadsConnectionCard({ threadsUsername, tokenExpiresAt, onDisco
     if (!user) return;
     setReconnecting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("threads-auth-url", {
-        body: null,
-        headers: {},
-      });
-
-      // Build URL with query param
+      const session = (await supabase.auth.getSession()).data.session;
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/threads-auth-url?user_id=${user.id}`,
         {
           headers: {
-            Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            Authorization: `Bearer ${session?.access_token}`,
             apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           },
         }
