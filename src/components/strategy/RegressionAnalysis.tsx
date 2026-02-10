@@ -23,21 +23,25 @@ function pearson(xs: number[], ys: number[]): number {
 
 function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
   const variables: { key: string; label: string; extract: (p: AnalyzedPost) => number }[] = [
-    { key: "has_question", label: "Has Question", extract: (p) => p.has_question ? 1 : 0 },
-    { key: "has_credibility_marker", label: "Authority Name-Drop", extract: (p) => p.has_credibility_marker ? 1 : 0 },
-    { key: "has_emoji", label: "Has Emoji", extract: (p) => p.has_emoji ? 1 : 0 },
-    { key: "has_hashtag", label: "Has Hashtag", extract: (p) => p.has_hashtag ? 1 : 0 },
-    { key: "has_url", label: "Has URL", extract: (p) => p.has_url ? 1 : 0 },
-    { key: "starts_with_number", label: "Starts With Number", extract: (p) => p.starts_with_number ? 1 : 0 },
-    { key: "word_count", label: "Word Count", extract: (p) => p.word_count ?? 0 },
-    { key: "char_count", label: "Char Count", extract: (p) => p.char_count ?? 0 },
+    { key: "has_namedrop", label: "Authority Name-Drop", extract: (p) => (p as any).has_namedrop ? 1 : 0 },
+    { key: "has_steps", label: "Educational / Steps Format", extract: (p) => (p as any).has_steps ? 1 : 0 },
+    { key: "has_dollar_amount", label: "Dollar Amount in Hook", extract: (p) => (p as any).has_dollar_amount ? 1 : 0 },
+    { key: "has_vulnerability", label: "Vulnerability / Personal", extract: (p) => (p as any).has_vulnerability ? 1 : 0 },
+    { key: "has_relatability", label: "Universal Relatability", extract: (p) => (p as any).has_relatability ? 1 : 0 },
+    { key: "is_short_form", label: "Short One-Liner", extract: (p) => (p as any).is_short_form ? 1 : 0 },
+    { key: "has_visual", label: "Vivid Visual / Scene", extract: (p) => (p as any).has_visual ? 1 : 0 },
+    { key: "has_profanity", label: "Profanity", extract: (p) => (p as any).has_profanity ? 1 : 0 },
+    { key: "has_controversy", label: "Controversy / Hot Take", extract: (p) => (p as any).has_controversy ? 1 : 0 },
+    { key: "emotion_count", label: "2+ Emotional Triggers", extract: (p) => ((p as any).emotion_count ?? 0) >= 2 ? 1 : 0 },
   ];
 
   const views = posts.map((p) => p.views ?? 0);
   const likes = posts.map((p) => p.likes ?? 0);
   const reposts = posts.map((p) => p.reposts ?? 0);
+  const follows = posts.map((p) => (p as any).follows ?? 0);
   const likeRate = posts.map((p) => (p.likes ?? 0) / Math.max(p.views ?? 1, 1));
   const repostRate = posts.map((p) => (p.reposts ?? 0) / Math.max(p.views ?? 1, 1));
+  const followRate = posts.map((p) => ((p as any).follows ?? 0) / Math.max(p.views ?? 1, 1));
 
   return variables.map((v) => {
     const xs = posts.map(v.extract);
@@ -47,10 +51,10 @@ function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
       rViews: pearson(xs, views),
       rLikes: pearson(xs, likes),
       rReposts: pearson(xs, reposts),
-      rFollows: 0, // no follows column in posts_analyzed
+      rFollows: pearson(xs, follows),
       rLikeRate: pearson(xs, likeRate),
       rRepostRate: pearson(xs, repostRate),
-      rFollowRate: 0,
+      rFollowRate: pearson(xs, followRate),
       count,
     };
   });
@@ -88,6 +92,7 @@ export function RegressionAnalysis() {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
       all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
       all.push({ variable: c.variable, metric: "Reposts", value: c.rReposts });
+      all.push({ variable: c.variable, metric: "Follows", value: c.rFollows });
     });
     return all.sort((a, b) => b.value - a.value).slice(0, 4);
   }, [correlations]);
@@ -97,6 +102,7 @@ export function RegressionAnalysis() {
     correlations.forEach((c) => {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
       all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
+      all.push({ variable: c.variable, metric: "Follows", value: c.rFollows });
     });
     return all.sort((a, b) => a.value - b.value).slice(0, 4);
   }, [correlations]);
@@ -105,8 +111,10 @@ export function RegressionAnalysis() {
     { key: "rViews", label: "r(Views)" },
     { key: "rLikes", label: "r(Likes)" },
     { key: "rReposts", label: "r(Reposts)" },
+    { key: "rFollows", label: "r(Follows)" },
     { key: "rLikeRate", label: "r(Like%)" },
     { key: "rRepostRate", label: "r(Repost%)" },
+    { key: "rFollowRate", label: "r(Follow%)" },
   ];
 
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
