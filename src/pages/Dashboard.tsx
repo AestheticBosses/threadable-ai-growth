@@ -44,25 +44,14 @@ const Dashboard = () => {
     if (!user) return;
     setFetching(true);
     try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-user-posts`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      const json = await res.json();
-      if (!res.ok) {
-        console.error("Fetch posts error:", json);
-        toast.error(json.error || "Failed to fetch posts");
+      const { data, error } = await supabase.functions.invoke("fetch-user-posts");
+      console.log("Fetch response:", { data, error });
+      if (error) {
+        console.error("Fetch posts error:", error);
+        toast.error(error.message || "Failed to fetch posts");
         return;
       }
-      toast.success(`Fetched ${json.total_posts} posts from Threads!`);
+      toast.success(`Fetched ${data.total_posts} posts from Threads!`);
       queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] });
     } catch (err) {
       console.error("Fetch posts error:", err);
