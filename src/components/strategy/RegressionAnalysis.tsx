@@ -1,6 +1,60 @@
 import { useMemo } from "react";
-import { computeCorrelations } from "@/lib/mockAnalysisData";
+import { usePostsAnalyzed, type AnalyzedPost } from "@/hooks/usePostsAnalyzed";
+import { computeCorrelations as computeMockCorrelations } from "@/lib/mockAnalysisData";
 import type { CorrelationRow } from "@/lib/mockAnalysisData";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function pearson(xs: number[], ys: number[]): number {
+  const n = xs.length;
+  if (n < 3) return 0;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, denX = 0, denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX;
+    const dy = ys[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
+  }
+  const den = Math.sqrt(denX * denY);
+  return den === 0 ? 0 : parseFloat((num / den).toFixed(3));
+}
+
+function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
+  const variables: { key: string; label: string; extract: (p: AnalyzedPost) => number }[] = [
+    { key: "has_question", label: "Has Question", extract: (p) => p.has_question ? 1 : 0 },
+    { key: "has_credibility_marker", label: "Authority Name-Drop", extract: (p) => p.has_credibility_marker ? 1 : 0 },
+    { key: "has_emoji", label: "Has Emoji", extract: (p) => p.has_emoji ? 1 : 0 },
+    { key: "has_hashtag", label: "Has Hashtag", extract: (p) => p.has_hashtag ? 1 : 0 },
+    { key: "has_url", label: "Has URL", extract: (p) => p.has_url ? 1 : 0 },
+    { key: "starts_with_number", label: "Starts With Number", extract: (p) => p.starts_with_number ? 1 : 0 },
+    { key: "word_count", label: "Word Count", extract: (p) => p.word_count ?? 0 },
+    { key: "char_count", label: "Char Count", extract: (p) => p.char_count ?? 0 },
+  ];
+
+  const views = posts.map((p) => p.views ?? 0);
+  const likes = posts.map((p) => p.likes ?? 0);
+  const reposts = posts.map((p) => p.reposts ?? 0);
+  const likeRate = posts.map((p) => (p.likes ?? 0) / Math.max(p.views ?? 1, 1));
+  const repostRate = posts.map((p) => (p.reposts ?? 0) / Math.max(p.views ?? 1, 1));
+
+  return variables.map((v) => {
+    const xs = posts.map(v.extract);
+    const count = xs.filter((x) => x > 0).length;
+    return {
+      variable: v.label,
+      rViews: pearson(xs, views),
+      rLikes: pearson(xs, likes),
+      rReposts: pearson(xs, reposts),
+      rFollows: 0, // no follows column in posts_analyzed
+      rLikeRate: pearson(xs, likeRate),
+      rRepostRate: pearson(xs, repostRate),
+      rFollowRate: 0,
+      count,
+    };
+  });
+}
 
 function corrColor(r: number): string {
   if (r >= 0.5) return "text-emerald-400 bg-emerald-500/15";
@@ -20,15 +74,20 @@ function CorrCell({ value }: { value: number }) {
 }
 
 export function RegressionAnalysis() {
-  const correlations = useMemo(() => computeCorrelations(), []);
+  const { data: posts, isLoading } = usePostsAnalyzed();
+  const useReal = (posts?.length ?? 0) > 0;
+
+  const correlations = useMemo(() => {
+    if (useReal && posts) return computeRealCorrelations(posts);
+    return computeMockCorrelations();
+  }, [posts, useReal]);
 
   const topPositive = useMemo(() => {
     const all: { variable: string; metric: string; value: number }[] = [];
     correlations.forEach((c) => {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
-      all.push({ variable: c.variable, metric: "Follows", value: c.rFollows });
+      all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
       all.push({ variable: c.variable, metric: "Reposts", value: c.rReposts });
-      all.push({ variable: c.variable, metric: "Follow Rate", value: c.rFollowRate });
     });
     return all.sort((a, b) => b.value - a.value).slice(0, 4);
   }, [correlations]);
@@ -37,7 +96,7 @@ export function RegressionAnalysis() {
     const all: { variable: string; metric: string; value: number }[] = [];
     correlations.forEach((c) => {
       all.push({ variable: c.variable, metric: "Views", value: c.rViews });
-      all.push({ variable: c.variable, metric: "Follow Rate", value: c.rFollowRate });
+      all.push({ variable: c.variable, metric: "Likes", value: c.rLikes });
     });
     return all.sort((a, b) => a.value - b.value).slice(0, 4);
   }, [correlations]);
@@ -46,22 +105,23 @@ export function RegressionAnalysis() {
     { key: "rViews", label: "r(Views)" },
     { key: "rLikes", label: "r(Likes)" },
     { key: "rReposts", label: "r(Reposts)" },
-    { key: "rFollows", label: "r(Follows)" },
     { key: "rLikeRate", label: "r(Like%)" },
     { key: "rRepostRate", label: "r(Repost%)" },
-    { key: "rFollowRate", label: "r(Follow%)" },
   ];
+
+  if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <div className="space-y-8">
       <div>
         <h3 className="text-lg font-semibold text-[hsl(0,0%,95%)]">Pearson Correlation Coefficients</h3>
         <p className="text-sm text-[hsl(260,10%,50%)] mt-1">
-          Real correlations computed across all posts. Values range from -1 (inverse) to +1 (strong positive).
+          {useReal
+            ? `Real correlations computed from ${posts!.length} posts. Values range from -1 (inverse) to +1 (strong positive).`
+            : "Mock correlations. Fetch your real posts to see actual data."}
         </p>
       </div>
 
-      {/* Correlation Table */}
       <div className="overflow-x-auto rounded-lg border border-[hsl(260,20%,18%)]">
         <table className="w-full text-xs">
           <thead>
@@ -87,7 +147,6 @@ export function RegressionAnalysis() {
         </table>
       </div>
 
-      {/* Insight Boxes */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-lg border-2 border-emerald-500/40 bg-emerald-500/5 p-5">
           <h4 className="text-sm font-bold text-emerald-400 mb-3">✅ Strongest Positive Drivers</h4>
