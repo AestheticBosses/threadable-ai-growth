@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.generate-strategy]
 verify_jwt = false
+
+[functions.analyze-voice]
+verify_jwt = false
