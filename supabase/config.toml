@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.threads-auth-url]
 verify_jwt = false
+
+[functions.fetch-user-posts]
+verify_jwt = false
