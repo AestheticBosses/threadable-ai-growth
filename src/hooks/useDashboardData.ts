@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { differenceInCalendarDays } from "date-fns";
 import { subDays, startOfDay } from "date-fns";
 
 export type DateRange = "7" | "30" | "90" | "custom";
@@ -92,6 +93,24 @@ export function useDashboardData(filters: DashboardFilters) {
     enabled: !!userId,
   });
 
+  // Compute posting streak from published posts
+  const publishedPostsQuery = useQuery({
+    queryKey: ["dashboard-streak", userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await supabase
+        .from("scheduled_posts")
+        .select("published_at")
+        .eq("user_id", userId)
+        .eq("status", "published")
+        .not("published_at", "is", null)
+        .order("published_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!userId,
+  });
+
   const posts = postsQuery.data ?? [];
   const totalViews = posts.reduce((sum, p) => sum + (p.views ?? 0), 0);
   const avgEngagement = posts.length > 0
@@ -102,6 +121,34 @@ export function useDashboardData(filters: DashboardFilters) {
   const latestReport = weeklyReportsQuery.data?.[0] ?? null;
   const previousReport = weeklyReportsQuery.data?.[1] ?? null;
 
+  // Calculate streak
+  const publishedPosts = publishedPostsQuery.data ?? [];
+  let streak = 0;
+  if (publishedPosts.length > 0) {
+    const uniqueDays = new Set(
+      publishedPosts.map((p) => new Date(p.published_at!).toDateString())
+    );
+    const sortedDays = Array.from(uniqueDays)
+      .map((d) => new Date(d))
+      .sort((a, b) => b.getTime() - a.getTime());
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if most recent post is today or yesterday
+    if (sortedDays.length > 0) {
+      const diff = differenceInCalendarDays(today, sortedDays[0]);
+      if (diff <= 1) {
+        streak = 1;
+        for (let i = 1; i < sortedDays.length; i++) {
+          const gap = differenceInCalendarDays(sortedDays[i - 1], sortedDays[i]);
+          if (gap === 1) streak++;
+          else break;
+        }
+      }
+    }
+  }
+
   return {
     posts,
     totalViews,
@@ -111,6 +158,7 @@ export function useDashboardData(filters: DashboardFilters) {
     previousReport,
     followerSnapshots: followerSnapshotsQuery.data ?? [],
     profile: profileQuery.data,
+    streak,
     isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading,
   };
 }
