@@ -127,8 +127,8 @@ const Onboarding = () => {
 
   const handleConnectThreads = () => {
     if (!user) return;
-    const clientId = import.meta.env.VITE_THREADS_APP_ID;
-    const redirectUri = import.meta.env.VITE_THREADS_REDIRECT_URI;
+    const clientId = import.meta.env.VITE_THREADS_APP_ID || "921740210802274";
+    const redirectUri = import.meta.env.VITE_THREADS_REDIRECT_URI || "https://iobnntqhmswxtubkdjon.supabase.co/functions/v1/threads-oauth-callback";
     if (!clientId || !redirectUri) {
       toast({ title: "Configuration error", description: "Threads OAuth is not configured.", variant: "destructive" });
       return;
