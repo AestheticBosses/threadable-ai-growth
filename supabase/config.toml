@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.score-post]
 verify_jwt = false
+
+[functions.publish-post]
+verify_jwt = false
