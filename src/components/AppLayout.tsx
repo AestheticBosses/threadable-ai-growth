@@ -9,12 +9,15 @@ import {
   X,
   Zap,
   LogOut,
+  MoreHorizontal,
+  BarChart3,
 } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const navItems = [
   { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
@@ -24,15 +27,30 @@ const navItems = [
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
+// Bottom tab items for mobile — limited to 4 + "More"
+const mobileTabItems = [
+  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { title: "Queue", path: "/queue", icon: CalendarClock },
+  { title: "Strategy", path: "/strategy", icon: Lightbulb },
+];
+
+const moreItems = [
+  { title: "Voice", path: "/voice", icon: Mic2 },
+  { title: "Analyze", path: "/analyze", icon: BarChart3 },
+  { title: "Settings", path: "/settings", icon: Settings },
+];
+
 interface AppSidebarProps {
   children: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppSidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const isMobile = useIsMobile();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -103,37 +121,14 @@ export function AppLayout({ children }: AppSidebarProps) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
+      {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-56 md:flex-col bg-sidebar border-r border-sidebar-border">
         {sidebarContent}
       </aside>
 
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 w-56 bg-sidebar transform transition-transform duration-200 ease-in-out md:hidden",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="absolute top-3 right-3 text-sidebar-foreground hover:text-sidebar-primary"
-        >
-          <X className="h-5 w-5" />
-        </button>
-        {sidebarContent}
-      </aside>
-
       <div className="flex flex-1 flex-col min-w-0">
+        {/* Mobile top header — no hamburger, just logo */}
         <header className="flex h-14 items-center border-b px-4 md:hidden">
-          <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="mr-2">
-            <Menu className="h-5 w-5" />
-          </Button>
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
               <Zap className="h-3.5 w-3.5 text-primary-foreground" />
@@ -142,9 +137,78 @@ export function AppLayout({ children }: AppSidebarProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto bg-background">
+        <main className="flex-1 overflow-auto bg-background pb-20 md:pb-0">
           {children}
         </main>
+
+        {/* Mobile Bottom Tab Bar */}
+        {isMobile && (
+          <>
+            {/* More menu overlay */}
+            {moreOpen && (
+              <div className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-sm" onClick={() => setMoreOpen(false)} />
+            )}
+            {moreOpen && (
+              <div className="fixed bottom-16 right-2 z-50 rounded-lg border bg-card shadow-lg p-2 space-y-1 min-w-[180px]">
+                {moreItems.map((item) => (
+                  <button
+                    key={item.path}
+                    onClick={() => { navigate(item.path); setMoreOpen(false); }}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors",
+                      isActive(item.path)
+                        ? "bg-primary/10 text-primary"
+                        : "text-foreground hover:bg-muted"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.title}
+                  </button>
+                ))}
+                <div className="border-t border-border my-1" />
+                <button
+                  onClick={() => { handleSignOut(); setMoreOpen(false); }}
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+            )}
+
+            <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+              <div className="flex items-center justify-around h-16">
+                {mobileTabItems.map((item) => (
+                  <button
+                    key={item.path}
+                    onClick={() => navigate(item.path)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 py-1 px-3 rounded-md transition-colors min-w-[60px]",
+                      isActive(item.path)
+                        ? "text-primary"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span className="text-[10px] font-medium">{item.title}</span>
+                  </button>
+                ))}
+                <button
+                  onClick={() => setMoreOpen(!moreOpen)}
+                  className={cn(
+                    "flex flex-col items-center gap-1 py-1 px-3 rounded-md transition-colors min-w-[60px]",
+                    moreOpen || moreItems.some((i) => isActive(i.path))
+                      ? "text-primary"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                  <span className="text-[10px] font-medium">More</span>
+                </button>
+              </div>
+            </nav>
+          </>
+        )}
       </div>
     </div>
   );

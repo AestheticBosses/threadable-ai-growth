@@ -4,10 +4,18 @@ import { KPICards } from "@/components/dashboard/KPICards";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
+import { StreakBanner } from "@/components/dashboard/StreakBanner";
+import { EmptyState } from "@/components/EmptyState";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
+  usePageTitle("Dashboard", "Your Threads analytics and performance overview");
+  const navigate = useNavigate();
   const [range, setRange] = useState<DateRange>("30");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
@@ -20,6 +28,7 @@ const Dashboard = () => {
     latestReport,
     previousReport,
     followerSnapshots,
+    streak,
     isLoading,
   } = useDashboardData({ range, customFrom, customTo });
 
@@ -30,7 +39,7 @@ const Dashboard = () => {
 
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8 space-y-6">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -55,8 +64,21 @@ const Dashboard = () => {
               {[1,2,3,4].map(i => <Skeleton key={i} className="h-64 rounded-lg" />)}
             </div>
           </div>
+        ) : posts.length === 0 ? (
+          <EmptyState
+            icon={<BarChart3 className="h-7 w-7 text-muted-foreground" />}
+            title="No Posts Analyzed Yet"
+            description="Run an analysis to start seeing your performance metrics here."
+            action={
+              <Button onClick={() => navigate("/analyze")} className="mt-2">
+                Run Analysis
+              </Button>
+            }
+          />
         ) : (
           <>
+            <StreakBanner streak={streak} />
+
             <KPICards
               totalFollowers={latestFollowers}
               followerGrowth={followerGrowth}

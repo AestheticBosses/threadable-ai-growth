@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { ThreadsConnectionCard } from "@/components/settings/ThreadsConnectionCard";
 import { ProfileCard } from "@/components/settings/ProfileCard";
 import { ContentPreferencesCard } from "@/components/settings/ContentPreferencesCard";
@@ -22,6 +23,7 @@ interface ProfileData {
 }
 
 const SettingsPage = () => {
+  usePageTitle("Settings", "Manage your account, integrations, and preferences");
   const { user } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);

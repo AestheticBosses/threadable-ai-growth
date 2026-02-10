@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,7 @@ const PILLAR_COLORS = [
 ];
 
 const Strategy = () => {
+  usePageTitle("Content Strategy", "Your data-driven weekly content plan");
   const navigate = useNavigate();
   const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -169,7 +171,7 @@ const Strategy = () => {
 
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8 space-y-8">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
