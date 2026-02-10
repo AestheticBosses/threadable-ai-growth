@@ -7,15 +7,35 @@ import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText } from "lucide-react";
+import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { subDays, startOfDay } from "date-fns";
+
+interface DiscoveredArchetype {
+  name: string;
+  emoji: string;
+  description: string;
+  drives: string;
+  avg_views: number;
+  avg_engagement: number;
+  key_ingredients: string[];
+  template: string;
+  recommended_percentage: number;
+  example_posts: string[];
+}
+
+interface ArchetypeDiscovery {
+  archetypes: DiscoveredArchetype[];
+  weekly_schedule: { day: string; archetype: string; notes: string }[];
+  rules: string[];
+}
 
 function PctChange({ value }: { value: number }) {
   if (value === 0) return <span className="text-xs text-muted-foreground">—</span>;
@@ -60,6 +80,7 @@ const Dashboard = () => {
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
 
   // Single data source — the same query that powers Archetype cards & posts table
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
@@ -93,6 +114,23 @@ const Dashboard = () => {
     },
     enabled: !!user?.id,
   });
+
+  // Discovered archetypes query
+  const archetypeQuery = useQuery({
+    queryKey: ["discovered-archetypes", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/content_strategies?user_id=eq.${user.id}&strategy_type=eq.archetype_discovery&select=strategy_data&limit=1`,
+        { headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` } }
+      );
+      const rows = await res.json();
+      return (rows?.[0]?.strategy_data as ArchetypeDiscovery) ?? null;
+    },
+    enabled: !!user?.id,
+  });
+
+  const discoveredArchetypes = archetypeQuery.data;
 
   const profile = profileQuery.data;
   const followerSnapshots = followerQuery.data ?? [];
@@ -171,6 +209,27 @@ const Dashboard = () => {
     }
   };
 
+  const handleDiscoverArchetypes = async () => {
+    if (!user) return;
+    setDiscovering(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Not logged in"); return; }
+      const { data, error } = await supabase.functions.invoke("discover-archetypes", {
+        body: {},
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) { toast.error(error.message || "Failed to discover archetypes"); return; }
+      const count = data?.analysis?.archetypes?.length ?? 0;
+      toast.success(`Discovered ${count} archetypes from your data!`);
+      queryClient.invalidateQueries({ queryKey: ["discovered-archetypes"] });
+    } catch (err) {
+      toast.error("Failed to discover archetypes");
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   const statCards = [
     { label: "Views", value: periodStats.views, change: periodChanges.views, icon: Eye },
     { label: "Likes", value: periodStats.likes, change: periodChanges.likes, icon: Heart },
@@ -183,6 +242,15 @@ const Dashboard = () => {
   const hasAnyData = (allPosts?.length ?? 0) > 0;
   const isLoading = postsLoading && !allPosts;
 
+  const ARCHETYPE_COLORS = [
+    "border-violet-500/50", "border-emerald-500/50", "border-yellow-500/50",
+    "border-blue-500/50", "border-rose-500/50",
+  ];
+  const ARCHETYPE_LABEL_COLORS = [
+    "text-violet-400", "text-emerald-400", "text-yellow-400",
+    "text-blue-400", "text-rose-400",
+  ];
+
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-5">
@@ -192,7 +260,7 @@ const Dashboard = () => {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your Threads analytics at a glance.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Button
               onClick={handleFetchPosts}
               disabled={fetching}
@@ -200,6 +268,18 @@ const Dashboard = () => {
             >
               <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
               {fetching ? "Fetching…" : "Fetch My Posts"}
+            </Button>
+            <Button
+              onClick={handleDiscoverArchetypes}
+              disabled={discovering || !hasAnyData}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {discovering ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1.5" />
+              )}
+              {discovering ? "Analyzing…" : "✨ Discover Archetypes"}
             </Button>
             <DateRangeSelector
               range={range}
@@ -210,6 +290,18 @@ const Dashboard = () => {
             />
           </div>
         </div>
+
+        {/* Loading overlay for archetype discovery */}
+        {discovering && (
+          <div style={{ background: 'rgba(147,51,234,0.08)', border: '1px solid rgba(147,51,234,0.3)', borderRadius: '10px', padding: '16px' }}
+            className="flex items-center gap-3"
+          >
+            <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
+            <span style={{ color: '#c4b5fd', fontSize: '14px', fontWeight: 500 }}>
+              Claude is analyzing your content patterns…
+            </span>
+          </div>
+        )}
 
         {!hasAnyData && !isLoading ? (
           <EmptyState
@@ -295,7 +387,79 @@ const Dashboard = () => {
           </>
         )}
 
-        {/* Section 3 & 4: Archetype Performance + All Analyzed Posts */}
+        {/* Section 3: Discovered Archetypes */}
+        {hasAnyData && (
+          <div className="space-y-3">
+            <h3 style={{ color: '#e8e4de', fontSize: '16px', fontWeight: 600 }}>
+              {discoveredArchetypes ? "Your Content Archetypes" : "Content Archetypes"}
+            </h3>
+            {discoveredArchetypes?.archetypes ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {discoveredArchetypes.archetypes.map((a, i) => (
+                  <div
+                    key={a.name}
+                    className={`border-2 ${ARCHETYPE_COLORS[i % ARCHETYPE_COLORS.length]}`}
+                    style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '10px', padding: '16px' }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[i % ARCHETYPE_LABEL_COLORS.length]}`}>
+                        {a.emoji} {a.name}
+                      </h4>
+                      <Badge variant="outline" className="text-xs" style={{ color: '#8a8680', borderColor: 'rgba(255,255,255,0.15)' }}>
+                        {a.recommended_percentage}%
+                      </Badge>
+                    </div>
+                    <p style={{ color: '#c4c0ba', fontSize: '12px', lineHeight: 1.5, marginBottom: '10px' }}>
+                      {a.description}
+                    </p>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between">
+                        <span style={{ color: '#8a8680' }}>Drives</span>
+                        <span style={{ color: '#e8e4de', fontWeight: 600 }}>{a.drives}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-3">
+                      {a.key_ingredients.map((ing) => (
+                        <span
+                          key={ing}
+                          style={{
+                            fontSize: '10px',
+                            color: '#c4c0ba',
+                            background: 'rgba(255,255,255,0.06)',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          {ing}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: 'rgba(147,51,234,0.05)',
+                  border: '1px dashed rgba(147,51,234,0.3)',
+                  borderRadius: '10px',
+                  padding: '24px',
+                  textAlign: 'center',
+                }}
+              >
+                <Sparkles className="h-6 w-6 mx-auto mb-2 text-purple-400" />
+                <p style={{ color: '#c4b5fd', fontSize: '14px', fontWeight: 500 }}>
+                  Click "✨ Discover Archetypes" to let AI analyze your content patterns
+                </p>
+                <p style={{ color: '#8a8680', fontSize: '12px', marginTop: '4px' }}>
+                  Claude will analyze your top posts and discover your unique content types
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 4: All Analyzed Posts Table */}
         {hasAnyData && (
           <AnalysisOverview range={range} customFrom={customFrom} customTo={customTo} />
         )}
