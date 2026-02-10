@@ -44,14 +44,24 @@ const Dashboard = () => {
     if (!user) return;
     setFetching(true);
     try {
-      const { data, error } = await supabase.functions.invoke("fetch-user-posts");
-      console.log("Fetch response:", { data, error });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Not logged in");
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke("fetch-user-posts", {
+        body: {},
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      console.log("Fetch response:", data, error);
       if (error) {
         console.error("Fetch posts error:", error);
         toast.error(error.message || "Failed to fetch posts");
         return;
       }
-      toast.success(`Fetched ${data.total_posts} posts from Threads!`);
+      toast.success(`Fetched ${data?.total_posts || 0} posts from Threads!`);
       queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] });
     } catch (err) {
       console.error("Fetch posts error:", err);

@@ -44,7 +44,9 @@ Deno.serve(async (req) => {
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser(token);
+    } = await createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    }).auth.getUser();
 
     if (userError || !user) {
       console.error("User error:", userError);
