@@ -502,10 +502,11 @@ const Queue = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleGenerate(7)}>7 posts (1 week)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(14)}>14 posts (2 weeks)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(21)}>21 posts (3 weeks)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(30)}>30 posts (1 month)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleGenerate(7)}>7 posts (1/day for a week)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleGenerate(10)}>10 posts (recommended weekly mix)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleGenerate(30)}>30 posts (max daily output)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleGenerate(70)}>70 posts (10/day for a week)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleGenerate(210)}>210 posts (30/day for a week)</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
