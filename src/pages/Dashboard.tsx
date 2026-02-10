@@ -10,16 +10,23 @@ import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Dashboard = () => {
   usePageTitle("Dashboard", "Your Threads analytics and performance overview");
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [range, setRange] = useState<DateRange>("30");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
+  const [fetching, setFetching] = useState(false);
 
   const {
     posts,
@@ -32,6 +39,38 @@ const Dashboard = () => {
     streak,
     isLoading,
   } = useDashboardData({ range, customFrom, customTo });
+
+  const handleFetchPosts = async () => {
+    if (!user) return;
+    setFetching(true);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fetch-user-posts`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        console.error("Fetch posts error:", json);
+        toast.error(json.error || "Failed to fetch posts");
+        return;
+      }
+      toast.success(`Fetched ${json.total_posts} posts from Threads!`);
+      queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] });
+    } catch (err) {
+      console.error("Fetch posts error:", err);
+      toast.error("Failed to fetch posts from Threads");
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const latestFollowers = followerSnapshots.length > 0
     ? followerSnapshots[followerSnapshots.length - 1].follower_count
@@ -47,13 +86,23 @@ const Dashboard = () => {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your Threads analytics at a glance.</p>
           </div>
-          <DateRangeSelector
-            range={range}
-            onRangeChange={setRange}
-            customFrom={customFrom}
-            customTo={customTo}
-            onCustomChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }}
-          />
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleFetchPosts}
+              disabled={fetching}
+              className="bg-[hsl(270,60%,60%)] hover:bg-[hsl(270,60%,50%)] text-white"
+            >
+              <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
+              {fetching ? "Fetching…" : "Fetch My Posts"}
+            </Button>
+            <DateRangeSelector
+              range={range}
+              onRangeChange={setRange}
+              customFrom={customFrom}
+              customTo={customTo}
+              onCustomChange={(f, t) => { setCustomFrom(f); setCustomTo(t); }}
+            />
+          </div>
         </div>
 
         {isLoading ? (
@@ -69,11 +118,17 @@ const Dashboard = () => {
           <EmptyState
             icon={<BarChart3 className="h-7 w-7 text-muted-foreground" />}
             title="No data yet!"
-            description="Connect your Threads account and build your first strategy to see your analytics here."
+            description="Connect your Threads account and click 'Fetch My Posts' to pull in your real analytics data."
             action={
-              <Button onClick={() => navigate("/onboarding")} className="mt-2">
-                Get Started
-              </Button>
+              <div className="flex gap-3 mt-2">
+                <Button onClick={() => navigate("/onboarding")} variant="outline">
+                  Connect Threads
+                </Button>
+                <Button onClick={handleFetchPosts} disabled={fetching} className="bg-[hsl(270,60%,60%)] hover:bg-[hsl(270,60%,50%)] text-white">
+                  <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
+                  {fetching ? "Fetching…" : "Fetch My Posts"}
+                </Button>
+              </div>
             }
           />
         ) : (
