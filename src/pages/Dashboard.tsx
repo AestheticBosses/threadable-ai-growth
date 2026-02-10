@@ -41,6 +41,7 @@ const Dashboard = () => {
   } = useDashboardData({ range, customFrom, customTo });
 
   const handleFetchPosts = async () => {
+    console.log("Fetch button clicked");
     if (!user) return;
     setFetching(true);
     try {
@@ -63,6 +64,7 @@ const Dashboard = () => {
       }
       toast.success(`Fetched ${data?.total_posts || 0} posts from Threads!`);
       queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] });
+      queryClient.invalidateQueries({ queryKey: ["posts-analyzed-own"] });
     } catch (err) {
       console.error("Fetch posts error:", err);
       toast.error("Failed to fetch posts from Threads");

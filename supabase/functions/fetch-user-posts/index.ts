@@ -82,6 +82,15 @@ Deno.serve(async (req) => {
     const posts = threadsJson.data || []
     console.log("Posts found:", posts.length)
 
+    // Cleanup: delete mock/placeholder posts for this user
+    const { error: cleanupErr } = await adminClient
+      .from('posts_analyzed')
+      .delete()
+      .eq('user_id', userId)
+      .like('text_content', 'Mock post%')
+    if (cleanupErr) console.error("Cleanup error:", cleanupErr.message)
+    else console.log("Cleaned up mock posts")
+
     let saved = 0
     for (const post of posts) {
       try {
@@ -107,6 +116,7 @@ Deno.serve(async (req) => {
           user_id: userId,
           threads_media_id: post.id,
           text_content: text,
+          source: 'own',
           posted_at: post.timestamp,
           views,
           likes,
