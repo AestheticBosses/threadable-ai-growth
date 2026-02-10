@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/EmptyState";
 import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { useDashboardData, type DateRange } from "@/hooks/useDashboardData";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { Skeleton } from "@/components/ui/skeleton";
 import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Flame, Eye, Heart, MessageCircle, Repeat2, Quote, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -34,7 +33,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [range, setRange] = useState<DateRange>("90");
+  const [range, setRange] = useState<DateRange>("all");
   const [customFrom, setCustomFrom] = useState<Date | undefined>();
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
@@ -125,14 +124,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-20 rounded-lg" />
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="h-24 rounded-lg" />)}
-            </div>
-          </div>
-        ) : !hasAnyData ? (
+        {!hasAnyData && !isLoading ? (
           <EmptyState
             icon={<BarChart3 className="h-7 w-7 text-muted-foreground" />}
             title="No data yet!"
@@ -152,7 +144,7 @@ const Dashboard = () => {
         ) : (
           <>
             {/* Account Overview Bar */}
-            {(() => { console.log("[Dashboard] profile data:", profile, "latestFollowers:", latestFollowers, "followerChange:", followerChange); return null; })()}
+            
             <div
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '16px' }}
               className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
@@ -197,7 +189,7 @@ const Dashboard = () => {
             </div>
 
             {/* Period Stats — 6 Cards */}
-            {(() => { console.log("[Dashboard] periodStats:", periodStats, "periodChanges:", periodChanges); return null; })()}
+            
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {statCards.map((s) => (
                 <div

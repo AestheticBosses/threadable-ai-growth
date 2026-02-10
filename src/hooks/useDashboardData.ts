@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { differenceInCalendarDays } from "date-fns";
 import { subDays, startOfDay } from "date-fns";
 
-export type DateRange = "7" | "30" | "90" | "custom";
+export type DateRange = "all" | "7" | "30" | "90" | "custom";
 
 interface DashboardFilters {
   range: DateRange;
@@ -13,6 +13,7 @@ interface DashboardFilters {
 }
 
 function getRangeStart(filters: DashboardFilters): Date {
+  if (filters.range === "all") return new Date("2020-01-01");
   if (filters.range === "custom" && filters.customFrom) return filters.customFrom;
   const days = parseInt(filters.range, 10);
   return startOfDay(subDays(new Date(), days));
@@ -253,6 +254,10 @@ export function useDashboardData(filters: DashboardFilters) {
     periodStats,
     periodChanges,
     allPostsCount: allPostsCountQuery.data ?? 0,
-    isLoading: postsQuery.isLoading || weeklyReportsQuery.isLoading || followerSnapshotsQuery.isLoading || profileQuery.isLoading || allPostsCountQuery.isLoading,
+    isLoading: postsQuery.isFetching && !postsQuery.isFetched
+      || weeklyReportsQuery.isFetching && !weeklyReportsQuery.isFetched
+      || followerSnapshotsQuery.isFetching && !followerSnapshotsQuery.isFetched
+      || profileQuery.isFetching && !profileQuery.isFetched
+      || allPostsCountQuery.isFetching && !allPostsCountQuery.isFetched,
   };
 }
