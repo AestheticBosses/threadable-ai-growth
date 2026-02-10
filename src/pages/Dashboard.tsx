@@ -97,6 +97,9 @@ const Dashboard = () => {
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        <div style={{ color: 'red', padding: 20, fontSize: 16, background: 'black', border: '2px solid red', marginBottom: 12 }}>
+          DEBUG: Dashboard rendered. hasAnyData = {String(hasAnyData)}, postsCount = {posts?.length ?? 'null'}, isLoading = {String(isLoading)}, allPostsCount = {String(allPostsCount)}, userId = {String(user?.id ?? 'none')}
+        </div>
         {/* Header with date selector */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
