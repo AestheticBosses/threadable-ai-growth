@@ -269,8 +269,10 @@ export type Database = {
           id: string
           media_type: string | null
           media_url: string | null
+          pre_post_score: number | null
           published_at: string | null
           scheduled_for: string | null
+          score_breakdown: Json | null
           status: string | null
           strategy_id: string | null
           text_content: string | null
@@ -286,8 +288,10 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          pre_post_score?: number | null
           published_at?: string | null
           scheduled_for?: string | null
+          score_breakdown?: Json | null
           status?: string | null
           strategy_id?: string | null
           text_content?: string | null
@@ -303,8 +307,10 @@ export type Database = {
           id?: string
           media_type?: string | null
           media_url?: string | null
+          pre_post_score?: number | null
           published_at?: string | null
           scheduled_for?: string | null
+          score_breakdown?: Json | null
           status?: string | null
           strategy_id?: string | null
           text_content?: string | null
