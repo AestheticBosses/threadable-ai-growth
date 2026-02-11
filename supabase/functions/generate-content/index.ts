@@ -320,19 +320,47 @@ Deno.serve(async (req) => {
     const offers = vaultSections.offers || [];
     const audience = vaultSections.audience || null;
 
-    // Build vault context
+    // Build vault context with role attribution
     let vaultContext = "";
-    if (numbers.length > 0) {
-      const numbersText = numbers.map((n: any) => `- ${n.label}: ${n.value} (${n.context})`).join("\n");
-      vaultContext += `\nTHEIR REAL NUMBERS (use ONLY these facts, never make up numbers):\n${numbersText}\n`;
-    }
-    if (stories.length > 0) {
-      const storiesText = stories.map((s: any) => `- "${s.title}": ${s.story}\n  Lesson: ${s.lesson}\n  Tags: ${(s.tags || []).join(", ")}`).join("\n");
-      vaultContext += `\nTHEIR REAL STORIES (reference these, don't invent stories):\n${storiesText}\n`;
+    if (numbers.length > 0 || stories.length > 0) {
+      // Build numbers with story context cross-referenced
+      vaultContext += `\nIMPORTANT CONTEXT FOR EACH STAT AND STORY:\n`;
+      
+      if (numbers.length > 0) {
+        const numbersWithContext = numbers.map((n: any) => {
+          // Find matching story for this number
+          const relatedStory = stories.find((s: any) => {
+            const storyText = `${s.title} ${s.story}`.toLowerCase();
+            const numLabel = (n.label || "").toLowerCase();
+            const numContext = (n.context || "").toLowerCase();
+            return storyText.includes(numContext.split(" ")[0]) || numContext.includes((s.title || "").toLowerCase().split(" ")[0]);
+          });
+          let attribution = n.context || "";
+          if (relatedStory) {
+            attribution += ` (From story: "${relatedStory.title}" — ${relatedStory.story.slice(0, 150)})`;
+          }
+          return `- ${n.label}: ${n.value} — ${attribution}`;
+        }).join("\n");
+        vaultContext += `\nREAL NUMBERS (use ONLY these facts, never make up numbers):\n${numbersWithContext}\n`;
+      }
+      
+      if (stories.length > 0) {
+        const storiesText = stories.map((s: any, i: number) => 
+          `Story ${i + 1}: "${s.title}"\n  What happened: ${s.story}\n  Lesson learned: ${s.lesson}\n  Tags: ${(s.tags || []).join(", ")}`
+        ).join("\n\n");
+        vaultContext += `\nREAL STORIES (reference these, don't invent stories — note the ROLE in each story):\n${storiesText}\n`;
+      }
+      
+      vaultContext += `\nATTRIBUTION RULES:
+- Read each story carefully to understand the user's ROLE (owner, CMO, VP, director, etc.)
+- NEVER say "I built" or "my business" unless the story says they OWNED it
+- For roles like CMO/VP/Director, say "I scaled..." or "I helped grow..." or "As CMO, I..."
+- Cross-reference numbers with stories — each stat belongs to a specific company/role
+- When in doubt, use "I helped scale" rather than "I built"\n`;
     }
     if (offers.length > 0) {
       const offersText = offers.map((o: any) => `- ${o.offer_name} (${o.price}): ${o.description}\n  Target: ${o.target_audience}\n  CTA: "${o.cta_phrase}" | Link: ${o.link}`).join("\n");
-      vaultContext += `\nTHEIR OFFERS (for BOF posts):\n${offersText}\n`;
+      vaultContext += `\nTHEIR OFFERS (for BOF posts ONLY):\n${offersText}\n`;
     }
     if (audience) {
       vaultContext += `\nTHEIR TARGET AUDIENCE:\nDescription: ${audience.description || "N/A"}\nPain points: ${(audience.pain_points || []).join(", ") || "N/A"}\nDesires: ${(audience.desires || []).join(", ") || "N/A"}\nLanguage they use: ${(audience.language_they_use || []).join(", ") || "N/A"}\n`;
@@ -479,7 +507,7 @@ ${topPostsRef || "No posts available"}
 
 RULES:
 1. Match this person's EXACT voice. Read the style reference carefully.
-2. Each post MUST be under 500 characters.
+2. HARD LIMIT: Every post MUST be under 500 characters including spaces and emojis. Count carefully. Posts over 500 characters will be rejected by the Threads API.
 3. Include credibility markers naturally when relevant.
 4. Front-load the hook. First line must stop the scroll.
 5. Use line breaks for readability.
@@ -541,13 +569,23 @@ Return as a JSON array of objects with: text, content_category, funnel_stage (TO
       const [hours, minutes] = (post.suggested_time || "09:00").split(":").map(Number);
       dayDate.setHours(hours || 9, minutes || 0, 0, 0);
 
+      // Enforce 500 character hard limit
+      if (bestText.length > 500) {
+        // Truncate at last sentence boundary before 500 chars
+        const truncated = bestText.slice(0, 497);
+        const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('\n'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
+        bestText = lastPeriod > 200 ? truncated.slice(0, lastPeriod + 1) : truncated + "...";
+      }
+
+      const postStatus = bestText.length > 500 ? "needs_edit" : "draft";
+
       const postRow: any = {
         user_id: userId,
         text_content: bestText,
         content_category: post.content_category,
         funnel_stage: post.funnel_stage || "TOF",
         scheduled_for: dayDate.toISOString(),
-        status: "draft",
+        status: postStatus,
         ai_generated: true,
         pre_post_score: bestResult.score,
         score_breakdown: bestResult.breakdown,
