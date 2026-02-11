@@ -38,6 +38,207 @@ async function callScorePost(
   return await res.json();
 }
 
+const HOOK_STYLES = [
+  { name: "NAME DROP", instruction: "Open with a specific person's name and what you learned from them or observed about them." },
+  { name: "VULNERABLE ADMISSION", instruction: "Open with something you failed at, got wrong, or were embarrassed by." },
+  { name: "CONTRARIAN ONE-LINER", instruction: "One provocative sentence that challenges conventional wisdom. No story, no stats — just the take." },
+  { name: "SCENE SETTING", instruction: "Open with a specific moment in time (e.g., '9pm, kids asleep, laptop open' or 'Tuesday morning, client call #4')." },
+  { name: "QUESTION", instruction: "Open with a provocative question your audience secretly asks themselves." },
+  { name: "DATA LEAD", instruction: "Open with a specific number, result, or metric — then explain." },
+  { name: "DIRECT CTA", instruction: "Lead with what you're offering and why someone should care right now." },
+  { name: "BOLD CLAIM", instruction: "Open with a strong declarative statement that makes people stop scrolling." },
+  { name: "STORY OPENER", instruction: "Open with the first line of a real story from the vault — drop the reader into a scene." },
+  { name: "LIST/STEPS", instruction: "Open with a numbered insight or 'X things I learned' format." },
+  { name: "ANALOGY", instruction: "Open with a surprising comparison or metaphor that reframes a concept." },
+  { name: "CONFESSION", instruction: "Open with an honest admission that builds trust — something most people in your niche wouldn't say publicly." },
+];
+
+function buildHookAssignments(
+  count: number,
+  tofCount: number,
+  mofCount: number,
+  bofCount: number,
+  playbookSchedule: any[] | null,
+): string {
+  const posts: string[] = [];
+  const stages: string[] = [];
+
+  // Build stage list
+  for (let i = 0; i < tofCount; i++) stages.push("TOF");
+  for (let i = 0; i < mofCount; i++) stages.push("MOF");
+  for (let i = 0; i < bofCount; i++) stages.push("BOF");
+  // Pad or trim to match count
+  while (stages.length < count) stages.push("TOF");
+  stages.length = count;
+
+  // Shuffle stages so they're not all grouped
+  for (let i = stages.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [stages[i], stages[j]] = [stages[j], stages[i]];
+  }
+
+  // Assign hook styles — rotate and ensure no two adjacent posts share a style
+  const shuffledHooks = [...HOOK_STYLES].sort(() => Math.random() - 0.5);
+  const usedRecently: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const stage = stages[i];
+    // Pick a hook that wasn't used in the last 2 posts
+    let hook = shuffledHooks[i % shuffledHooks.length];
+    for (const candidate of shuffledHooks) {
+      if (!usedRecently.includes(candidate.name)) {
+        hook = candidate;
+        break;
+      }
+    }
+    usedRecently.push(hook.name);
+    if (usedRecently.length > 2) usedRecently.shift();
+
+    // Get archetype from playbook schedule if available
+    const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const dayIdx = i % 7;
+    let archetype = "";
+    if (playbookSchedule && playbookSchedule.length > 0) {
+      const scheduleEntry = playbookSchedule.find(
+        (s: any) => s.day?.toLowerCase() === dayNames[dayIdx].toLowerCase()
+      );
+      archetype = scheduleEntry?.archetype || "";
+    }
+
+    const archetypeLabel = archetype ? `${archetype} / ` : "";
+    posts.push(
+      `Post ${i + 1}: [${archetypeLabel}${stage}] — Hook style: ${hook.name}. ${hook.instruction}`
+    );
+  }
+
+  return posts.join("\n");
+}
+
+async function callAI(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  useTool: boolean = true,
+): Promise<any[]> {
+  const body: any = {
+    model: "google/gemini-3-flash-preview",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  };
+
+  if (useTool) {
+    body.tools = [{
+      type: "function",
+      function: {
+        name: "output_posts",
+        description: "Output the generated posts",
+        parameters: {
+          type: "object",
+          properties: {
+            posts: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  text: { type: "string" },
+                  content_category: { type: "string" },
+                  funnel_stage: { type: "string", enum: ["TOF", "MOF", "BOF"] },
+                  suggested_day: { type: "string" },
+                  suggested_time: { type: "string" },
+                },
+                required: ["text", "content_category", "funnel_stage", "suggested_day", "suggested_time"],
+              },
+            },
+          },
+          required: ["posts"],
+        },
+      },
+    }];
+    body.tool_choice = { type: "function", function: { name: "output_posts" } };
+  }
+
+  const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!aiResponse.ok) {
+    const status = aiResponse.status;
+    if (status === 429) throw new Error("Rate limit exceeded. Please try again shortly.");
+    if (status === 402) throw new Error("AI credits exhausted. Please add funds.");
+    throw new Error("AI generation failed");
+  }
+
+  const aiData = await aiResponse.json();
+  const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+  if (toolCall?.function?.arguments) {
+    const parsed = typeof toolCall.function.arguments === "string"
+      ? JSON.parse(toolCall.function.arguments)
+      : toolCall.function.arguments;
+    return parsed.posts || parsed;
+  }
+  const content = aiData.choices?.[0]?.message?.content || "";
+  const jsonMatch = content.match(/\[[\s\S]*\]/);
+  if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  throw new Error("Failed to parse AI response");
+}
+
+async function deduplicatePosts(
+  apiKey: string,
+  posts: any[],
+  vaultContext: string,
+): Promise<any[]> {
+  const numberedList = posts
+    .map((p: any, i: number) => `${i + 1}. [${p.funnel_stage}] "${p.text}"`)
+    .join("\n");
+
+  const systemPrompt = `You are a content quality editor. Your ONLY job is to find repetitive or similar posts in a batch and rewrite them to be unique. You must preserve the funnel_stage, content_category, suggested_day, and suggested_time of each post.`;
+
+  const userPrompt = `Review this batch of posts and identify problems:
+
+POSTS TO REVIEW:
+${numberedList}
+
+${vaultContext}
+
+CHECK FOR:
+1. Do any posts start with the same or very similar opening pattern? (e.g., "If your marketing X tells you to Y, run the fuck away" appears multiple times)
+2. Do any posts use the same key phrase more than once across the batch?
+3. Do any posts reference the same statistic more than once? (e.g., $350K/mo or $3.5M/year used in 3+ posts)
+4. Are there fewer than 4 distinctly different hook styles across the batch?
+
+For EACH duplicate or near-duplicate post found, rewrite it completely using:
+- A completely different hook style (question, one-liner, story opener, bold claim, data point, vulnerable admission, scene setting, analogy, confession)
+- A different story or data point from the vault above
+- A different emotional tone (serious, humorous, vulnerable, provocative, inspirational)
+
+IMPORTANT: Return the COMPLETE final batch with all rewrites applied. Keep non-duplicate posts exactly as-is.
+Return as a JSON array with objects containing: text, content_category, funnel_stage, suggested_day, suggested_time.`;
+
+  try {
+    const result = await callAI(apiKey, systemPrompt, userPrompt, true);
+    if (Array.isArray(result) && result.length === posts.length) {
+      // Merge back any missing fields from originals
+      return result.map((newPost: any, i: number) => ({
+        ...posts[i],
+        ...newPost,
+        text: newPost.text || posts[i].text,
+      }));
+    }
+    console.warn("Dedup pass returned unexpected count, using originals");
+    return posts;
+  } catch (e) {
+    console.error("Dedup pass failed, using originals:", e);
+    return posts;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -181,6 +382,8 @@ Summary: ${voiceProfile.overall_summary || "N/A"}`
 
     let playbookContext = "";
     let checklistContext = "";
+    const playbookSchedule = playbookData?.weekly_schedule || null;
+
     if (playbookData) {
       const scheduleText = (playbookData.weekly_schedule || [])
         .map((s: any) => `${s.day}: ${s.archetype} (${s.notes})`)
@@ -227,6 +430,11 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
 
     const actualCount = regeneratePostId ? 1 : postsCount;
     const categoryHint = regenerateCategory ? `\nContent category MUST be: ${regenerateCategory}` : "";
+
+    // Build dynamic hook assignments for each post
+    const hookAssignments = buildHookAssignments(
+      actualCount, tofCount, mofCount, bofCount, playbookSchedule,
+    );
 
     const systemPrompt = `You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
 
@@ -285,75 +493,23 @@ RULES:
 13. Each post MUST have a funnel_stage: TOF, MOF, or BOF.${categoryHint}
 ${checklistContext}`;
 
-    const generatePosts = async (count: number): Promise<any[]> => {
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Generate exactly ${count} posts. Return as a JSON array of objects with: text, content_category, funnel_stage (TOF/MOF/BOF), suggested_day, suggested_time (HH:MM format).` },
-          ],
-          tools: [{
-            type: "function",
-            function: {
-              name: "output_posts",
-              description: "Output the generated posts",
-              parameters: {
-                type: "object",
-                properties: {
-                  posts: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        text: { type: "string" },
-                        content_category: { type: "string" },
-                        funnel_stage: { type: "string", enum: ["TOF", "MOF", "BOF"] },
-                        suggested_day: { type: "string" },
-                        suggested_time: { type: "string" },
-                      },
-                      required: ["text", "content_category", "funnel_stage", "suggested_day", "suggested_time"],
-                    },
-                  },
-                },
-                required: ["posts"],
-              },
-            },
-          }],
-          tool_choice: { type: "function", function: { name: "output_posts" } },
-        }),
-      });
+    const userMessage = `Generate exactly ${actualCount} posts. Each post MUST follow its assigned hook style below — do NOT deviate.
 
-      if (!aiResponse.ok) {
-        const status = aiResponse.status;
-        if (status === 429) throw new Error("Rate limit exceeded. Please try again shortly.");
-        if (status === 402) throw new Error("AI credits exhausted. Please add funds.");
-        throw new Error("AI generation failed");
-      }
+${hookAssignments}
 
-      const aiData = await aiResponse.json();
-      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const parsed = typeof toolCall.function.arguments === "string"
-          ? JSON.parse(toolCall.function.arguments)
-          : toolCall.function.arguments;
-        return parsed.posts || parsed;
-      }
-      const content = aiData.choices?.[0]?.message?.content || "";
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) return JSON.parse(jsonMatch[0]);
-      throw new Error("Failed to parse AI response");
-    };
+Return as a JSON array of objects with: text, content_category, funnel_stage (TOF/MOF/BOF), suggested_day, suggested_time (HH:MM format).`;
 
     const now = new Date();
     const savedPosts: any[] = [];
 
-    let generatedPosts = await generatePosts(actualCount);
+    // PASS 1: Generate posts with specific hook assignments
+    let generatedPosts = await callAI(LOVABLE_API_KEY, systemPrompt, userMessage, true);
+
+    // PASS 2: Deduplication — only for batches of 3+ posts
+    if (generatedPosts.length >= 3) {
+      console.log("Running deduplication pass on", generatedPosts.length, "posts");
+      generatedPosts = await deduplicatePosts(LOVABLE_API_KEY, generatedPosts, vaultContext);
+    }
 
     for (const post of generatedPosts) {
       let bestText = post.text;
@@ -363,7 +519,11 @@ ${checklistContext}`;
       while (bestResult.score < 4 && retries < 2) {
         retries++;
         try {
-          const retryPosts = await generatePosts(1);
+          const retryPosts = await callAI(
+            LOVABLE_API_KEY, systemPrompt,
+            `Generate exactly 1 post. It must use a COMPLETELY different hook style and angle than this post: "${bestText.slice(0, 200)}". Return as JSON array.`,
+            true,
+          );
           if (retryPosts[0]) {
             const retryResult = await callScorePost(retryPosts[0].text, authHeader, SUPABASE_URL);
             if (retryResult.score > bestResult.score) {
