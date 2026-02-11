@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, CSSProperties } from "react";
+import { useState, useEffect, useRef, CSSProperties, FormEvent } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const LOGO_SRC = "/threadable-logo.png";
 
@@ -173,6 +174,7 @@ function NavBar({ activeSection, setActiveSection }: NavBarProps) {
           </button>
         ))}
         <button
+          onClick={() => document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" })}
           style={{
             background: COLORS.accent,
             color: COLORS.black,
@@ -317,6 +319,7 @@ function Hero() {
 
         <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
           <button
+            onClick={() => document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" })}
             style={{
               background: COLORS.accent,
               color: COLORS.black,
@@ -950,6 +953,7 @@ function Pricing() {
 
               {/* CTA button */}
               <button
+                onClick={() => document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" })}
                 style={{
                   background: isPopular ? COLORS.accent : "transparent",
                   color: isPopular ? COLORS.black : COLORS.textPrimary,
@@ -1436,8 +1440,31 @@ function FAQ() {
 }
 
 function CTA() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "duplicate" | "error">("idle");
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) return;
+
+    setStatus("loading");
+    const { error } = await supabase.from("waitlist_signups").insert({ email: trimmed });
+
+    if (error) {
+      if (error.code === "23505") {
+        setStatus("duplicate");
+      } else {
+        setStatus("error");
+      }
+    } else {
+      setStatus("success");
+    }
+  };
+
   return (
     <section
+      id="waitlist"
       style={{
         padding: "120px 24px",
         textAlign: "center",
@@ -1487,32 +1514,114 @@ function CTA() {
         >
           Join the waitlist. Be the first to know when Threadable goes live.
         </p>
-        <button
-          style={{
-            background: COLORS.accent,
-            color: COLORS.black,
-            border: "none",
-            padding: "16px 44px",
-            borderRadius: 10,
-            fontFamily: "'DM Sans', sans-serif",
-            fontSize: 16,
-            fontWeight: 700,
-            cursor: "pointer",
-            transition: "transform 0.2s, box-shadow 0.2s",
-          } as CSSProperties}
-          onMouseEnter={(e) => {
-            const target = e.target as HTMLButtonElement;
-            target.style.transform = "translateY(-2px)";
-            target.style.boxShadow = `0 12px 40px ${COLORS.accentGlow}`;
-          }}
-          onMouseLeave={(e) => {
-            const target = e.target as HTMLButtonElement;
-            target.style.transform = "translateY(0)";
-            target.style.boxShadow = "none";
-          }}
-        >
-          Join the Waitlist →
-        </button>
+
+        {status === "success" ? (
+          <p
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 16,
+              color: COLORS.accent,
+              fontWeight: 600,
+              lineHeight: 1.6,
+            } as CSSProperties}
+          >
+            You're on the list! We'll email you when Threadable goes live. 🎉
+          </p>
+        ) : status === "duplicate" ? (
+          <p
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 16,
+              color: COLORS.accent,
+              fontWeight: 600,
+              lineHeight: 1.6,
+            } as CSSProperties}
+          >
+            You're already on the waitlist! We'll be in touch soon. ✨
+          </p>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: "center",
+              flexWrap: "wrap",
+              maxWidth: 480,
+              margin: "0 auto",
+            } as CSSProperties}
+          >
+            <input
+              type="email"
+              required
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{
+                flex: 1,
+                minWidth: 220,
+                background: COLORS.cardBg,
+                border: `1px solid ${COLORS.borderDark}`,
+                borderRadius: 10,
+                padding: "14px 18px",
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 15,
+                color: COLORS.textPrimary,
+                outline: "none",
+                transition: "border-color 0.2s",
+              } as CSSProperties}
+              onFocus={(e) => {
+                (e.target as HTMLInputElement).style.borderColor = COLORS.accent;
+              }}
+              onBlur={(e) => {
+                (e.target as HTMLInputElement).style.borderColor = COLORS.borderDark;
+              }}
+            />
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              style={{
+                background: COLORS.accent,
+                color: COLORS.black,
+                border: "none",
+                padding: "14px 32px",
+                borderRadius: 10,
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: status === "loading" ? "wait" : "pointer",
+                transition: "transform 0.2s, box-shadow 0.2s",
+                opacity: status === "loading" ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              } as CSSProperties}
+              onMouseEnter={(e) => {
+                const target = e.target as HTMLButtonElement;
+                target.style.transform = "translateY(-2px)";
+                target.style.boxShadow = `0 12px 40px ${COLORS.accentGlow}`;
+              }}
+              onMouseLeave={(e) => {
+                const target = e.target as HTMLButtonElement;
+                target.style.transform = "translateY(0)";
+                target.style.boxShadow = "none";
+              }}
+            >
+              {status === "loading" ? "Joining..." : "Join the Waitlist →"}
+            </button>
+          </form>
+        )}
+
+        {status === "error" && (
+          <p
+            style={{
+              fontFamily: "'DM Sans', sans-serif",
+              fontSize: 14,
+              color: "#ef4444",
+              marginTop: 16,
+            } as CSSProperties}
+          >
+            Something went wrong. Please try again.
+          </p>
+        )}
       </div>
     </section>
   );
