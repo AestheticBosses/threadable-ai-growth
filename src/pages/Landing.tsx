@@ -113,11 +113,17 @@ interface NavBarProps {
 function NavBar({ activeSection, setActiveSection }: NavBarProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
+    const onResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
   }, []);
 
   const links = ["Features", "Pricing", "Affiliate", "About"];
@@ -177,16 +183,17 @@ function NavBar({ activeSection, setActiveSection }: NavBarProps) {
             background: COLORS.accent,
             color: COLORS.black,
             border: "none",
-            padding: "8px 20px",
+            padding: isMobile ? "10px 18px" : "8px 20px",
             borderRadius: 6,
             fontFamily: "'DM Sans', sans-serif",
-            fontSize: 13,
+            fontSize: isMobile ? 13 : 13,
             fontWeight: 700,
             cursor: "pointer",
             letterSpacing: 0.3,
+            whiteSpace: "nowrap",
           } as CSSProperties}
         >
-          Join the Waitlist
+          {isMobile ? "Waitlist →" : "Join the Waitlist"}
         </button>
       </div>
     </nav>
@@ -195,8 +202,12 @@ function NavBar({ activeSection, setActiveSection }: NavBarProps) {
 
 function Hero() {
   const [visible, setVisible] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   useEffect(() => {
     setTimeout(() => setVisible(true), 100);
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
   return (
@@ -276,12 +287,14 @@ function Hero() {
           <span
             style={{
               fontFamily: "'Space Mono', monospace",
-              fontSize: 12,
+              fontSize: isMobile ? 9 : 12,
               color: COLORS.accent,
-              letterSpacing: 1,
+              letterSpacing: isMobile ? 1.5 : 1,
             } as CSSProperties}
           >
-            I GENERATED 394K+ ORGANIC INTERACTIONS ON THREADS IN 12 DAYS — $0 AD SPEND
+            {isMobile
+              ? "394K+ ORGANIC INTERACTIONS — 12 DAYS — $0 AD SPEND"
+              : "I GENERATED 394K+ ORGANIC INTERACTIONS ON THREADS IN 12 DAYS — $0 AD SPEND"}
           </span>
         </div>
 
