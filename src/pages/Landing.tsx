@@ -129,74 +129,128 @@ function NavBar({ activeSection, setActiveSection }: NavBarProps) {
   const links = ["Features", "Pricing", "Affiliate", "About"];
 
   return (
-    <nav
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        padding: "0 24px",
-        height: 64,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        background: scrolled ? "rgba(10,10,10,0.92)" : "transparent",
-        backdropFilter: scrolled ? "blur(20px)" : "none",
-        borderBottom: scrolled ? `1px solid ${COLORS.borderDark}` : "1px solid transparent",
-        transition: "all 0.3s ease",
-      } as CSSProperties}
-    >
-      <div style={{ display: "flex", alignItems: "center" }}>
-        <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 24, color: "#e8e4de", letterSpacing: "-0.02em" }}>
-          threadable<span style={{ color: "#a855f7" }}>.</span>
-        </span>
-      </div>
+    <>
+      <nav
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          padding: "0 24px",
+          height: 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: scrolled || mobileOpen ? "rgba(10,10,10,0.92)" : "transparent",
+          backdropFilter: scrolled || mobileOpen ? "blur(20px)" : "none",
+          borderBottom: scrolled || mobileOpen ? `1px solid ${COLORS.borderDark}` : "1px solid transparent",
+          transition: "all 0.3s ease",
+        } as CSSProperties}
+      >
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 24, color: "#e8e4de", letterSpacing: "-0.02em" }}>
+            threadable<span style={{ color: "#a855f7" }}>.</span>
+          </span>
+        </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
-        {links.map((link) => (
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 16 : 32 }}>
+          {!isMobile && links.map((link) => (
+            <button
+              key={link}
+              onClick={() => {
+                setActiveSection(link.toLowerCase());
+                document.getElementById(link.toLowerCase())?.scrollIntoView({ behavior: "smooth" });
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: activeSection === link.toLowerCase() ? COLORS.accent : COLORS.textSecondary,
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "pointer",
+                letterSpacing: 0.5,
+                transition: "color 0.2s",
+                padding: 0,
+              } as CSSProperties}
+            >
+              {link}
+            </button>
+          ))}
           <button
-            key={link}
-            onClick={() => {
-              setActiveSection(link.toLowerCase());
-              document.getElementById(link.toLowerCase())?.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" })}
             style={{
-              background: "none",
+              background: COLORS.accent,
+              color: COLORS.black,
               border: "none",
-              color: activeSection === link.toLowerCase() ? COLORS.accent : COLORS.textSecondary,
+              padding: isMobile ? "10px 18px" : "8px 20px",
+              borderRadius: 6,
               fontFamily: "'DM Sans', sans-serif",
               fontSize: 13,
-              fontWeight: 500,
+              fontWeight: 700,
               cursor: "pointer",
-              letterSpacing: 0.5,
-              transition: "color 0.2s",
-              padding: 0,
+              letterSpacing: 0.3,
+              whiteSpace: "nowrap",
             } as CSSProperties}
           >
-            {link}
+            {isMobile ? "Waitlist →" : "Join the Waitlist"}
           </button>
-        ))}
-        <button
-          onClick={() => document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" })}
+          {isMobile && (
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexDirection: "column", gap: 4 }}
+              aria-label="Toggle menu"
+            >
+              <span style={{ display: "block", width: 20, height: 2, background: COLORS.textSecondary, borderRadius: 1 }} />
+              <span style={{ display: "block", width: 20, height: 2, background: COLORS.textSecondary, borderRadius: 1 }} />
+              <span style={{ display: "block", width: 20, height: 2, background: COLORS.textSecondary, borderRadius: 1 }} />
+            </button>
+          )}
+        </div>
+      </nav>
+
+      {isMobile && mobileOpen && (
+        <div
           style={{
-            background: COLORS.accent,
-            color: COLORS.black,
-            border: "none",
-            padding: isMobile ? "10px 18px" : "8px 20px",
-            borderRadius: 6,
-            fontFamily: "'DM Sans', sans-serif",
-            fontSize: isMobile ? 13 : 13,
-            fontWeight: 700,
-            cursor: "pointer",
-            letterSpacing: 0.3,
-            whiteSpace: "nowrap",
+            position: "fixed",
+            top: 64,
+            left: 0,
+            right: 0,
+            zIndex: 99,
+            background: COLORS.darkGray,
+            borderBottom: `1px solid ${COLORS.borderDark}`,
+            display: "flex",
+            flexDirection: "column",
           } as CSSProperties}
         >
-          {isMobile ? "Waitlist →" : "Join the Waitlist"}
-        </button>
-      </div>
-    </nav>
+          {links.map((link) => (
+            <button
+              key={link}
+              onClick={() => {
+                setActiveSection(link.toLowerCase());
+                setMobileOpen(false);
+                document.getElementById(link.toLowerCase())?.scrollIntoView({ behavior: "smooth" });
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: `1px solid ${COLORS.borderDark}`,
+                color: activeSection === link.toLowerCase() ? COLORS.accent : COLORS.textSecondary,
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 15,
+                fontWeight: 500,
+                cursor: "pointer",
+                padding: "16px 24px",
+                textAlign: "left",
+              } as CSSProperties}
+            >
+              {link}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -287,13 +341,14 @@ function Hero() {
           <span
             style={{
               fontFamily: "'Space Mono', monospace",
-              fontSize: isMobile ? 9 : 12,
+              fontSize: isMobile ? 8 : 12,
               color: COLORS.accent,
-              letterSpacing: isMobile ? 1.5 : 1,
+              letterSpacing: isMobile ? 1 : 1,
+              whiteSpace: "nowrap",
             } as CSSProperties}
           >
             {isMobile
-              ? "394K+ ORGANIC INTERACTIONS — 12 DAYS — $0 AD SPEND"
+              ? "394K+ INTERACTIONS — 12 DAYS — $0 SPEND"
               : "I GENERATED 394K+ ORGANIC INTERACTIONS ON THREADS IN 12 DAYS — $0 AD SPEND"}
           </span>
         </div>
