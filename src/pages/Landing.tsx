@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, CSSProperties, FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-const LOGO_SRC = "/threadable-logo.png";
+
 
 const COLORS = {
   black: "#0a0a0f",
@@ -142,11 +142,9 @@ function NavBar({ activeSection, setActiveSection }: NavBarProps) {
       } as CSSProperties}
     >
       <div style={{ display: "flex", alignItems: "center" }}>
-        <img
-          src={LOGO_SRC}
-          alt="Threadable"
-          style={{ height: 36, objectFit: "contain" }}
-        />
+        <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 24, color: "#e8e4de", letterSpacing: "-0.02em" }}>
+          threadable<span style={{ color: "#a855f7" }}>.</span>
+        </span>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
@@ -1647,11 +1645,9 @@ function Footer() {
         } as CSSProperties}
       >
         <div style={{ display: "flex", alignItems: "center" }}>
-          <img
-            src={LOGO_SRC}
-            alt="Threadable"
-            style={{ height: 28, objectFit: "contain" }}
-          />
+          <span style={{ fontFamily: "Instrument Serif, serif", fontSize: 20, color: "#e8e4de", letterSpacing: "-0.02em" }}>
+            threadable<span style={{ color: "#a855f7" }}>.</span>
+          </span>
         </div>
 
         <div style={{ display: "flex", gap: 32 }}>
