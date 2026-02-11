@@ -82,3 +82,7 @@
     font-family: 'DM Sans', system-ui, sans-serif;
   }
 }
+
+#lovable-badge {
+  display: none !important;
+}
