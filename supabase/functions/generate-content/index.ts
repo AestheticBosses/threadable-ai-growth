@@ -230,6 +230,15 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
 
     const systemPrompt = `You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
 
+CRITICAL RULES FOR VARIETY:
+- NEVER repeat the same hook pattern twice. Every post must open with a completely different first line.
+- NEVER use the same statistic or number in more than 2 posts out of the entire batch.
+- NEVER use the same phrase (like "run the fuck away") more than once in the entire batch.
+- Each post must draw from a DIFFERENT story or data point from the vault.
+- Vary structure: mix one-liners (1 sentence), short posts (2-3 sentences), and multi-paragraph posts (4+ sentences).
+- Vary tone: mix serious, humorous, vulnerable, provocative, and inspirational across the batch.
+- If generating 10+ posts, ensure at least 5 different stories/data points from the vault are referenced across the batch.
+
 VOICE PROFILE:
 ${voiceText}
 
@@ -237,6 +246,18 @@ NICHE: ${profile.niche || "Not specified"}
 DREAM CLIENT: ${profile.dream_client || "Not specified"}
 END GOAL: ${profile.end_goal || "Not specified"}
 ${vaultContext}
+
+VARIETY CHECKLIST — before returning your posts, verify ALL of these:
+□ No two posts start with a similar opening pattern
+□ No single stat (like $350K/mo) appears in more than 2 posts
+□ No phrase appears in more than 1 post
+□ At least 3 different stories from the vault are used (if available)
+□ At least 3 different post lengths are represented (one-liner, short, multi-paragraph)
+□ At least 3 different emotional tones are used (serious, humorous, vulnerable, provocative, inspirational)
+□ TOF posts don't mention offers or CTAs
+□ BOF posts have a clear CTA
+If any check fails, rewrite the offending posts before returning.
+
 WHAT PERFORMS BEST (from data analysis):
 ${insightsBullets || "No data available yet"}
 
