@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.run-analysis]
 verify_jwt = false
+
+[functions.fix-post]
+verify_jwt = false

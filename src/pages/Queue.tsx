@@ -9,8 +9,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,6 +42,7 @@ import {
   Target,
   CalendarClock,
   Send,
+  Wand2,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -136,6 +145,9 @@ const Queue = () => {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null);
   const [funnelFilter, setFunnelFilter] = useState<FunnelFilter>("all");
+  const [fixContextId, setFixContextId] = useState<string | null>(null);
+  const [fixFeedback, setFixFeedback] = useState("");
+  const [fixingId, setFixingId] = useState<string | null>(null);
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -480,6 +492,46 @@ const Queue = () => {
       if (n.has(id)) n.delete(id); else n.add(id);
       return n;
     });
+  };
+
+  // Fix Context — AI-assisted correction
+  const handleFixContext = async () => {
+    if (!session?.access_token || !fixContextId || !fixFeedback.trim()) return;
+    setFixingId(fixContextId);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/fix-post`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ post_id: fixContextId, feedback: fixFeedback }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Fix failed");
+      }
+      const { post: updated } = await res.json();
+      if (updated) {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === fixContextId
+              ? { ...p, text_content: updated.text_content, pre_post_score: updated.pre_post_score, score_breakdown: updated.score_breakdown, user_edited: true }
+              : p
+          )
+        );
+        toast({ title: "Post fixed! ✏️" });
+      }
+      setFixContextId(null);
+      setFixFeedback("");
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setFixingId(null);
+    }
   };
 
   if (loading) {
@@ -841,21 +893,38 @@ const Queue = () => {
                             {expandedScoreId === post.id ? "Hide" : "Why this score?"}
                           </Button>
                           {post.status !== "published" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => { setEditingId(post.id); setEditText(post.text_content || ""); }}
-                              className="gap-1 h-7 text-xs"
-                            >
-                              <Pencil className="h-3 w-3" />
-                              Edit
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { setEditingId(post.id); setEditText(post.text_content || ""); }}
+                                className="gap-1 h-7 text-xs"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { setFixContextId(post.id); setFixFeedback(""); }}
+                                className="gap-1 h-7 text-xs"
+                              >
+                                <Wand2 className="h-3 w-3" />
+                                Fix Context
+                              </Button>
+                            </>
                           )}
                           {(post.status === "draft" || post.status === "approved") && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setConfirmPublishId(post.id)}
+                              onClick={() => {
+                                if ((post.text_content?.length || 0) > 500) {
+                                  toast({ title: "Post too long", description: "Edit to under 500 characters before posting.", variant: "destructive" });
+                                  return;
+                                }
+                                setConfirmPublishId(post.id);
+                              }}
                               disabled={publishingId === post.id}
                               className="gap-1 h-7 text-xs"
                             >
@@ -913,6 +982,38 @@ const Queue = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Fix Context Modal */}
+      <Dialog open={!!fixContextId} onOpenChange={(open) => { if (!open) { setFixContextId(null); setFixFeedback(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>✏️ Fix Context</DialogTitle>
+            <DialogDescription>Tell the AI what's wrong and it'll rewrite the post.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border bg-muted/30 p-3 max-h-40 overflow-y-auto">
+              <p className="text-sm text-foreground whitespace-pre-line">
+                {posts.find((p) => p.id === fixContextId)?.text_content || ""}
+              </p>
+            </div>
+            <Input
+              placeholder='e.g. "I was CMO not owner" or "Too long, make it shorter"'
+              value={fixFeedback}
+              onChange={(e) => setFixFeedback(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !fixingId && fixFeedback.trim() && handleFixContext()}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setFixContextId(null); setFixFeedback(""); }}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={!fixFeedback.trim() || !!fixingId} onClick={handleFixContext} className="gap-1">
+                {fixingId ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+                Fix It
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };
