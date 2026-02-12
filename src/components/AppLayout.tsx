@@ -22,7 +22,7 @@ const navItems = [
   { title: "Insights", path: "/insights", icon: Lightbulb },
   { title: "Playbook", path: "/playbook", icon: Zap },
   { title: "Content Queue", path: "/queue", icon: CalendarClock },
-  { title: "My Story", path: "/my-story", icon: BookOpen },
+  { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
@@ -34,7 +34,7 @@ const mobileTabItems = [
 ];
 
 const moreItems = [
-  { title: "My Story", path: "/my-story", icon: BookOpen },
+  { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
