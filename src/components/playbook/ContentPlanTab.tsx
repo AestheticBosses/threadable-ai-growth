@@ -29,8 +29,27 @@ export function ContentPlanTab() {
   const { session } = useAuth();
   const { query, generate } = useContentPlan();
   const { data: hasIdentity } = useHasIdentity();
-  const plan = query.data?.plan_data;
   const isGenerating = generate.isPending;
+
+  // Defensive parsing — plan_data may be a string or malformed
+  let plan: any = null;
+  try {
+    const raw = query.data?.plan_data;
+    if (typeof raw === "string") {
+      plan = JSON.parse(raw);
+    } else if (raw && typeof raw === "object") {
+      plan = raw;
+    }
+    // Ensure critical fields are arrays
+    if (plan) {
+      if (!Array.isArray(plan.daily_plan)) plan.daily_plan = [];
+      if (!Array.isArray(plan.weekly_themes)) plan.weekly_themes = [];
+      if (!Array.isArray(plan.primary_archetypes)) plan.primary_archetypes = [];
+      if (!Array.isArray(plan.best_times)) plan.best_times = [];
+    }
+  } catch {
+    plan = null;
+  }
 
   const [confirmWeek, setConfirmWeek] = useState(false);
   const [generatingWeek, setGeneratingWeek] = useState(false);
@@ -179,8 +198,25 @@ export function ContentPlanTab() {
     );
   }
 
-  const totalPlanPosts = getAllPlanPosts().length;
+  // Show query or generate errors inline
+  if (query.isError || generate.isError) {
+    const errMsg = (query.error as any)?.message || (generate.error as any)?.message || "Something went wrong.";
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
+          <Sparkles className="h-10 w-10 text-destructive" />
+          <p className="text-foreground font-medium">Something went wrong generating your plan</p>
+          <p className="text-sm text-muted-foreground max-w-md">{errMsg}</p>
+          <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
+            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
+  const totalPlanPosts = getAllPlanPosts().length;
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -346,7 +382,7 @@ export function ContentPlanTab() {
           </div>
 
           {/* Themes */}
-          {plan.weekly_themes?.length > 0 && (
+          {Array.isArray(plan.weekly_themes) && plan.weekly_themes.length > 0 && (
             <div className="space-y-3">
               <h4 className="text-sm font-bold text-primary uppercase tracking-wider">This Week's Themes</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

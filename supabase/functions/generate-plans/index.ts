@@ -223,16 +223,19 @@ ${topPosts.map((p: any, i: number) => `${i + 1}. [${p.archetype || "unknown"}] (
 
     const anthropicData = await anthropicRes.json();
     const rawText = anthropicData.content?.[0]?.text || "";
+    console.log("Raw AI response length:", rawText.length, "First 300 chars:", rawText.slice(0, 300));
 
     // Extract JSON from response
     let planData: any;
     try {
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found");
+      if (!jsonMatch) throw new Error("No JSON found in response");
       planData = JSON.parse(jsonMatch[0]);
+      // Validate critical fields
+      if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
     } catch (e) {
       console.error("JSON parse error:", e, "Raw:", rawText.slice(0, 500));
-      return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
+      return new Response(JSON.stringify({ error: "Failed to parse AI response. Please try again." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
