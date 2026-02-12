@@ -12,6 +12,10 @@ export interface KnowledgeItem {
   tags: string[];
   created_at: string;
   updated_at: string;
+  raw_content: string | null;
+  processed: boolean;
+  processing_error: string | null;
+  summary: string | null;
 }
 
 export function useKnowledgeBase() {
@@ -35,10 +39,13 @@ export function useKnowledgeBase() {
 
   const addMutation = useMutation({
     mutationFn: async (item: Pick<KnowledgeItem, "title" | "type" | "content" | "file_path" | "tags">) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("knowledge_base" as any)
-        .insert({ ...item, user_id: user!.id } as any);
+        .insert({ ...item, user_id: user!.id } as any)
+        .select("id")
+        .single();
       if (error) throw error;
+      return (data as any).id as string;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
@@ -79,6 +86,21 @@ export function useKnowledgeBase() {
     return path;
   };
 
+  const processItem = async (knowledgeId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    try {
+      await supabase.functions.invoke("process-knowledge", {
+        body: { knowledge_id: knowledgeId, user_id: user!.id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+    } catch (e) {
+      console.error("Processing error:", e);
+    }
+    qc.invalidateQueries({ queryKey });
+  };
+
   return {
     data: query.data ?? [],
     isLoading: query.isLoading,
@@ -86,7 +108,9 @@ export function useKnowledgeBase() {
     update: updateMutation.mutateAsync,
     remove: deleteMutation.mutateAsync,
     uploadFile,
+    processItem,
     isAdding: addMutation.isPending,
     isDeleting: deleteMutation.isPending,
+    refetch: query.refetch,
   };
 }

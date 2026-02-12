@@ -218,6 +218,10 @@ export type Database = {
           created_at: string
           file_path: string | null
           id: string
+          processed: boolean
+          processing_error: string | null
+          raw_content: string | null
+          summary: string | null
           tags: Json
           title: string
           type: string
@@ -229,6 +233,10 @@ export type Database = {
           created_at?: string
           file_path?: string | null
           id?: string
+          processed?: boolean
+          processing_error?: string | null
+          raw_content?: string | null
+          summary?: string | null
           tags?: Json
           title: string
           type: string
@@ -240,6 +248,10 @@ export type Database = {
           created_at?: string
           file_path?: string | null
           id?: string
+          processed?: boolean
+          processing_error?: string | null
+          raw_content?: string | null
+          summary?: string | null
           tags?: Json
           title?: string
           type?: string

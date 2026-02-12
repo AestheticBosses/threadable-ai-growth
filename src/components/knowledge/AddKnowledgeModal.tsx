@@ -20,7 +20,7 @@ interface Props {
 }
 
 export function AddKnowledgeModal({ open, onOpenChange }: Props) {
-  const { add, uploadFile, isAdding } = useKnowledgeBase();
+  const { add, uploadFile, isAdding, processItem } = useKnowledgeBase();
   const [tab, setTab] = useState<TabType>("text");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -61,7 +61,7 @@ export function AddKnowledgeModal({ open, onOpenChange }: Props) {
         filePath = await uploadFile(file);
       }
 
-      await add({
+      const newId = await add({
         title: title.trim(),
         type: tab,
         content: tab === "text" ? content : (tab === "url" || tab === "video") ? url : null,
@@ -72,6 +72,11 @@ export function AddKnowledgeModal({ open, onOpenChange }: Props) {
       toast({ title: "Added to Knowledge Base ✅" });
       reset();
       onOpenChange(false);
+
+      // Auto-trigger processing for non-text types
+      if (tab !== "text" && newId) {
+        processItem(newId);
+      }
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     }
