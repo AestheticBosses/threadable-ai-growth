@@ -123,6 +123,42 @@ export type Database = {
         }
         Relationships: []
       }
+      knowledge_base: {
+        Row: {
+          content: string | null
+          created_at: string
+          file_path: string | null
+          id: string
+          tags: Json
+          title: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          file_path?: string | null
+          id?: string
+          tags?: Json
+          title: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          file_path?: string | null
+          id?: string
+          tags?: Json
+          title?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       posts_analyzed: {
         Row: {
           archetype: string | null

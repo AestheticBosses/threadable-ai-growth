@@ -9,6 +9,7 @@ import {
   LogOut,
   MoreHorizontal,
   BookOpen,
+  Brain,
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
@@ -24,6 +25,7 @@ const navItems = [
   { title: "Content Queue", path: "/queue", icon: CalendarClock },
   { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
+  { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
@@ -36,6 +38,7 @@ const mobileTabItems = [
 const moreItems = [
   { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
+  { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 

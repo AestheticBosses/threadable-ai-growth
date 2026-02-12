@@ -14,6 +14,7 @@ import Queue from "./pages/Queue";
 import Voice from "./pages/Voice";
 import Playbook from "./pages/Playbook";
 import MyStory from "./pages/MyStory";
+import KnowledgeBase from "./pages/KnowledgeBase";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
             <Route path="/my-story" element={<ProtectedRoute><MyStory /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><Voice /></ProtectedRoute>} />
+            <Route path="/knowledge-base" element={<ProtectedRoute><KnowledgeBase /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
