@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import jourdanImage from "@/assets/jourdan-eloriaga.jpg";
 
 const Landing = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -987,7 +988,7 @@ const Landing = () => {
             <div className="section-title" style={{ marginBottom: '2rem' }}>I built the tool I couldn't find.</div>
             <div className="founder-grid">
               <div className="founder-image">
-                <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop" alt="Jourdan Eloriaga" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} />
+                <img src={jourdanImage} alt="Jourdan Eloriaga" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} />
               </div>
               <div className="founder-content">
                 <blockquote>"I scaled a med spa from $0 to $350K/month. I'd driven $8M+ in sales. I understood content strategy at a level most people charge $10K to teach. And I still couldn't keep up on Threads."</blockquote>
