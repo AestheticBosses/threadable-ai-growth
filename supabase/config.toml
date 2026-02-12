@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.fix-post]
 verify_jwt = false
+
+[functions.extract-identity]
+verify_jwt = false
