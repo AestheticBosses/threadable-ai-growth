@@ -11,9 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Sparkles, RefreshCw } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Sparkles, RefreshCw, Check, ArrowRight } from "lucide-react";
 import { usePlaybookData, useArchetypeDiscovery } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
+import { useHasIdentity } from "@/hooks/usePlansData";
 import { DailyPostingPlan } from "@/components/playbook/DailyPostingPlan";
 import { ContentPlanTab } from "@/components/playbook/ContentPlanTab";
 import { BrandingPlanTab } from "@/components/playbook/BrandingPlanTab";
@@ -51,8 +56,26 @@ const Playbook = () => {
   const [postsPerDay, setPostsPerDay] = useState(5);
   const { data: playbook, isLoading } = usePlaybookData();
   const { data: discoveredArchetypes } = useArchetypeDiscovery();
+  const { data: hasIdentity } = useHasIdentity();
 
-  // Funnel state
+  // Generate All Plans state
+  const [activeTab, setActiveTab] = useState("archetypes");
+  const [showGenerateAllConfirm, setShowGenerateAllConfirm] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [allPlansProgress, setAllPlansProgress] = useState<Record<string, "pending" | "generating" | "done" | "error">>({});
+
+  // Check if plans already exist
+  const [existingPlans, setExistingPlans] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!user) return;
+    (supabase as any)
+      .from("user_plans")
+      .select("plan_type")
+      .eq("user_id", user.id)
+      .then(({ data }: any) => {
+        if (data) setExistingPlans(new Set(data.map((d: any) => d.plan_type)));
+      });
+  }, [user]);
   const [funnelGoal, setFunnelGoal] = useState("grow");
   const [tofPct, setTofPct] = useState(70);
   const [mofPct, setMofPct] = useState(20);
@@ -125,6 +148,66 @@ const Playbook = () => {
     toast({ title: "Funnel mix saved ✅" });
   };
 
+  const handleGenerateAllPlans = async () => {
+    setShowGenerateAllConfirm(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
+
+    setGeneratingAll(true);
+    const planTypes = ["content_plan", "branding_plan", "funnel_strategy"] as const;
+    const labels: Record<string, string> = {
+      content_plan: "Content Plan",
+      branding_plan: "Branding Plan",
+      funnel_strategy: "Funnel Strategy",
+    };
+
+    setAllPlansProgress({
+      content_plan: "pending",
+      branding_plan: "pending",
+      funnel_strategy: "pending",
+    });
+
+    const results: Record<string, boolean> = {};
+
+    for (const planType of planTypes) {
+      setAllPlansProgress((prev) => ({ ...prev, [planType]: "generating" }));
+      try {
+        const res = await supabase.functions.invoke("generate-plans", {
+          body: { plan_type: planType },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.error) throw new Error(res.error.message);
+        setAllPlansProgress((prev) => ({ ...prev, [planType]: "done" }));
+        queryClient.invalidateQueries({ queryKey: ["user-plan", user?.id, planType] });
+        results[planType] = true;
+      } catch (e: any) {
+        setAllPlansProgress((prev) => ({ ...prev, [planType]: "error" }));
+        results[planType] = false;
+      }
+    }
+
+    setGeneratingAll(false);
+    setExistingPlans(new Set(Object.keys(results).filter((k) => results[k])));
+
+    const succeeded = Object.values(results).filter(Boolean).length;
+    const failed = Object.values(results).filter((v) => !v).length;
+
+    if (failed === 0) {
+      toast({ title: "All plans generated! 🎉" });
+      setActiveTab("content_plan");
+    } else {
+      const failedNames = Object.entries(results)
+        .filter(([, v]) => !v)
+        .map(([k]) => labels[k])
+        .join(", ");
+      toast({
+        title: `${succeeded} of 3 plans generated`,
+        description: `Failed: ${failedNames}. You can retry individually.`,
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleGeneratePlaybook = async () => {
     if (!user) return;
     setGenerating(true);
@@ -178,6 +261,57 @@ const Playbook = () => {
     }
   };
 
+  const allPlansExist = existingPlans.has("content_plan") && existingPlans.has("branding_plan") && existingPlans.has("funnel_strategy");
+
+  const planLabels: Record<string, string> = {
+    content_plan: "Content Plan",
+    branding_plan: "Branding Plan",
+    funnel_strategy: "Funnel Strategy",
+  };
+
+  const renderGenerateAllButton = () => (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {hasIdentity === false ? (
+          <Button variant="outline" onClick={() => navigate("/my-story")} className="gap-2">
+            Fill out your Identity first <ArrowRight className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            onClick={() => setShowGenerateAllConfirm(true)}
+            disabled={generatingAll}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
+          >
+            {generatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {allPlansExist ? "🔄 Regenerate All Plans" : "✨ Generate All Plans"}
+          </Button>
+        )}
+      </div>
+
+      {/* Progress UI */}
+      {generatingAll && (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            {(["content_plan", "branding_plan", "funnel_strategy"] as const).map((planType) => {
+              const status = allPlansProgress[planType];
+              return (
+                <div key={planType} className="flex items-center gap-3 text-sm">
+                  {status === "generating" && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+                  {status === "done" && <Check className="h-4 w-4 text-emerald-400 shrink-0" />}
+                  {status === "error" && <span className="h-4 w-4 text-destructive shrink-0">✗</span>}
+                  {status === "pending" && <span className="h-4 w-4 rounded-full border border-border shrink-0" />}
+                  <span className={status === "done" ? "text-foreground" : status === "error" ? "text-destructive" : "text-muted-foreground"}>
+                    {status === "generating" ? `Generating ${planLabels[planType]}...` : planLabels[planType]}
+                  </span>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -204,9 +338,12 @@ const Playbook = () => {
             </Button>
           </div>
 
+          {/* Generate All Plans button + progress */}
+          {renderGenerateAllButton()}
+
           {/* Still show plan tabs even without playbook data */}
           <div className="mt-8">
-            <Tabs defaultValue="content_plan">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="w-full justify-start">
                 <TabsTrigger value="content_plan">Content Plan</TabsTrigger>
                 <TabsTrigger value="branding_plan">Branding Plan</TabsTrigger>
@@ -231,11 +368,12 @@ const Playbook = () => {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Your Content Playbook</h1>
             <p className="mt-1 text-sm text-muted-foreground">Personalized strategy built from your data.</p>
           </div>
+          {renderGenerateAllButton()}
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="archetypes">
-          <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full justify-start flex-wrap gap-1">
             <TabsTrigger value="archetypes">Archetypes & Rules</TabsTrigger>
             <TabsTrigger value="content_plan">Content Plan</TabsTrigger>
             <TabsTrigger value="branding_plan">Branding Plan</TabsTrigger>
@@ -480,6 +618,26 @@ const Playbook = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Confirm Generate All Dialog */}
+        <AlertDialog open={showGenerateAllConfirm} onOpenChange={setShowGenerateAllConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{allPlansExist ? "Regenerate All Plans?" : "Generate All Plans?"}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {allPlansExist
+                  ? "This will regenerate your Content Plan, Branding Plan, and Funnel Strategy. Existing plans will be replaced."
+                  : "Generate all three plans (Content Plan, Branding Plan, and Funnel Strategy) using your Identity, Voice, and Archetypes data."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleGenerateAllPlans}>
+                {allPlansExist ? "Regenerate All" : "Generate All"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );
