@@ -57,6 +57,29 @@ export function ContentPlanTab() {
   const [draftingPostKey, setDraftingPostKey] = useState<string | null>(null);
   const [draftedPosts, setDraftedPosts] = useState<Set<string>>(new Set());
 
+  // Safe date parsing helper
+  const safeISOString = (date: Date): string | null => {
+    try {
+      if (isNaN(date.getTime())) return null;
+      return date.toISOString();
+    } catch {
+      return null;
+    }
+  };
+
+  // Safe time parsing helper
+  const parseTime = (timeStr: string): { hours: number; minutes: number } | null => {
+    try {
+      const [h, m] = timeStr.split(":").map(Number);
+      if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+        return null;
+      }
+      return { hours: h, minutes: m };
+    } catch {
+      return null;
+    }
+  };
+
   // Collect all posts from the plan
   const getAllPlanPosts = () => {
     if (!plan?.daily_plan) return [];
@@ -64,7 +87,7 @@ export function ContentPlanTab() {
     const now = new Date();
     const dayOfWeek = now.getDay(); // 0=Sun
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const bestTimes = plan.best_times || ["09:00", "12:30", "17:00"];
+    const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
 
     for (const day of plan.daily_plan) {
       const dayIdx = dayNames.indexOf(day.day);
@@ -77,9 +100,13 @@ export function ContentPlanTab() {
       for (let i = 0; i < (day.posts?.length || 0); i++) {
         const post = day.posts[i];
         const time = bestTimes[i % bestTimes.length] || "09:00";
-        const [h, m] = time.split(":").map(Number);
+        const parsedTime = parseTime(time);
+        if (!parsedTime) continue; // Skip if time parsing fails
+
         const schedTime = new Date(scheduledDate);
-        schedTime.setHours(h, m, 0, 0);
+        schedTime.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+        const isoString = safeISOString(schedTime);
+        if (!isoString) continue; // Skip if date becomes invalid
 
         allPosts.push({
           archetype: post.archetype,
@@ -87,7 +114,7 @@ export function ContentPlanTab() {
           topic: post.topic,
           hook_idea: post.hook_idea || "",
           day: day.day,
-          scheduled_time: schedTime.toISOString(),
+          scheduled_time: isoString,
         });
       }
     }
@@ -158,6 +185,12 @@ export function ContentPlanTab() {
       schedDate.setDate(schedDate.getDate() + daysUntil);
       schedDate.setHours(9, 0, 0, 0);
 
+      // Validate the date before calling toISOString()
+      const isoString = safeISOString(schedDate);
+      if (!isoString) {
+        throw new Error("Failed to create valid scheduled time");
+      }
+
       const res = await supabase.functions.invoke("generate-draft-posts", {
         body: {
           posts: [{
@@ -166,7 +199,7 @@ export function ContentPlanTab() {
             topic: post.topic,
             hook_idea: post.hook_idea || "",
             day: dayName,
-            scheduled_time: schedDate.toISOString(),
+            scheduled_time: isoString,
           }],
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
