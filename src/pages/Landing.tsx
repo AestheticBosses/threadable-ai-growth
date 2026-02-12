@@ -541,8 +541,9 @@ const Landing = () => {
           .app-header { flex-direction: column; gap: 0.75rem; }
           .app-header-actions { flex-wrap: wrap; }
           .feature-section { grid-template-columns: 1fr; }
-          .feature-tabs { position: static; flex-direction: row; overflow-x: auto; gap: 0; }
-          .feature-tab { min-width: 180px; flex-shrink: 0; }
+          .feature-tabs { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+          .feature-tab { min-width: unset; flex-shrink: unset; }
+          .insight-grid { grid-template-columns: 1fr 1fr; }
           .steps-grid { grid-template-columns: 1fr 1fr; }
           .before-after { grid-template-columns: 1fr; }
           .founder-grid { grid-template-columns: 1fr; text-align: center; }
@@ -568,8 +569,9 @@ const Landing = () => {
           .proof-divider { display: none; }
           .landing-section { padding: 4.5rem 1.25rem; }
           .stat-row { grid-template-columns: repeat(2, 1fr); }
-          .feature-tabs { flex-direction: column; }
+          .feature-tabs { grid-template-columns: 1fr; }
           .feature-tab { min-width: unset; }
+          .insight-grid { grid-template-columns: 1fr; }
           .cq-calendar { grid-template-columns: repeat(4, 1fr); }
           .cq-day:nth-child(n+5) { display: none; }
           .founder-stats { flex-wrap: wrap; gap: 1rem; }
