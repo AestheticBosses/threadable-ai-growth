@@ -2,19 +2,29 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Loader2, Send, Plus, ArrowUp, Lightbulb, TrendingUp, FileText, ChevronRight, Trash2, MessageSquare } from "lucide-react";
+import { Loader2, Plus, ArrowUp, Trash2, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChatSessions, useChatMessages, type ChatSession } from "@/hooks/useChatData";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/hooks/use-toast";
 import threadableIcon from "@/assets/threadable-icon.png";
 
 const QUICK_ACTIONS = [
-  { icon: "💡", label: "Give post ideas", message: "Give me 5 post ideas based on my content archetypes and identity" },
-  { icon: "📈", label: "What's trending", message: "What topics are trending right now that I could create Threads content about?" },
-  { icon: "📋", label: "Give a template", message: "Give me a post template based on my top-performing content archetypes" },
+  { icon: "💡", label: "Give post ideas", message: "Based on my content archetypes and current funnel strategy, give me 5 specific post ideas for this week. Tag each with the archetype, funnel stage, and a hook." },
+  { icon: "📈", label: "What's trending", message: "What topics are trending right now that align with my brand positioning and target audience? Give me 3-5 trending angles I could create Threads content about." },
+  { icon: "📋", label: "Give a template", message: "Give me a post template based on my top-performing archetype. Include the structure, a fill-in-the-blank hook, and an example using my real stories and numbers." },
 ];
 
-const PLACEHOLDER_RESPONSE = "I'm Threadable AI — this feature is coming soon! I'll be able to help you brainstorm post ideas, find trending topics, and create content using your identity, archetypes, and voice profile.";
+const MORE_ACTIONS = [
+  { icon: "♻️", label: "Repurpose a post", message: "Take my top performing post and give me 3 ways to repurpose it using different archetypes." },
+  { icon: "🔝", label: "Write a TOF post", message: "Write a top-of-funnel reach post using my Authority Insider Drop archetype. Use a real story from my Identity." },
+  { icon: "🎯", label: "Write a BOF post", message: "Write a bottom-of-funnel conversion post that drives toward my main goal. Make it feel natural, not salesy." },
+  { icon: "✏️", label: "Improve a draft", message: "I have a draft post I want to improve. I'll paste it and you score it against my content preferences and suggest improvements." },
+  { icon: "📅", label: "Plan tomorrow's content", message: "Based on my content plan and funnel strategy, what should I post tomorrow? Give me 2-3 options with hooks." },
+];
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-threadable`;
 
 function groupSessionsByDate(sessions: ChatSession[]) {
   const now = new Date();
@@ -58,19 +68,120 @@ function TypingIndicator() {
   );
 }
 
+async function streamAIResponse({
+  message,
+  messageHistory,
+  onDelta,
+  onDone,
+  onError,
+}: {
+  message: string;
+  messageHistory: { role: string; content: string }[];
+  onDelta: (text: string) => void;
+  onDone: () => void;
+  onError: (err: string) => void;
+}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    onError("Not logged in");
+    return;
+  }
+
+  const resp = await fetch(CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    },
+    body: JSON.stringify({ message, message_history: messageHistory }),
+  });
+
+  if (!resp.ok) {
+    let errMsg = "AI temporarily unavailable. Please try again.";
+    try {
+      const errData = await resp.json();
+      if (errData.error) errMsg = errData.error;
+    } catch { /* use default */ }
+    onError(errMsg);
+    return;
+  }
+
+  if (!resp.body) {
+    onError("No response body");
+    return;
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let textBuffer = "";
+  let streamDone = false;
+
+  while (!streamDone) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    textBuffer += decoder.decode(value, { stream: true });
+
+    let newlineIndex: number;
+    while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+      let line = textBuffer.slice(0, newlineIndex);
+      textBuffer = textBuffer.slice(newlineIndex + 1);
+
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (line.startsWith(":") || line.trim() === "") continue;
+      if (!line.startsWith("data: ")) continue;
+
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === "[DONE]") {
+        streamDone = true;
+        break;
+      }
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch {
+        textBuffer = line + "\n" + textBuffer;
+        break;
+      }
+    }
+  }
+
+  // Final flush
+  if (textBuffer.trim()) {
+    for (let raw of textBuffer.split("\n")) {
+      if (!raw) continue;
+      if (raw.endsWith("\r")) raw = raw.slice(0, -1);
+      if (raw.startsWith(":") || raw.trim() === "") continue;
+      if (!raw.startsWith("data: ")) continue;
+      const jsonStr = raw.slice(6).trim();
+      if (jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+        if (content) onDelta(content);
+      } catch { /* ignore */ }
+    }
+  }
+
+  onDone();
+}
+
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
   const { user } = useAuth();
   const { sessions, isLoading: sessionsLoading, createSession, updateTitle, deleteSession } = useChatSessions();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const { messages, isLoading: messagesLoading, sendMessage } = useChatMessages(activeSessionId);
+  const { messages, isLoading: messagesLoading, sendMessage, refetch } = useChatMessages(activeSessionId);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showMore, setShowMore] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-load or create session on mount
   useEffect(() => {
     if (sessionsLoading || activeSessionId) return;
     const today = new Date();
@@ -84,12 +195,10 @@ const Chat = () => {
     }
   }, [sessions, sessionsLoading, activeSessionId]);
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+  }, [messages, isTyping, streamingContent]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -119,11 +228,39 @@ const Chat = () => {
       await updateTitle({ id: sessionId, title: autoTitle });
     }
 
-    // Simulate AI response
+    // Build message history (last 20)
+    const history = [...currentMessages, { role: "user" as const, content: msg, id: "", session_id: "", user_id: "", created_at: "" }]
+      .slice(-20)
+      .map((m) => ({ role: m.role, content: m.content }));
+    // Remove the last one since we pass it as `message`
+    history.pop();
+
     setIsTyping(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    await sendMessage({ content: PLACEHOLDER_RESPONSE, role: "assistant" });
-    setIsTyping(false);
+    setStreamingContent("");
+
+    let fullResponse = "";
+
+    await streamAIResponse({
+      message: msg,
+      messageHistory: history,
+      onDelta: (chunk) => {
+        fullResponse += chunk;
+        setStreamingContent(fullResponse);
+      },
+      onDone: async () => {
+        if (fullResponse.trim()) {
+          await sendMessage({ content: fullResponse, role: "assistant" });
+        }
+        setStreamingContent("");
+        setIsTyping(false);
+      },
+      onError: async (errMsg) => {
+        toast({ title: "Error", description: errMsg, variant: "destructive" });
+        await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant" });
+        setStreamingContent("");
+        setIsTyping(false);
+      },
+    });
   }, [input, activeSessionId, isTyping, messages, createSession, sendMessage, updateTitle]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -239,7 +376,20 @@ const Chat = () => {
                       </div>
                     </div>
                   ))}
-                  {isTyping && (
+                  {/* Streaming message */}
+                  {isTyping && streamingContent && (
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] bg-card border border-border rounded-xl px-4 py-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                          <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
+                      </div>
+                    </div>
+                  )}
+                  {/* Typing indicator (before streaming starts) */}
+                  {isTyping && !streamingContent && (
                     <div className="flex justify-start">
                       <div className="bg-card border border-border rounded-xl px-4 py-3">
                         <div className="flex items-center gap-2 mb-1">
@@ -289,17 +439,43 @@ const Chat = () => {
 
               {/* Quick actions */}
               {isEmpty && (
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  {QUICK_ACTIONS.map((action) => (
-                    <button
-                      key={action.label}
-                      onClick={() => handleSend(action.message)}
-                      className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
-                    >
-                      <span>{action.icon}</span>
-                      <span>{action.label}</span>
-                    </button>
-                  ))}
+                <div className="mt-3 space-y-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {QUICK_ACTIONS.map((action) => (
+                      <button
+                        key={action.label}
+                        onClick={() => handleSend(action.message)}
+                        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+                      >
+                        <span>{action.icon}</span>
+                        <span>{action.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Show more */}
+                  <button
+                    onClick={() => setShowMore(!showMore)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showMore ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    {showMore ? "Show less" : "Show more"}
+                  </button>
+
+                  {showMore && (
+                    <div className="flex gap-2 flex-wrap">
+                      {MORE_ACTIONS.map((action) => (
+                        <button
+                          key={action.label}
+                          onClick={() => handleSend(action.message)}
+                          className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+                        >
+                          <span>{action.icon}</span>
+                          <span>{action.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
