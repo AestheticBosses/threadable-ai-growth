@@ -111,6 +111,36 @@ export type Database = {
           },
         ]
       }
+      content_preferences: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_default: boolean
+          sort_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          sort_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       content_strategies: {
         Row: {
           created_at: string
@@ -656,6 +686,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_writing_style: {
+        Row: {
+          created_at: string
+          custom_style_description: string | null
+          id: string
+          selected_style: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_style_description?: string | null
+          id?: string
+          selected_style?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_style_description?: string | null
+          id?: string
+          selected_style?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       voice_samples: {
         Row: {

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Loader2,
   Sparkles,
@@ -18,6 +19,8 @@ import {
   Mic,
   FileText,
 } from "lucide-react";
+import { WritingExamplesSection } from "@/components/voice/WritingExamplesSection";
+import { ContentPreferencesSection } from "@/components/voice/ContentPreferencesSection";
 
 type VoiceProfile = {
   tone: string[];
@@ -49,7 +52,7 @@ const TONE_COLORS = [
 ];
 
 const Voice = () => {
-  usePageTitle("Voice Training", "Train AI to match your unique writing voice");
+  usePageTitle("Voice", "Train AI to match your unique voice, style, and preferences");
   const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -167,12 +170,28 @@ const Voice = () => {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-8">
         {/* Header */}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Voice</h1>
+          <p className="mt-1 text-muted-foreground">Train AI to match your unique voice, style, and preferences.</p>
+        </div>
+
+        {/* Writing Examples (NEW) */}
+        <WritingExamplesSection />
+
+        <Separator />
+
+        {/* Content Preferences (NEW) */}
+        <ContentPreferencesSection />
+
+        <Separator />
+
+        {/* Voice Training (EXISTING) */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Voice Training</h1>
-            <p className="mt-1 text-muted-foreground">Train AI to match your unique voice and style.</p>
+            <h2 className="text-lg font-semibold text-foreground">Voice Training</h2>
+            <p className="text-sm text-muted-foreground">Analyze your writing to build a unique voice profile.</p>
           </div>
           <Button
             onClick={handleAnalyze}
