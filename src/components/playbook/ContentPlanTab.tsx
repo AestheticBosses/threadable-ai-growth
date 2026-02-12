@@ -1,10 +1,22 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useContentPlan, useHasIdentity } from "@/hooks/usePlansData";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Sparkles, RefreshCw, ArrowRight } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Sparkles, RefreshCw, ArrowRight, ChevronDown, Check, MessageSquare, ListPlus } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 const FUNNEL_BADGE: Record<string, string> = {
   TOF: "bg-violet-500/15 text-violet-300 border-violet-500/30",
@@ -14,10 +26,143 @@ const FUNNEL_BADGE: Record<string, string> = {
 
 export function ContentPlanTab() {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const { query, generate } = useContentPlan();
   const { data: hasIdentity } = useHasIdentity();
   const plan = query.data?.plan_data;
   const isGenerating = generate.isPending;
+
+  const [confirmWeek, setConfirmWeek] = useState(false);
+  const [generatingWeek, setGeneratingWeek] = useState(false);
+  const [weekProgress, setWeekProgress] = useState({ current: 0, total: 0 });
+  const [draftingPostKey, setDraftingPostKey] = useState<string | null>(null);
+  const [draftedPosts, setDraftedPosts] = useState<Set<string>>(new Set());
+
+  // Collect all posts from the plan
+  const getAllPlanPosts = () => {
+    if (!plan?.daily_plan) return [];
+    const allPosts: any[] = [];
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const bestTimes = plan.best_times || ["09:00", "12:30", "17:00"];
+
+    for (const day of plan.daily_plan) {
+      const dayIdx = dayNames.indexOf(day.day);
+      if (dayIdx === -1) continue;
+      let daysUntil = dayIdx - dayOfWeek;
+      if (daysUntil <= 0) daysUntil += 7;
+      const scheduledDate = new Date(now);
+      scheduledDate.setDate(scheduledDate.getDate() + daysUntil);
+
+      for (let i = 0; i < (day.posts?.length || 0); i++) {
+        const post = day.posts[i];
+        const time = bestTimes[i % bestTimes.length] || "09:00";
+        const [h, m] = time.split(":").map(Number);
+        const schedTime = new Date(scheduledDate);
+        schedTime.setHours(h, m, 0, 0);
+
+        allPosts.push({
+          archetype: post.archetype,
+          funnel_stage: post.funnel_stage,
+          topic: post.topic,
+          hook_idea: post.hook_idea || "",
+          day: day.day,
+          scheduled_time: schedTime.toISOString(),
+        });
+      }
+    }
+    return allPosts;
+  };
+
+  const handleGenerateWeek = async () => {
+    setConfirmWeek(false);
+    if (!session?.access_token) return;
+
+    const allPosts = getAllPlanPosts();
+    if (allPosts.length === 0) {
+      toast({ title: "No posts in plan", variant: "destructive" });
+      return;
+    }
+
+    setGeneratingWeek(true);
+    setWeekProgress({ current: 0, total: allPosts.length });
+
+    try {
+      // Process in batches of 3
+      let generated = 0;
+      const batches: any[][] = [];
+      for (let i = 0; i < allPosts.length; i += 3) {
+        batches.push(allPosts.slice(i, i + 3));
+      }
+
+      for (const batch of batches) {
+        const res = await supabase.functions.invoke("generate-draft-posts", {
+          body: { posts: batch },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        generated += res.data?.total || 0;
+        setWeekProgress({ current: generated, total: allPosts.length });
+      }
+
+      toast({
+        title: `${generated} draft posts added to your Content Queue! 🎉`,
+        action: (
+          <Button size="sm" variant="outline" onClick={() => navigate("/queue")} className="gap-1">
+            View Queue
+          </Button>
+        ),
+      });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setGeneratingWeek(false);
+      setWeekProgress({ current: 0, total: 0 });
+    }
+  };
+
+  const handleDraftToQueue = async (post: any, dayName: string, postIndex: number) => {
+    const key = `${dayName}-${postIndex}`;
+    if (!session?.access_token) return;
+
+    setDraftingPostKey(key);
+    try {
+      const now = new Date();
+      const dayOfWeek = now.getDay();
+      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const dayIdx = dayNames.indexOf(dayName);
+      let daysUntil = dayIdx >= 0 ? dayIdx - dayOfWeek : 1;
+      if (daysUntil <= 0) daysUntil += 7;
+      const schedDate = new Date(now);
+      schedDate.setDate(schedDate.getDate() + daysUntil);
+      schedDate.setHours(9, 0, 0, 0);
+
+      const res = await supabase.functions.invoke("generate-draft-posts", {
+        body: {
+          posts: [{
+            archetype: post.archetype,
+            funnel_stage: post.funnel_stage,
+            topic: post.topic,
+            hook_idea: post.hook_idea || "",
+            day: dayName,
+            scheduled_time: schedDate.toISOString(),
+          }],
+        },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (res.error) throw new Error(res.error.message);
+
+      setDraftedPosts((prev) => new Set(prev).add(key));
+      toast({ title: "Draft added to Content Queue ✅" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setDraftingPostKey(null);
+    }
+  };
 
   if (!hasIdentity) {
     return (
@@ -34,6 +179,8 @@ export function ContentPlanTab() {
     );
   }
 
+  const totalPlanPosts = getAllPlanPosts().length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -45,10 +192,20 @@ export function ContentPlanTab() {
         </div>
         <div className="flex gap-2">
           {plan && (
-            <Button variant="outline" onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              🔄 Regenerate
-            </Button>
+            <>
+              <Button
+                onClick={() => setConfirmWeek(true)}
+                disabled={generatingWeek || isGenerating}
+                className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
+              >
+                {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                ✨ Generate Week of Posts
+              </Button>
+              <Button variant="outline" onClick={() => generate.mutate()} disabled={isGenerating || generatingWeek} className="gap-2">
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                🔄 Regenerate
+              </Button>
+            </>
           )}
           {!plan && (
             <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
@@ -58,6 +215,21 @@ export function ContentPlanTab() {
           )}
         </div>
       </div>
+
+      {/* Week generation progress */}
+      {generatingWeek && (
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Generating post {weekProgress.current} of {weekProgress.total}...
+              </span>
+            </div>
+            <Progress value={(weekProgress.current / Math.max(weekProgress.total, 1)) * 100} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
 
       {isGenerating && (
         <div className="space-y-4">
@@ -109,30 +281,63 @@ export function ContentPlanTab() {
                   <CardContent className="p-4 space-y-3">
                     <p className="text-sm font-bold text-foreground">{day.day}</p>
                     <div className="space-y-2">
-                      {day.posts?.map((post: any, i: number) => (
-                        <div key={i} className="rounded-lg border border-border p-3 space-y-2">
-                          <div className="flex flex-wrap gap-1">
-                            <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
-                            <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
-                              {post.funnel_stage}
-                            </Badge>
+                      {day.posts?.map((post: any, i: number) => {
+                        const postKey = `${day.day}-${i}`;
+                        const isDrafted = draftedPosts.has(postKey);
+                        const isDrafting = draftingPostKey === postKey;
+
+                        return (
+                          <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                            <div className="flex flex-wrap gap-1">
+                              <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
+                              <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
+                                {post.funnel_stage}
+                              </Badge>
+                              {isDrafted && (
+                                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
+                                  <Check className="h-2.5 w-2.5" /> Drafted
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{post.topic}</p>
+                            {post.hook_idea && (
+                              <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
+                            )}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-[10px] text-primary p-0 gap-0.5"
+                                  disabled={isDrafting}
+                                >
+                                  {isDrafting ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <>Draft this post <ChevronDown className="h-2.5 w-2.5" /></>
+                                  )}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    navigate(`/chat?prefill=${encodeURIComponent(`Write a ${post.archetype} post about ${post.topic} for ${post.funnel_stage}. Hook idea: ${post.hook_idea || ""}`)}`)
+                                  }
+                                  className="gap-2 text-xs"
+                                >
+                                  <MessageSquare className="h-3.5 w-3.5" /> Draft in Chat
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDraftToQueue(post, day.day, i)}
+                                  className="gap-2 text-xs"
+                                >
+                                  <ListPlus className="h-3.5 w-3.5" /> Draft to Queue
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                          <p className="text-xs text-muted-foreground">{post.topic}</p>
-                          {post.hook_idea && (
-                            <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-[10px] text-primary p-0"
-                            onClick={() =>
-                              navigate(`/chat?prefill=${encodeURIComponent(`Write a ${post.archetype} post about ${post.topic} for ${post.funnel_stage}. Hook idea: ${post.hook_idea || ""}`)}`)
-                            }
-                          >
-                            Draft this post →
-                          </Button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -174,6 +379,22 @@ export function ContentPlanTab() {
           </p>
         </div>
       )}
+
+      {/* Confirm generate week dialog */}
+      <AlertDialog open={confirmWeek} onOpenChange={setConfirmWeek}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Generate Week of Posts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Generate draft posts for all {totalPlanPosts} planned slots this week? They'll appear in your Content Queue as drafts for review.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleGenerateWeek}>Generate {totalPlanPosts} Posts</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -510,6 +510,7 @@ export type Database = {
           published_at: string | null
           scheduled_for: string | null
           score_breakdown: Json | null
+          source: string | null
           status: string | null
           strategy_id: string | null
           text_content: string | null
@@ -530,6 +531,7 @@ export type Database = {
           published_at?: string | null
           scheduled_for?: string | null
           score_breakdown?: Json | null
+          source?: string | null
           status?: string | null
           strategy_id?: string | null
           text_content?: string | null
@@ -550,6 +552,7 @@ export type Database = {
           published_at?: string | null
           scheduled_for?: string | null
           score_breakdown?: Json | null
+          source?: string | null
           status?: string | null
           strategy_id?: string | null
           text_content?: string | null

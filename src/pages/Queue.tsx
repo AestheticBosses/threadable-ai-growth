@@ -73,6 +73,7 @@ type Post = {
   published_at: string | null;
   error_message: string | null;
   created_at: string;
+  source: string | null;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -152,7 +153,7 @@ const Queue = () => {
     if (!user) return;
     const { data } = await supabase
       .from("scheduled_posts")
-      .select("id, text_content, content_category, funnel_stage, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at")
+      .select("id, text_content, content_category, funnel_stage, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at, source")
       .eq("user_id", user.id)
       .order("scheduled_for", { ascending: true });
     setPosts((data as Post[]) || []);
@@ -720,6 +721,11 @@ const Queue = () => {
                             className={cn("text-xs", FUNNEL_BADGE_COLORS[post.funnel_stage] || "")}
                           >
                             {FUNNEL_LABELS[post.funnel_stage] || post.funnel_stage}
+                          </Badge>
+                        )}
+                        {post.source && post.source !== "manual" && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            {post.source === "content_plan" ? "From Content Plan" : post.source === "chat" ? "From Chat" : "Generated"}
                           </Badge>
                         )}
                         <Badge
