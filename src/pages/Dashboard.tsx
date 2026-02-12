@@ -166,6 +166,18 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ["posts-analyzed-own"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
+
+      // Auto-fill Identity if empty
+      try {
+        const { data: identity } = await supabase
+          .from("user_identity")
+          .select("about_you")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (!identity || !identity.about_you) {
+          navigate("/my-story?autofill=true");
+        }
+      } catch { /* silently skip auto-fill check */ }
     } catch (err) {
       toast.error("Failed to fetch posts from Threads");
     } finally {
