@@ -587,21 +587,27 @@ export type Database = {
         Row: {
           about_you: string | null
           created_at: string
+          desired_perception: string | null
           id: string
+          main_goal: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           about_you?: string | null
           created_at?: string
+          desired_perception?: string | null
           id?: string
+          main_goal?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           about_you?: string | null
           created_at?: string
+          desired_perception?: string | null
           id?: string
+          main_goal?: string | null
           updated_at?: string
           user_id?: string
         }
