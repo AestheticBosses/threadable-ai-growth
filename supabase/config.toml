@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.generate-plans]
 verify_jwt = false
+
+[functions.chat-with-threadable]
+verify_jwt = false
