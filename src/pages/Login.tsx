@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import threadableIcon from "@/assets/threadable-icon.png";
 
 const Login = () => {
   const { session, loading } = useAuth();
@@ -56,9 +56,7 @@ const Login = () => {
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src={threadableIcon} alt="Threadable.ai" className="h-12 w-12 rounded-lg" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Threadable.ai</h1>
           <p className="text-sm text-muted-foreground">
@@ -68,9 +66,9 @@ const Login = () => {
 
         <div className="rounded-lg border bg-card p-6 shadow-sm">
           <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 mb-6 bg-transparent p-0 h-auto">
+              <TabsTrigger value="signin" className="bg-transparent text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 py-3 font-medium">Sign In</TabsTrigger>
+              <TabsTrigger value="signup" className="bg-transparent text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 py-3 font-medium">Sign Up</TabsTrigger>
             </TabsList>
 
             <TabsContent value="signin">
