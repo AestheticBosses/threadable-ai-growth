@@ -15,6 +15,7 @@ import Voice from "./pages/Voice";
 import Playbook from "./pages/Playbook";
 import MyStory from "./pages/MyStory";
 import KnowledgeBase from "./pages/KnowledgeBase";
+import Chat from "./pages/Chat";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
@@ -53,6 +54,7 @@ const App = () => (
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/analyze" element={<ProtectedRoute><Analyze /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
             <Route path="/playbook" element={<ProtectedRoute><Playbook /></ProtectedRoute>} />
             <Route path="/strategy" element={<Navigate to="/dashboard" replace />} />

@@ -10,6 +10,7 @@ import {
   MoreHorizontal,
   BookOpen,
   Brain,
+  PenSquare,
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
@@ -36,6 +37,7 @@ const mobileTabItems = [
 ];
 
 const moreItems = [
+  { title: "Chat", path: "/chat", icon: PenSquare },
   { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
@@ -73,8 +75,24 @@ export function AppLayout({ children }: AppSidebarProps) {
         </span>
       </div>
 
+      {/* Chat button */}
+      <div className="px-2 pt-3 pb-1">
+        <RouterNavLink
+          to="/chat"
+          className={cn(
+            "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors",
+            isActive("/chat")
+              ? "bg-primary text-primary-foreground"
+              : "bg-primary/90 text-primary-foreground hover:bg-primary"
+          )}
+        >
+          <PenSquare className="h-4 w-4" />
+          Chat
+        </RouterNavLink>
+      </div>
+
       {/* Nav */}
-      <nav className="flex-1 space-y-1 px-2 py-4">
+      <nav className="flex-1 space-y-1 px-2 py-2">
         {navItems.map((item) => (
           <RouterNavLink
             key={item.path}
