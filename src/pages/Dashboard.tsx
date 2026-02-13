@@ -3,8 +3,13 @@ import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { EmptyState } from "@/components/EmptyState";
-import { AnalysisOverview } from "@/components/strategy/AnalysisOverview";
 import { ArchetypeCards } from "@/components/dashboard/ArchetypeCards";
+import { TodayStatusCard } from "@/components/dashboard/TodayStatusCard";
+import { PostingStreakCard } from "@/components/dashboard/PostingStreakCard";
+import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
+import { GrowthSummaryCard } from "@/components/dashboard/GrowthSummaryCard";
+import { TopInsightCard } from "@/components/dashboard/TopInsightCard";
+import { RecentPostsCard } from "@/components/dashboard/RecentPostsCard";
 import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -16,9 +21,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { subDays, startOfDay } from "date-fns";
+import { subDays, startOfDay, differenceInCalendarDays } from "date-fns";
 
 function PctChange({ value }: { value: number }) {
   if (value === 0) return <span className="text-xs text-muted-foreground">—</span>;
@@ -53,7 +57,6 @@ function filterPostsByRange<T extends { posted_at: string | null }>(posts: T[], 
 function sumField<T>(arr: T[], field: keyof T): number {
   return arr.reduce((sum, p) => sum + (Number((p as any)[field]) || 0), 0);
 }
-
 
 const Dashboard = () => {
   usePageTitle("Dashboard", "Your Threads analytics and performance overview");
@@ -98,11 +101,48 @@ const Dashboard = () => {
     enabled: !!user?.id,
   });
 
+  // Streak data
+  const streakQuery = useQuery({
+    queryKey: ["dashboard-streak", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from("scheduled_posts")
+        .select("published_at")
+        .eq("user_id", user.id)
+        .eq("status", "published")
+        .not("published_at", "is", null)
+        .order("published_at", { ascending: false });
+      return data ?? [];
+    },
+    enabled: !!user?.id,
+  });
+
   const profile = profileQuery.data;
   const followerSnapshots = followerQuery.data ?? [];
   const latestFollowers = followerSnapshots.length > 0 ? followerSnapshots[followerSnapshots.length - 1].follower_count : null;
   const earliestFollowers = followerSnapshots.length > 0 ? followerSnapshots[0].follower_count : null;
   const followerChange = latestFollowers !== null && earliestFollowers !== null ? latestFollowers - earliestFollowers : null;
+
+  // Calculate streak
+  const publishedPosts = streakQuery.data ?? [];
+  const publishedDates = publishedPosts.map((p) => p.published_at!);
+  const streak = useMemo(() => {
+    if (publishedPosts.length === 0) return 0;
+    const uniqueDays = new Set(publishedPosts.map((p) => new Date(p.published_at!).toDateString()));
+    const sortedDays = Array.from(uniqueDays).map((d) => new Date(d)).sort((a, b) => b.getTime() - a.getTime());
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (sortedDays.length === 0) return 0;
+    const diff = differenceInCalendarDays(today, sortedDays[0]);
+    if (diff > 1) return 0;
+    let s = 1;
+    for (let i = 1; i < sortedDays.length; i++) {
+      if (differenceInCalendarDays(sortedDays[i - 1], sortedDays[i]) === 1) s++;
+      else break;
+    }
+    return s;
+  }, [publishedPosts]);
 
   const posts = useMemo(() => allPosts ? filterPostsByRange(allPosts, range, customFrom, customTo) : [], [allPosts, range, customFrom, customTo]);
 
@@ -166,8 +206,6 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ["posts-analyzed-own"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
-
-      // Auto-fill Identity if empty
       try {
         const { data: identity } = await supabase
           .from("user_identity")
@@ -178,7 +216,7 @@ const Dashboard = () => {
           navigate("/my-story?autofill=true");
         }
       } catch { /* silently skip auto-fill check */ }
-    } catch (err) {
+    } catch {
       toast.error("Failed to fetch posts from Threads");
     } finally {
       setFetching(false);
@@ -202,7 +240,7 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ["discovered-archetypes"] });
       queryClient.invalidateQueries({ queryKey: ["regression-insights"] });
       queryClient.invalidateQueries({ queryKey: ["playbook-data"] });
-    } catch (err) {
+    } catch {
       toast.error("Analysis failed");
     } finally {
       setAnalyzing(false);
@@ -221,6 +259,14 @@ const Dashboard = () => {
   const hasAnyData = (allPosts?.length ?? 0) > 0;
   const isLoading = postsLoading && !allPosts;
 
+  // Best performing post
+  const bestPost = useMemo(() => {
+    if (!allPosts || allPosts.length === 0) return null;
+    const sorted = [...allPosts].sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
+    const top = sorted[0];
+    return top ? { text: top.text_content ?? "", views: top.views ?? 0 } : null;
+  }, [allPosts]);
+
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-5">
@@ -228,16 +274,16 @@ const Dashboard = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p className="mt-1 text-muted-foreground text-sm">Your Threads analytics at a glance.</p>
+            <p className="mt-1 text-muted-foreground text-sm">Your daily command center.</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Button onClick={handleFetchPosts} disabled={fetching} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
               {fetching ? "Fetching…" : "Fetch My Posts"}
             </Button>
-            <Button onClick={handleRunAnalysis} disabled={analyzing || !hasAnyData} className="bg-purple-600 hover:bg-purple-700 text-white">
+            <Button onClick={handleRunAnalysis} disabled={analyzing || !hasAnyData} variant="outline">
               {analyzing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Brain className="h-4 w-4 mr-1.5" />}
-              {analyzing ? "Analyzing…" : "🧠 Run Full Analysis"}
+              {analyzing ? "Analyzing…" : "Run Analysis"}
             </Button>
             <DateRangeSelector
               range={range}
@@ -249,11 +295,11 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Discovery loading */}
+        {/* Analysis loading */}
         {analyzing && (
-          <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 flex items-center gap-3">
-            <Loader2 className="h-5 w-5 animate-spin text-purple-400" />
-            <span className="text-sm font-medium text-purple-300">Claude is analyzing your content… This takes about 30 seconds.</span>
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span className="text-sm font-medium text-foreground">Analyzing your content… This takes about 30 seconds.</span>
           </div>
         )}
 
@@ -335,22 +381,44 @@ const Dashboard = () => {
                 playbook={playbookData}
               />
             ) : (
-              <div className="rounded-xl border border-dashed border-purple-500/30 bg-purple-500/5 p-6 text-center">
-                <Brain className="h-6 w-6 mx-auto mb-2 text-purple-400" />
-                <p className="text-sm font-medium text-purple-300">
-                  Click "🧠 Run Full Analysis" to discover your content archetypes
+              <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
+                <Brain className="h-6 w-6 mx-auto mb-2 text-primary" />
+                <p className="text-sm font-medium text-foreground">
+                  Click "Run Analysis" to discover your content archetypes
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Claude will analyze all your posts and build archetypes, insights, and a playbook
+                  AI will analyze all your posts and build archetypes, insights, and a playbook
                 </p>
               </div>
             )}
           </div>
         )}
 
-        {/* Posts Table */}
+        {/* ===== NEW COMMAND CENTER WIDGETS ===== */}
         {hasAnyData && (
-          <AnalysisOverview range={range} customFrom={customFrom} customTo={customTo} />
+          <div className="space-y-5">
+            {/* Today's Status + Posting Streak side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <TodayStatusCard />
+              <PostingStreakCard streak={streak} publishedDates={publishedDates} />
+            </div>
+
+            {/* Quick Actions */}
+            <QuickActionsCard />
+
+            {/* Growth Summary */}
+            <GrowthSummaryCard
+              followerCount={latestFollowers ?? profile?.follower_count ?? null}
+              followerChange={followerChange}
+              bestPost={bestPost}
+            />
+
+            {/* Top Insight */}
+            <TopInsightCard />
+
+            {/* Recent Posts Performance */}
+            <RecentPostsCard posts={allPosts ?? []} />
+          </div>
         )}
       </div>
     </AppLayout>
