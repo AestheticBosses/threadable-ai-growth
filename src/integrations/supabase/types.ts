@@ -709,6 +709,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_sales_funnel: {
+        Row: {
+          created_at: string | null
+          goal: string | null
+          id: string
+          price: string | null
+          step_name: string
+          step_number: number
+          updated_at: string | null
+          url: string | null
+          user_id: string
+          what: string
+        }
+        Insert: {
+          created_at?: string | null
+          goal?: string | null
+          id?: string
+          price?: string | null
+          step_name: string
+          step_number: number
+          updated_at?: string | null
+          url?: string | null
+          user_id: string
+          what?: string
+        }
+        Update: {
+          created_at?: string | null
+          goal?: string | null
+          id?: string
+          price?: string | null
+          step_name?: string
+          step_number?: number
+          updated_at?: string | null
+          url?: string | null
+          user_id?: string
+          what?: string
+        }
+        Relationships: []
+      }
       user_story_vault: {
         Row: {
           created_at: string
