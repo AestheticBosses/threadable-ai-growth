@@ -25,82 +25,93 @@ interface PostIdeasViewProps {
  */
 export function parsePostIdeas(text: string): PostIdea[] {
   const ideas: PostIdea[] = [];
+  const fullText = text;
 
-  // --- Pattern A: **1. Title** or **1) Title** ---
-  const patternA = /\*\*\s*\d+[\.\)]\s*(.+?)\*\*\s*\n([\s\S]*?)(?=\*\*\s*\d+[\.\)]|$)/g;
-  // --- Pattern B: 1. **Title** ---
-  const patternB = /(?:^|\n)\s*\d+[\.\)]\s*\*\*(.+?)\*\*\s*\n([\s\S]*?)(?=(?:\n\s*\d+[\.\)])|$)/g;
-  // --- Pattern C: ### 1. Title or ## 1. Title ---
-  const patternC = /(?:^|\n)\s*#{1,4}\s*\d+[\.\)]\s*(.+?)\s*\n([\s\S]*?)(?=(?:\n\s*#{1,4}\s*\d+[\.\)])|$)/g;
-  // --- Pattern D: plain numbered  1. Title (no bold, no headers) ---
-  const patternD = /(?:^|\n)\s*(\d+)[\.\)]\s+(.+?)\n([\s\S]*?)(?=(?:\n\s*\d+[\.\)])|$)/g;
+  // Primary pattern: **1. Title** or **Idea 1: Title** or **1) Title**
+  const splitPattern = /\*\*(?:Idea\s*)?\d+[\.\):\s]\s*(.+?)\*\*/g;
 
-  const tryPattern = (pattern: RegExp, titleGroup: number, bodyGroup: number): PostIdea[] => {
-    const result: PostIdea[] = [];
-    let match;
-    pattern.lastIndex = 0;
-    while ((match = pattern.exec(text)) !== null) {
-      const rawTitle = match[titleGroup].trim().replace(/\*\*/g, "");
-      const rawBody = match[bodyGroup].trim();
+  const titles: { title: string; startIndex: number; matchEnd: number }[] = [];
+  let match;
 
-      // Extract archetype and funnel stage if present
-      const archetypeMatch = rawBody.match(/Archetype:\s*(.+)/i);
-      const funnelMatch = rawBody.match(/Funnel\s*Stage:\s*(.+)/i);
-
-      let description = rawBody
-        .replace(/Archetype:\s*.+/gi, "")
-        .replace(/Funnel\s*Stage:\s*.+/gi, "")
-        .replace(/\*\*/g, "")
-        .trim();
-
-      // Remove trailing dashes/bullets that are just formatting
-      description = description.replace(/\n[-•]\s*$/g, "").trim();
-
-      result.push({
-        title: rawTitle,
-        body: description,
-        archetype: archetypeMatch?.[1]?.trim(),
-        funnelStage: funnelMatch?.[1]?.trim(),
-      });
-    }
-    return result;
-  };
-
-  // Try patterns in order of specificity
-  for (const [pattern, tg, bg] of [
-    [patternA, 1, 2],
-    [patternB, 1, 2],
-    [patternC, 1, 2],
-    [patternD, 2, 3],
-  ] as [RegExp, number, number][]) {
-    const result = tryPattern(pattern, tg, bg);
-    if (result.length >= 2) return result;
-  }
-
-  // Fallback: split by double newlines
-  const blocks = text.split(/\n\n+/).filter((b) => b.trim().length > 20);
-  if (blocks.length >= 2) {
-    return blocks.slice(0, 6).map((block, i) => {
-      const lines = block.trim().split("\n");
-      const title = lines[0].replace(/^[\d.\-*#]+\s*/, "").replace(/\*\*/g, "").trim() || `Idea ${i + 1}`;
-      const bodyLines = lines.slice(1).join("\n").trim();
-      const archetypeMatch = bodyLines.match(/Archetype:\s*(.+)/i);
-      const funnelMatch = bodyLines.match(/Funnel\s*Stage:\s*(.+)/i);
-      let body = bodyLines
-        .replace(/Archetype:\s*.+/gi, "")
-        .replace(/Funnel\s*Stage:\s*.+/gi, "")
-        .trim();
-      return {
-        title,
-        body: body || block.trim(),
-        archetype: archetypeMatch?.[1]?.trim(),
-        funnelStage: funnelMatch?.[1]?.trim(),
-      };
+  while ((match = splitPattern.exec(fullText)) !== null) {
+    titles.push({
+      title: match[1].trim(),
+      startIndex: match.index,
+      matchEnd: match.index + match[0].length,
     });
   }
 
-  // Single block fallback
-  return [{ title: "Post Idea", body: text.trim() }];
+  // Fallback: 1. **Title** (number outside bold)
+  if (titles.length < 2) {
+    titles.length = 0;
+    const altPattern = /(?:^|\n)\s*\d+[\.\)]\s*\*\*(.+?)\*\*/g;
+    while ((match = altPattern.exec(fullText)) !== null) {
+      titles.push({
+        title: match[1].trim(),
+        startIndex: match.index,
+        matchEnd: match.index + match[0].length,
+      });
+    }
+  }
+
+  // Fallback: ### 1. Title (headers)
+  if (titles.length < 2) {
+    titles.length = 0;
+    const headerPattern = /(?:^|\n)\s*#{1,4}\s*\d+[\.\)]\s*(.+)/g;
+    while ((match = headerPattern.exec(fullText)) !== null) {
+      titles.push({
+        title: match[1].trim().replace(/\*\*/g, ""),
+        startIndex: match.index,
+        matchEnd: match.index + match[0].length,
+      });
+    }
+  }
+
+  // Fallback: plain numbered "1. Title" at start of line (short lines only)
+  if (titles.length < 2) {
+    titles.length = 0;
+    const plainPattern = /(?:^|\n)\s*(\d+)[\.\)]\s+(.+)/g;
+    while ((match = plainPattern.exec(fullText)) !== null) {
+      if (match[2].trim().length < 100) {
+        titles.push({
+          title: match[2].trim().replace(/\*\*/g, ""),
+          startIndex: match.index,
+          matchEnd: match.index + match[0].length,
+        });
+      }
+    }
+  }
+
+  if (titles.length < 2) {
+    // Can't parse — return single idea fallback
+    return [{ title: "Post Idea", body: text.trim() }];
+  }
+
+  // Extract content between each title
+  for (let i = 0; i < titles.length; i++) {
+    const contentStart = titles[i].matchEnd;
+    const contentEnd = i < titles.length - 1 ? titles[i + 1].startIndex : fullText.length;
+    let body = fullText.substring(contentStart, contentEnd).trim();
+
+    // Extract archetype and funnel stage if present
+    const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
+    const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
+
+    body = body
+      .replace(/Archetype:\s*.+/gi, "")
+      .replace(/Funnel\s*Stage:\s*.+/gi, "")
+      .replace(/^\s*\n/, "")
+      .trim();
+
+    ideas.push({
+      title: titles[i].title,
+      body,
+      archetype: archetypeMatch?.[1]?.trim(),
+      funnelStage: funnelMatch?.[1]?.trim(),
+    });
+  }
+
+  return ideas;
 }
 
 export function PostIdeasView({ ideas, onDraft, onBack, rawContent }: PostIdeasViewProps) {
