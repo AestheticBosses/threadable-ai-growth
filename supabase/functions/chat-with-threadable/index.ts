@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,150 +27,19 @@ serve(async (req) => {
     const { message, message_history = [] } = await req.json();
     if (!message) throw new Error("No message provided");
 
-    // Fetch all user context in parallel
-    const [
-      identityRes,
-      storiesRes,
-      offersRes,
-      audiencesRes,
-      personalInfoRes,
-      writingStyleRes,
-      contentPrefsRes,
-      knowledgeRes,
-      topPostsRes,
-      plansRes,
-      strategyRes,
-    ] = await Promise.all([
-      supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", user.id).maybeSingle(),
-      supabase.from("user_story_vault").select("section, data").eq("user_id", user.id),
-      supabase.from("user_offers").select("name, description").eq("user_id", user.id),
-      supabase.from("user_audiences").select("name").eq("user_id", user.id),
-      supabase.from("user_personal_info").select("content").eq("user_id", user.id),
-      supabase.from("user_writing_style").select("selected_style, custom_style_description").eq("user_id", user.id).maybeSingle(),
-      supabase.from("content_preferences").select("content").eq("user_id", user.id).order("sort_order"),
-      supabase.from("knowledge_base").select("title, type, content").eq("user_id", user.id),
-      supabase.from("posts_analyzed").select("text_content, likes, views, replies, reposts, engagement_rate, archetype, posted_at").eq("user_id", user.id).eq("source", "own").order("engagement_rate", { ascending: false }).limit(10),
-      supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", user.id),
-      supabase.from("content_strategies").select("strategy_json").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    ]);
+    // Use service role for fetching context (bypasses RLS for complete data)
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    const identity = identityRes.data;
-    const stories = storiesRes.data || [];
-    const offers = offersRes.data || [];
-    const audiences = audiencesRes.data || [];
-    const personalInfo = personalInfoRes.data || [];
-    const writingStyle = writingStyleRes.data;
-    const contentPrefs = contentPrefsRes.data || [];
-    const knowledge = knowledgeRes.data || [];
-    const topPosts = topPostsRes.data || [];
-    const plans = plansRes.data || [];
-    const strategy = strategyRes.data;
-
-    // Build context sections
-    let identitySection = "No identity data provided yet.";
-    if (identity?.about_you) {
-      identitySection = `About: ${identity.about_you}\nDesired Perception: ${identity.desired_perception || "Not set"}\nMain Goal: ${identity.main_goal || "Not set"}`;
-    }
-
-    const storiesSection = stories.length > 0
-      ? stories.map((s: any) => {
-          const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
-          return items.map((item: any) => `- ${item.title || item.name || ""}: ${item.body || item.description || JSON.stringify(item)}`).join("\n");
-        }).join("\n")
-      : "No stories added yet.";
-
-    const offersSection = offers.length > 0
-      ? offers.map((o: any) => `- ${o.name}: ${o.description || ""}`).join("\n")
-      : "No offers added yet.";
-
-    const audiencesSection = audiences.length > 0
-      ? audiences.map((a: any) => `- ${a.name}`).join("\n")
-      : "No target audiences defined.";
-
-    const personalSection = personalInfo.length > 0
-      ? personalInfo.map((p: any) => `- ${p.content}`).join("\n")
-      : "No personal info added.";
-
-    const styleSection = writingStyle
-      ? `Selected Style: ${writingStyle.selected_style}${writingStyle.custom_style_description ? `\nCustom Description: ${writingStyle.custom_style_description}` : ""}`
-      : "Default style";
-
-    const prefsSection = contentPrefs.length > 0
-      ? contentPrefs.map((p: any) => `- ${p.content}`).join("\n")
-      : "No content preferences set.";
-
-    // Extract archetypes from strategy
-    let archetypesSection = "No archetypes data available.";
-    if (strategy?.strategy_json) {
-      const sj = strategy.strategy_json as any;
-      const archetypes = sj.archetypes || sj.content_archetypes || [];
-      if (Array.isArray(archetypes) && archetypes.length > 0) {
-        archetypesSection = archetypes.map((a: any) =>
-          `- ${a.name || a.archetype}: ${a.description || ""} (${a.percentage || ""}% of content, avg engagement: ${a.avg_engagement || a.avg_engagement_rate || "N/A"})`
-        ).join("\n");
-      }
-    }
-
-    const knowledgeSection = knowledge.length > 0
-      ? knowledge.map((k: any) => {
-          if (k.type === "text") return `- ${k.title}: ${(k.content || "").slice(0, 300)}`;
-          if (k.type === "url" || k.type === "video") return `- ${k.title}: ${k.content || ""}`;
-          return `- ${k.title} (${k.type})`;
-        }).join("\n")
-      : "No knowledge base items.";
-
-    const postsSection = topPosts.length > 0
-      ? topPosts.map((p: any, i: number) =>
-          `${i + 1}. [${p.archetype || "unknown"}] ${(p.text_content || "").slice(0, 200)} | Views: ${p.views || 0}, Likes: ${p.likes || 0}, Replies: ${p.replies || 0}, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}`
-        ).join("\n")
-      : "No posts analyzed yet.";
-
-    // Plans
-    const contentPlan = plans.find((p: any) => p.plan_type === "content_plan");
-    const brandingPlan = plans.find((p: any) => p.plan_type === "branding_plan");
-    const funnelPlan = plans.find((p: any) => p.plan_type === "funnel_strategy");
-
-    const plansSection = [
-      contentPlan ? `Content Plan: ${JSON.stringify(contentPlan.plan_data).slice(0, 500)}` : "Content Plan: Not generated yet",
-      brandingPlan ? `Branding Plan: Positioning: ${(brandingPlan.plan_data as any)?.positioning_statement || "N/A"}` : "Branding Plan: Not generated yet",
-      funnelPlan ? `Funnel Strategy: ${JSON.stringify(funnelPlan.plan_data).slice(0, 500)}` : "Funnel Strategy: Not generated yet",
-    ].join("\n");
+    const userContext = await getUserContext(admin, user.id);
 
     const systemPrompt = `You are Threadable AI — a Threads content strategist and writing assistant. You help creators write high-performing Threads posts, brainstorm ideas, and build their personal brand.
 
 You have deep knowledge of this specific user. Here is everything you know about them:
 
-=== IDENTITY ===
-${identitySection}
-
-Stories:
-${storiesSection}
-
-Offers:
-${offersSection}
-
-Target Audiences:
-${audiencesSection}
-
-Personal Information:
-${personalSection}
-
-=== VOICE & STYLE ===
-${styleSection}
-Content Preferences:
-${prefsSection}
-
-=== CONTENT ARCHETYPES ===
-${archetypesSection}
-
-=== KNOWLEDGE BASE ===
-${knowledgeSection}
-
-=== TOP PERFORMING POSTS ===
-${postsSection}
-
-=== PLANS ===
-${plansSection}
+${userContext}
 
 === RULES ===
 - Always write in the user's voice based on their style preferences and top posts

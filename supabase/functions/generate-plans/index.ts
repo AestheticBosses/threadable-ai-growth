@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,15 +109,13 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub;
 
     const { plan_type } = await req.json();
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
@@ -126,61 +125,13 @@ serve(async (req) => {
       });
     }
 
-    // Fetch user data in parallel
-    const [identityRes, offersRes, audiencesRes, personalInfoRes, postsRes, prefsRes, styleRes, archetypesRes] =
-      await Promise.all([
-        supabase.from("user_identity").select("*").eq("user_id", userId).maybeSingle(),
-        supabase.from("user_offers").select("*").eq("user_id", userId),
-        supabase.from("user_audiences").select("*").eq("user_id", userId),
-        supabase.from("user_personal_info").select("*").eq("user_id", userId),
-        supabase
-          .from("posts_analyzed")
-          .select("text_content, engagement_rate, views, likes, archetype")
-          .eq("user_id", userId)
-          .eq("source", "own")
-          .order("views", { ascending: false })
-          .limit(20),
-        supabase.from("content_preferences").select("content").eq("user_id", userId),
-        supabase.from("user_writing_style").select("selected_style, custom_style_description").eq("user_id", userId).maybeSingle(),
-        supabase
-          .from("content_strategies")
-          .select("strategy_data")
-          .eq("user_id", userId)
-          .eq("strategy_type", "archetype_discovery")
-          .limit(1),
-      ]);
+    // Use service role for fetching full context
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    const identity = identityRes.data;
-    const offers = offersRes.data || [];
-    const audiences = audiencesRes.data || [];
-    const personalInfo = personalInfoRes.data || [];
-    const topPosts = postsRes.data || [];
-    const preferences = prefsRes.data || [];
-    const writingStyle = styleRes.data;
-    const archetypeData = archetypesRes.data?.[0]?.strategy_data;
-
-    // Build user context
-    const userContext = `
-USER IDENTITY:
-- About: ${identity?.about_you || "Not provided"}
-- Desired perception: ${identity?.desired_perception || "Not provided"}
-- Main goal: ${identity?.main_goal || "Not provided"}
-
-OFFERS: ${offers.map((o: any) => `${o.name}: ${o.description || ""}`).join("; ") || "None"}
-
-TARGET AUDIENCES: ${audiences.map((a: any) => a.name).join(", ") || "None"}
-
-PERSONAL INFO: ${personalInfo.map((p: any) => p.content).join("; ") || "None"}
-
-CONTENT PREFERENCES: ${preferences.map((p: any) => p.content).join("; ") || "None"}
-
-WRITING STYLE: ${writingStyle?.selected_style || "default"}${writingStyle?.custom_style_description ? ` - ${writingStyle.custom_style_description}` : ""}
-
-DISCOVERED ARCHETYPES: ${archetypeData ? JSON.stringify((archetypeData as any).archetypes?.map((a: any) => ({ name: a.name, percentage: a.recommended_percentage }))) : "None"}
-
-TOP PERFORMING POSTS (by views):
-${topPosts.map((p: any, i: number) => `${i + 1}. [${p.archetype || "unknown"}] (${p.views} views, ${(p.engagement_rate || 0).toFixed(2)}% eng) ${(p.text_content || "").slice(0, 200)}`).join("\n")}
-`;
+    const userContext = await getUserContext(admin, user.id);
 
     const systemPrompt =
       plan_type === "content_plan"
@@ -223,15 +174,13 @@ ${topPosts.map((p: any, i: number) => `${i + 1}. [${p.archetype || "unknown"}] (
 
     const anthropicData = await anthropicRes.json();
     const rawText = anthropicData.content?.[0]?.text || "";
-    console.log("Raw AI response length:", rawText.length, "First 300 chars:", rawText.slice(0, 300));
+    console.log("Raw AI response length:", rawText.length);
 
-    // Extract JSON from response
     let planData: any;
     try {
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON found in response");
       planData = JSON.parse(jsonMatch[0]);
-      // Validate critical fields
       if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
     } catch (e) {
       console.error("JSON parse error:", e, "Raw:", rawText.slice(0, 500));
@@ -244,7 +193,7 @@ ${topPosts.map((p: any, i: number) => `${i + 1}. [${p.archetype || "unknown"}] (
     // Upsert into user_plans
     const { error: upsertError } = await supabase.from("user_plans").upsert(
       {
-        user_id: userId,
+        user_id: user.id,
         plan_type,
         plan_data: planData,
         updated_at: new Date().toISOString(),
