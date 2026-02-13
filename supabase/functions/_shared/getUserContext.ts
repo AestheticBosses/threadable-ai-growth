@@ -17,6 +17,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     archetypesRes,
     regressionRes,
     profileRes,
+    salesFunnelRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId),
@@ -31,6 +32,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
+    supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
   ]);
 
   // === IDENTITY ===
@@ -128,41 +130,54 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}`
     : "No profile data.";
 
-  return `=== USER IDENTITY ===
-${identitySection}
+  // === SALES FUNNEL ===
+  const funnelSteps = salesFunnelRes.data || [];
+  let funnelSection = "No sales funnel defined yet.";
+  if (funnelSteps.length > 0) {
+    funnelSection = funnelSteps.map((s: any) =>
+      `Step ${s.step_number} (${s.step_name}): ${s.what}${s.url ? ` at ${s.url}` : ""}${s.price ? ` — ${s.price}` : ""} → Goal: ${s.goal || "Not specified"}`
+    ).join("\n");
+    funnelSection += `\n\nIMPORTANT: When writing TOF posts, the goal is Step 1 (awareness). When writing MOF posts, reference lead magnets or low-ticket offers from the funnel. When writing BOF posts, drive toward paid offers. Always use the REAL offer names, prices, and URLs from the funnel.`;
+  }
+
+  return \`=== USER IDENTITY ===
+\${identitySection}
 
 === CREATOR PROFILE ===
-${profileSection}
+\${profileSection}
 
 === STORIES ===
-${storiesSection}
+\${storiesSection}
 
 === OFFERS ===
-${offersSection}
+\${offersSection}
 
 === TARGET AUDIENCES ===
-${audiencesSection}
+\${audiencesSection}
 
 === PERSONAL INFORMATION ===
-${personalSection}
+\${personalSection}
 
 === VOICE & STYLE ===
-${styleSection}
+\${styleSection}
 Content Preferences:
-${prefsSection}
+\${prefsSection}
 
 === CONTENT ARCHETYPES ===
-${archetypesSection}
+\${archetypesSection}
+
+=== SALES FUNNEL ===
+\${funnelSection}
 
 === KNOWLEDGE BASE ===
-${knowledgeSection}
+\${knowledgeSection}
 
 === KEY INSIGHTS FROM DATA ===
-${insightsSection}
+\${insightsSection}
 
 === TOP PERFORMING POSTS (for style reference) ===
-${postsSection}
+\${postsSection}
 
 === PLANS ===
-${plansSection}`;
+\${plansSection}\`;
 }

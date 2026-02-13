@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useContentPlan, useHasIdentity } from "@/hooks/usePlansData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send } from "lucide-react";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const FUNNEL_BADGE: Record<string, string> = {
   TOF: "bg-violet-500/15 text-violet-300 border-violet-500/30",
@@ -23,10 +28,26 @@ const FUNNEL_BADGE: Record<string, string> = {
 
 export function ContentPlanTab() {
   const navigate = useNavigate();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const { query, generate } = useContentPlan();
   const { data: hasIdentity } = useHasIdentity();
   const isGenerating = generate.isPending;
+
+  // Get max posts per day from profile
+  const { data: maxPostsPerDay } = useQuery({
+    queryKey: ["max-posts-per-day", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("max_posts_per_day")
+        .eq("id", user!.id)
+        .single();
+      return data?.max_posts_per_day ?? 5;
+    },
+    enabled: !!user?.id,
+  });
+
+  const postsPerDay = maxPostsPerDay ?? 5;
 
   // Defensive parsing — plan_data may be a string or malformed
   let plan: any = null;
@@ -53,6 +74,7 @@ export function ContentPlanTab() {
   const [weekProgress, setWeekProgress] = useState({ current: 0, total: 0 });
   const [draftingPostKey, setDraftingPostKey] = useState<string | null>(null);
   const [draftedPosts, setDraftedPosts] = useState<Set<string>>(new Set());
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, string>>({});
   const [sentToQueue, setSentToQueue] = useState<Set<string>>(new Set());
 
@@ -350,104 +372,185 @@ export function ContentPlanTab() {
           {/* Daily Plan */}
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-primary uppercase tracking-wider">Daily Plan</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {plan.daily_plan?.map((day: any) => (
-                <Card key={day.day}>
-                  <CardContent className="p-4 space-y-3">
-                    <p className="text-sm font-bold text-foreground">{day.day}</p>
-                    <div className="space-y-2">
-                      {day.posts?.map((post: any, i: number) => {
-                        const postKey = `${day.day}-${i}`;
-                        const isDrafted = draftedPosts.has(postKey);
-                        const isDrafting = draftingPostKey === postKey;
-
-                        return (
-                          <div key={i} className="rounded-lg border border-border p-3 space-y-2">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
-                              <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
+            {postsPerDay <= 5 ? (
+              /* CARD GRID — 1-5 posts/day */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {plan.daily_plan?.map((day: any) => (
+                  <Card key={day.day}>
+                    <CardContent className="p-4 space-y-3">
+                      <p className="text-sm font-bold text-foreground">{day.day}</p>
+                      <div className="space-y-2">
+                        {day.posts?.map((post: any, i: number) => {
+                          const postKey = `${day.day}-${i}`;
+                          const isDrafted = draftedPosts.has(postKey);
+                          const isDrafting = draftingPostKey === postKey;
+                          return (
+                            <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                              <div className="flex flex-wrap gap-1">
+                                <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
+                                <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
+                                  {post.funnel_stage}
+                                </Badge>
+                                {isDrafted && (
+                                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
+                                    <Check className="h-2.5 w-2.5" /> Drafted
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{post.topic}</p>
+                              {post.hook_idea && (
+                                <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
+                              )}
+                              {!inlineDrafts[postKey] ? (
+                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5" disabled={isDrafting} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
+                                </Button>
+                              ) : (
+                                <div className="mt-2 space-y-2 border-t border-border pt-2">
+                                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">— Generated Draft —</p>
+                                  <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">{inlineDrafts[postKey]}</p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {!sentToQueue.has(postKey) ? (
+                                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-0.5" onClick={() => handleSendDraftToQueue(postKey)}>
+                                        <Send className="h-2.5 w-2.5" /> Send to Queue
+                                      </Button>
+                                    ) : (
+                                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
+                                        <Check className="h-2.5 w-2.5" /> In Queue
+                                      </Badge>
+                                    )}
+                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" onClick={() => navigate(`/chat?prefill=${encodeURIComponent(inlineDrafts[postKey])}`)}>
+                                      <MessageSquare className="h-2.5 w-2.5" /> Edit in Chat
+                                    </Button>
+                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" disabled={isDrafting} onClick={() => { setInlineDrafts((prev) => { const n = { ...prev }; delete n[postKey]; return n; }); setSentToQueue((prev) => { const n = new Set(prev); n.delete(postKey); return n; }); handleInlineDraft(post, day.day, i); }}>
+                                      <RefreshCw className="h-2.5 w-2.5" /> Regenerate
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : postsPerDay <= 10 ? (
+              /* COMPACT LIST — 6-10 posts/day */
+              <div className="space-y-4">
+                {plan.daily_plan?.map((day: any) => (
+                  <Card key={day.day}>
+                    <CardContent className="p-4 space-y-2">
+                      <p className="text-sm font-bold text-foreground">
+                        {day.day} <span className="text-muted-foreground font-normal">({day.posts?.length || 0} posts)</span>
+                      </p>
+                      <div className="divide-y divide-border">
+                        {day.posts?.map((post: any, i: number) => {
+                          const postKey = `${day.day}-${i}`;
+                          const isDrafting = draftingPostKey === postKey;
+                          const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
+                          const time = bestTimes[i % bestTimes.length] || "09:00";
+                          return (
+                            <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                              <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
+                              <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
+                              <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                 {post.funnel_stage}
                               </Badge>
-                              {isDrafted && (
-                                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
-                                  <Check className="h-2.5 w-2.5" /> Drafted
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground">{post.topic}</p>
-                            {post.hook_idea && (
-                              <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
-                            )}
-                            {/* Inline Draft Button */}
-                            {!inlineDrafts[postKey] ? (
+                              <span className="text-muted-foreground truncate flex-1">
+                                {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
+                              </span>
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="h-6 text-[10px] text-primary p-0 gap-0.5"
+                                className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0"
                                 disabled={isDrafting}
                                 onClick={() => handleInlineDraft(post, day.day, i)}
                               >
-                                {isDrafting ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <><Zap className="h-3 w-3" /> Draft</>
-                                )}
+                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
                               </Button>
-                            ) : (
-                              <div className="mt-2 space-y-2 border-t border-border pt-2">
-                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                                  — Generated Draft —
-                                </p>
-                                <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">
-                                  {inlineDrafts[postKey]}
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {!sentToQueue.has(postKey) ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-6 text-[10px] gap-0.5"
-                                      onClick={() => handleSendDraftToQueue(postKey)}
-                                    >
-                                      <Send className="h-2.5 w-2.5" /> Send to Queue
-                                    </Button>
-                                  ) : (
-                                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
-                                      <Check className="h-2.5 w-2.5" /> In Queue
-                                    </Badge>
-                                  )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              /* ACCORDION — 11-30 posts/day */
+              <div className="space-y-2">
+                {plan.daily_plan?.map((day: any) => {
+                  const isOpen = expandedDays.has(day.day);
+                  const tofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "TOF").length;
+                  const mofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "MOF").length;
+                  const bofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "BOF").length;
+                  return (
+                    <Collapsible
+                      key={day.day}
+                      open={isOpen}
+                      onOpenChange={(open) => {
+                        setExpandedDays((prev) => {
+                          const n = new Set(prev);
+                          if (open) n.add(day.day); else n.delete(day.day);
+                          return n;
+                        });
+                      }}
+                    >
+                      <Card>
+                        <CollapsibleTrigger className="w-full">
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                              <p className="text-sm font-bold text-foreground">{day.day}</p>
+                              <span className="text-xs text-muted-foreground">
+                                {day.posts?.length || 0} posts
+                              </span>
+                            </div>
+                            <div className="flex gap-2 text-[10px]">
+                              <Badge className={cn("text-[10px]", FUNNEL_BADGE.TOF)}>{tofCount} TOF</Badge>
+                              <Badge className={cn("text-[10px]", FUNNEL_BADGE.MOF)}>{mofCount} MOF</Badge>
+                              <Badge className={cn("text-[10px]", FUNNEL_BADGE.BOF)}>{bofCount} BOF</Badge>
+                            </div>
+                          </CardContent>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="px-4 pb-4 divide-y divide-border">
+                            {day.posts?.map((post: any, i: number) => {
+                              const postKey = `${day.day}-${i}`;
+                              const isDrafting = draftingPostKey === postKey;
+                              const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
+                              const time = bestTimes[i % bestTimes.length] || "09:00";
+                              return (
+                                <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                                  <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
+                                  <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
+                                  <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
+                                    {post.funnel_stage}
+                                  </Badge>
+                                  <span className="text-muted-foreground truncate flex-1">
+                                    {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
+                                  </span>
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-6 text-[10px] gap-0.5"
-                                    onClick={() => navigate(`/chat?prefill=${encodeURIComponent(inlineDrafts[postKey])}`)}
-                                  >
-                                    <MessageSquare className="h-2.5 w-2.5" /> Edit in Chat
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 text-[10px] gap-0.5"
+                                    className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0"
                                     disabled={isDrafting}
-                                    onClick={() => {
-                                      setInlineDrafts((prev) => { const n = { ...prev }; delete n[postKey]; return n; });
-                                      setSentToQueue((prev) => { const n = new Set(prev); n.delete(postKey); return n; });
-                                      handleInlineDraft(post, day.day, i);
-                                    }}
+                                    onClick={() => handleInlineDraft(post, day.day, i)}
                                   >
-                                    <RefreshCw className="h-2.5 w-2.5" /> Regenerate
+                                    {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
                                   </Button>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Themes */}

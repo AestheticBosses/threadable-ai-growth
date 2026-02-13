@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
@@ -129,6 +130,7 @@ type FunnelFilter = (typeof FUNNEL_FILTERS)[number];
 
 const Queue = () => {
   usePageTitle("Content Queue", "Manage and schedule your Threads content");
+  const navigate = useNavigate();
   const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -616,27 +618,6 @@ const Queue = () => {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Generate */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button disabled={generating} className="gap-2">
-                  {generating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-4 w-4" />
-                  )}
-                  {generating ? "Generating..." : "Generate Posts"}
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleGenerate(7)}>7 posts (1/day for a week)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(10)}>10 posts (recommended weekly mix)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(30)}>30 posts (max daily output)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(70)}>70 posts (10/day for a week)</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleGenerate(210)}>210 posts (30/day for a week)</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
 
@@ -731,7 +712,18 @@ const Queue = () => {
         {sortedPosts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Sparkles className="h-10 w-10 text-muted-foreground" />
-            <p className="text-muted-foreground">No posts yet. Generate some content to get started.</p>
+            <p className="text-foreground font-medium">No posts in your queue yet.</p>
+            <p className="text-sm text-muted-foreground max-w-md text-center">
+              Generate posts from your Content Plan or draft one in Chat.
+            </p>
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => navigate("/playbook")} className="gap-2">
+                Go to Content Plan
+              </Button>
+              <Button onClick={() => navigate("/chat")} className="gap-2">
+                Open Chat
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">

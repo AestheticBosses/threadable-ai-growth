@@ -22,7 +22,7 @@ export function IdentityCompleteness() {
     queryFn: async (): Promise<Section[]> => {
       if (!user?.id) return [];
 
-      const [identityRes, storiesRes, numbersRes, offersRes, audiencesRes, personalRes] =
+      const [identityRes, storiesRes, numbersRes, offersRes, audiencesRes, personalRes, funnelRes] =
         await Promise.all([
           supabase.from("user_identity" as any).select("about_you, desired_perception, main_goal").eq("user_id", user.id).maybeSingle(),
           supabase.from("user_story_vault").select("id", { count: "exact", head: true }).eq("user_id", user.id),
@@ -30,6 +30,7 @@ export function IdentityCompleteness() {
           supabase.from("user_offers" as any).select("id", { count: "exact", head: true }).eq("user_id", user.id),
           supabase.from("user_audiences" as any).select("id", { count: "exact", head: true }).eq("user_id", user.id),
           supabase.from("user_personal_info" as any).select("id", { count: "exact", head: true }).eq("user_id", user.id),
+          supabase.from("user_sales_funnel" as any).select("id", { count: "exact", head: true }).eq("user_id", user.id),
         ]);
 
       const id = identityRes.data as any;
@@ -48,9 +49,10 @@ export function IdentityCompleteness() {
         { key: "numbers", label: "Numbers", weight: 10, complete: (numbersRes.count ?? 0) > 0, scrollId: "numbers" },
         { key: "offers", label: "Offers", weight: 15, complete: (offersRes.count ?? 0) > 0, scrollId: "offers" },
         { key: "audiences", label: "Audiences", weight: 10, complete: (audiencesRes.count ?? 0) > 0, scrollId: "audiences" },
-        { key: "personal", label: "Personal Info", weight: 10, complete: (personalRes.count ?? 0) >= 3, scrollId: "personal-info" },
+        { key: "personal", label: "Personal Info", weight: 5, complete: (personalRes.count ?? 0) >= 3, scrollId: "personal-info" },
         { key: "perception", label: "Perception", weight: 10, complete: !!id?.desired_perception, scrollId: "perception" },
-        { key: "goal", label: "Goal", weight: 15, complete: !!id?.main_goal, scrollId: "goal" },
+        { key: "goal", label: "Goal", weight: 10, complete: !!id?.main_goal, scrollId: "goal" },
+        { key: "funnel", label: "Sales Funnel", weight: 10, complete: (funnelRes.count ?? 0) >= 2, scrollId: "funnel" },
       ];
     },
     enabled: !!user?.id,
