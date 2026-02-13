@@ -24,8 +24,8 @@ const navSections = [
   {
     label: "CREATE",
     items: [
-      { title: "Content Queue", path: "/queue", icon: CalendarClock },
       { title: "Playbook", path: "/playbook", icon: Zap },
+      { title: "Content Queue", path: "/queue", icon: CalendarClock },
     ],
   },
   {
