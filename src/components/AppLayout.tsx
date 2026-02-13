@@ -11,6 +11,7 @@ import {
   BookOpen,
   Brain,
   PenSquare,
+  FileText,
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const navSections = [
     label: "CREATE",
     items: [
       { title: "Playbook", path: "/playbook", icon: Zap },
+      { title: "Templates", path: "/templates", icon: FileText },
       { title: "Content Queue", path: "/queue", icon: CalendarClock },
     ],
   },
@@ -55,6 +57,7 @@ const mobileTabItems = [
 const moreItems = [
   { title: "Chat", path: "/chat", icon: PenSquare },
   { title: "Playbook", path: "/playbook", icon: Zap },
+  { title: "Templates", path: "/templates", icon: FileText },
   { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },

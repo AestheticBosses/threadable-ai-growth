@@ -18,6 +18,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     regressionRes,
     profileRes,
     salesFunnelRes,
+    templatesRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId),
@@ -33,6 +34,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
+    supabase.from("content_templates").select("archetype, template_text").eq("user_id", userId).order("archetype").order("sort_order"),
   ]);
 
   // === IDENTITY ===
@@ -140,6 +142,20 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     funnelSection += `\n\nIMPORTANT: When writing TOF posts, the goal is Step 1 (awareness). When writing MOF posts, reference lead magnets or low-ticket offers from the funnel. When writing BOF posts, drive toward paid offers. Always use the REAL offer names, prices, and URLs from the funnel.`;
   }
 
+  // === CONTENT TEMPLATES ===
+  const templates = templatesRes.data || [];
+  let templatesSection = "No content templates defined.";
+  if (templates.length > 0) {
+    const grouped: Record<string, string[]> = {};
+    for (const t of templates as any[]) {
+      (grouped[t.archetype] = grouped[t.archetype] || []).push(t.template_text);
+    }
+    templatesSection = Object.entries(grouped).map(([arch, texts]) =>
+      arch + ":\n" + texts.map((t, i) => "  Template " + (i + 1) + ": \"" + t.slice(0, 200) + "\"").join("\n")
+    ).join("\n");
+    templatesSection += "\n\nUse these templates as structural guides when drafting posts — fill in the brackets with real user data, don't copy verbatim.";
+  }
+
   return "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
     "=== CREATOR PROFILE ===\n" +
@@ -158,6 +174,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     prefsSection + "\n\n" +
     "=== CONTENT ARCHETYPES ===\n" +
     archetypesSection + "\n\n" +
+    "=== CONTENT TEMPLATES ===\n" +
+    templatesSection + "\n\n" +
     "=== SALES FUNNEL ===\n" +
     funnelSection + "\n\n" +
     "=== KNOWLEDGE BASE ===\n" +

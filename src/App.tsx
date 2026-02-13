@@ -18,6 +18,7 @@ import MyStory from "./pages/MyStory";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import Chat from "./pages/Chat";
 import SettingsPage from "./pages/SettingsPage";
+import Templates from "./pages/Templates";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
             <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
             <Route path="/playbook" element={<ProtectedRoute><Playbook /></ProtectedRoute>} />
+            <Route path="/templates" element={<ProtectedRoute><Templates /></ProtectedRoute>} />
             <Route path="/strategy" element={<Navigate to="/dashboard" replace />} />
             <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
             <Route path="/my-story" element={<ProtectedRoute><MyStory /></ProtectedRoute>} />
