@@ -23,95 +23,66 @@ interface PostIdeasViewProps {
  *   ### 1. Title ... body
  *   **Title 1:** ... body
  */
-export function parsePostIdeas(text: string): PostIdea[] {
-  const ideas: PostIdea[] = [];
-  const fullText = text;
+export function parsePostIdeas(text: string): PostIdea[] | null {
+  if (!text) return null;
 
-  // Primary pattern: **1. Title** or **Idea 1: Title** or **1) Title**
-  const splitPattern = /\*\*(?:Idea\s*)?\d+[\.\):\s]\s*(.+?)\*\*/g;
+  // Split by **NUMBER. TITLE** pattern — handles **1. Title**, **Idea 1: Title**, etc.
+  const parts = text.split(/\*\*(?:Idea\s*)?\d+[\.\):\s]\s*/);
 
-  const titles: { title: string; startIndex: number; matchEnd: number }[] = [];
-  let match;
+  if (parts.length >= 3) {
+    // parts[0] is intro text, parts[1..n] start with "Title**\nContent"
+    const ideas: PostIdea[] = [];
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i];
+      const closingBold = part.indexOf("**");
+      if (closingBold === -1) continue;
 
-  while ((match = splitPattern.exec(fullText)) !== null) {
-    titles.push({
-      title: match[1].trim(),
-      startIndex: match.index,
-      matchEnd: match.index + match[0].length,
-    });
-  }
+      const title = part.substring(0, closingBold).trim();
+      let body = part.substring(closingBold + 2).trim();
 
-  // Fallback: 1. **Title** (number outside bold)
-  if (titles.length < 2) {
-    titles.length = 0;
-    const altPattern = /(?:^|\n)\s*\d+[\.\)]\s*\*\*(.+?)\*\*/g;
-    while ((match = altPattern.exec(fullText)) !== null) {
-      titles.push({
-        title: match[1].trim(),
-        startIndex: match.index,
-        matchEnd: match.index + match[0].length,
-      });
-    }
-  }
+      // Extract archetype and funnel stage if present
+      const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
+      const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
+      body = body
+        .replace(/Archetype:\s*.+/gi, "")
+        .replace(/Funnel\s*Stage:\s*.+/gi, "")
+        .trim();
 
-  // Fallback: ### 1. Title (headers)
-  if (titles.length < 2) {
-    titles.length = 0;
-    const headerPattern = /(?:^|\n)\s*#{1,4}\s*\d+[\.\)]\s*(.+)/g;
-    while ((match = headerPattern.exec(fullText)) !== null) {
-      titles.push({
-        title: match[1].trim().replace(/\*\*/g, ""),
-        startIndex: match.index,
-        matchEnd: match.index + match[0].length,
-      });
-    }
-  }
-
-  // Fallback: plain numbered "1. Title" at start of line (short lines only)
-  if (titles.length < 2) {
-    titles.length = 0;
-    const plainPattern = /(?:^|\n)\s*(\d+)[\.\)]\s+(.+)/g;
-    while ((match = plainPattern.exec(fullText)) !== null) {
-      if (match[2].trim().length < 100) {
-        titles.push({
-          title: match[2].trim().replace(/\*\*/g, ""),
-          startIndex: match.index,
-          matchEnd: match.index + match[0].length,
+      if (title && body) {
+        ideas.push({
+          title,
+          body,
+          archetype: archetypeMatch?.[1]?.trim(),
+          funnelStage: funnelMatch?.[1]?.trim(),
         });
       }
     }
+    if (ideas.length >= 2) return ideas;
   }
 
-  if (titles.length < 2) {
-    // Can't parse — return single idea fallback
-    return [{ title: "Post Idea", body: text.trim() }];
+  // Fallback: try 1. **Title** (number outside bold)
+  const altPattern = /(?:^|\n)\s*\d+[\.\)]\s*\*\*(.+?)\*\*\s*\n([\s\S]*?)(?=(?:\n\s*\d+[\.\)]\s*\*\*)|$)/g;
+  const altIdeas: PostIdea[] = [];
+  let match;
+  while ((match = altPattern.exec(text)) !== null) {
+    const title = match[1].trim();
+    const body = match[2].trim();
+    if (title && body) altIdeas.push({ title, body });
   }
+  if (altIdeas.length >= 2) return altIdeas;
 
-  // Extract content between each title
-  for (let i = 0; i < titles.length; i++) {
-    const contentStart = titles[i].matchEnd;
-    const contentEnd = i < titles.length - 1 ? titles[i + 1].startIndex : fullText.length;
-    let body = fullText.substring(contentStart, contentEnd).trim();
-
-    // Extract archetype and funnel stage if present
-    const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
-    const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
-
-    body = body
-      .replace(/Archetype:\s*.+/gi, "")
-      .replace(/Funnel\s*Stage:\s*.+/gi, "")
-      .replace(/^\s*\n/, "")
-      .trim();
-
-    ideas.push({
-      title: titles[i].title,
-      body,
-      archetype: archetypeMatch?.[1]?.trim(),
-      funnelStage: funnelMatch?.[1]?.trim(),
-    });
+  // Fallback: ### 1. Title (headers)
+  const headerPattern = /(?:^|\n)\s*#{1,4}\s*\d+[\.\)]\s*(.+?)\s*\n([\s\S]*?)(?=(?:\n\s*#{1,4}\s*\d+[\.\)])|$)/g;
+  const headerIdeas: PostIdea[] = [];
+  while ((match = headerPattern.exec(text)) !== null) {
+    const title = match[1].trim().replace(/\*\*/g, "");
+    const body = match[2].trim();
+    if (title && body) headerIdeas.push({ title, body });
   }
+  if (headerIdeas.length >= 2) return headerIdeas;
 
-  return ideas;
+  // Can't parse — return null so caller falls back to plain text
+  return null;
 }
 
 export function PostIdeasView({ ideas, onDraft, onBack, rawContent }: PostIdeasViewProps) {
