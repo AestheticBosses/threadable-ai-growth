@@ -6,8 +6,25 @@ export interface ChatSession {
   id: string;
   user_id: string;
   title: string;
+  pinned: boolean;
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ChatMessageMetadata {
+  type: "drafted_post";
+  post_text: string;
+  analysis: {
+    angle: string;
+    hook: string;
+    content: string;
+    ending: string;
+    improvements: string[];
+  } | null;
+  status: "draft" | "queued" | "scheduled" | "published";
+  queue_id: string | null;
+  published_at: string | null;
 }
 
 export interface ChatMessage {
@@ -16,6 +33,7 @@ export interface ChatMessage {
   user_id: string;
   role: "user" | "assistant";
   content: string;
+  metadata: ChatMessageMetadata | null;
   created_at: string;
 }
 
@@ -63,8 +81,28 @@ export function useChatSessions() {
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
 
+  const togglePin = useMutation({
+    mutationFn: async ({ id, pinned }: { id: string; pinned: boolean }) => {
+      const { error } = await supabase
+        .from("chat_sessions" as any)
+        .update({
+          pinned,
+          pinned_at: pinned ? new Date().toISOString() : null,
+        } as any)
+        .eq("id", id)
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
+
   const deleteSession = useMutation({
     mutationFn: async (id: string) => {
+      // Delete messages first
+      await supabase
+        .from("chat_messages" as any)
+        .delete()
+        .eq("session_id", id);
       const { error } = await supabase
         .from("chat_sessions" as any)
         .delete()
@@ -80,6 +118,7 @@ export function useChatSessions() {
     isLoading: query.isLoading,
     createSession: createSession.mutateAsync,
     updateTitle: updateTitle.mutateAsync,
+    togglePin: togglePin.mutateAsync,
     deleteSession: deleteSession.mutateAsync,
   };
 }
@@ -104,10 +143,25 @@ export function useChatMessages(sessionId: string | null) {
   });
 
   const sendMessage = useMutation({
-    mutationFn: async ({ content, role }: { content: string; role: "user" | "assistant" }) => {
+    mutationFn: async ({
+      content,
+      role,
+      metadata,
+    }: {
+      content: string;
+      role: "user" | "assistant";
+      metadata?: ChatMessageMetadata | null;
+    }) => {
+      const insertData: any = {
+        session_id: sessionId,
+        user_id: user!.id,
+        role,
+        content,
+      };
+      if (metadata) insertData.metadata = metadata;
       const { data, error } = await supabase
         .from("chat_messages" as any)
-        .insert({ session_id: sessionId, user_id: user!.id, role, content } as any)
+        .insert(insertData)
         .select()
         .single();
       if (error) throw error;
@@ -116,10 +170,35 @@ export function useChatMessages(sessionId: string | null) {
     onSuccess: () => qc.invalidateQueries({ queryKey }),
   });
 
+  const updateMessageMetadata = useMutation({
+    mutationFn: async ({
+      messageId,
+      metadata,
+    }: {
+      messageId: string;
+      metadata: Partial<ChatMessageMetadata>;
+    }) => {
+      // Fetch current metadata first
+      const { data: current } = await supabase
+        .from("chat_messages" as any)
+        .select("metadata")
+        .eq("id", messageId)
+        .single();
+      const existing = (current as any)?.metadata || {};
+      const { error } = await supabase
+        .from("chat_messages" as any)
+        .update({ metadata: { ...existing, ...metadata } } as any)
+        .eq("id", messageId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
+
   return {
     messages: query.data ?? [],
     isLoading: query.isLoading,
     sendMessage: sendMessage.mutateAsync,
+    updateMessageMetadata: updateMessageMetadata.mutateAsync,
     refetch: query.refetch,
   };
 }
