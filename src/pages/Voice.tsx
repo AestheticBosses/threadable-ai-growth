@@ -5,19 +5,15 @@ import { toast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Separator } from "@/components/ui/separator";
 import {
   Loader2,
   Sparkles,
-  Plus,
-  MessageSquareText,
   Mic,
-  FileText,
 } from "lucide-react";
 import { WritingExamplesSection } from "@/components/voice/WritingExamplesSection";
 import { ContentPreferencesSection } from "@/components/voice/ContentPreferencesSection";
@@ -36,12 +32,6 @@ type VoiceProfile = {
   include_credibility_markers?: boolean;
 };
 
-type PostPreview = {
-  id: string;
-  text_content: string | null;
-  engagement_rate: number | null;
-  views: number | null;
-};
 
 const TONE_COLORS = [
   "bg-primary/10 text-primary",
@@ -56,42 +46,26 @@ const Voice = () => {
   const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
-  const [savingSample, setSavingSample] = useState(false);
 
-  const [topPosts, setTopPosts] = useState<PostPreview[]>([]);
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null);
-  const [newSample, setNewSample] = useState("");
-  const [sampleCount, setSampleCount] = useState(0);
   const [credibilityToggle, setCredibilityToggle] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [postsRes, profileRes, samplesRes] = await Promise.all([
-      supabase
-        .from("posts_analyzed")
-        .select("id, text_content, engagement_rate, views")
-        .eq("user_id", user.id)
-        .order("engagement_rate", { ascending: false })
-        .limit(20),
+    const [profileRes] = await Promise.all([
       supabase
         .from("profiles")
         .select("voice_profile")
         .eq("id", user.id)
         .single(),
-      supabase
-        .from("voice_samples")
-        .select("id")
-        .eq("user_id", user.id),
     ]);
 
-    if (postsRes.data) setTopPosts(postsRes.data);
     if (profileRes.data?.voice_profile) {
       const vp = profileRes.data.voice_profile as unknown as VoiceProfile;
       setVoiceProfile(vp);
       setCredibilityToggle(vp.include_credibility_markers !== false);
     }
-    if (samplesRes.data) setSampleCount(samplesRes.data.length);
 
     setLoading(false);
   }, [user]);
@@ -99,24 +73,6 @@ const Voice = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleSaveSample = async () => {
-    if (!user || !newSample.trim()) return;
-    setSavingSample(true);
-    try {
-      const { error } = await supabase
-        .from("voice_samples")
-        .insert({ user_id: user.id, sample_text: newSample.trim(), source: "manual" });
-      if (error) throw error;
-      setNewSample("");
-      setSampleCount((c) => c + 1);
-      toast({ title: "Sample saved!" });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setSavingSample(false);
-    }
-  };
 
   const handleAnalyze = async () => {
     if (!session?.access_token) return;
@@ -212,89 +168,8 @@ const Voice = () => {
           </Button>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Left Column — Samples */}
-          <div className="space-y-6">
-            {/* Imported Posts */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <MessageSquareText className="h-4 w-4 text-primary" />
-                  Imported Posts
-                  <Badge variant="secondary" className="ml-auto text-xs">
-                    {topPosts.length}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {topPosts.length > 0 ? (
-                  <ScrollArea className="h-[360px] pr-3">
-                    <div className="space-y-2">
-                      {topPosts.map((post) => (
-                        <div
-                          key={post.id}
-                          className="rounded-lg border border-border p-3 space-y-1"
-                        >
-                          <p className="text-sm text-foreground line-clamp-3">
-                            {post.text_content || "No text"}
-                          </p>
-                          <div className="flex gap-3 text-xs text-muted-foreground">
-                            <span>{post.views?.toLocaleString()} views</span>
-                            <span className="text-primary font-medium">
-                              {post.engagement_rate?.toFixed(1)}% eng
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <p className="text-sm text-muted-foreground py-8 text-center">
-                    No posts imported yet. Run analysis from the Analyze page first.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Add Voice Samples */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4 text-primary" />
-                  Add Voice Samples
-                  {sampleCount > 0 && (
-                    <Badge variant="secondary" className="ml-auto text-xs">
-                      {sampleCount} saved
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Textarea
-                  value={newSample}
-                  onChange={(e) => setNewSample(e.target.value)}
-                  placeholder="Paste in writing samples — tweets, emails, copy you've written..."
-                  rows={4}
-                  className="text-sm resize-none"
-                />
-                <Button
-                  size="sm"
-                  onClick={handleSaveSample}
-                  disabled={savingSample || !newSample.trim()}
-                  className="gap-2"
-                >
-                  {savingSample ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Plus className="h-3 w-3" />
-                  )}
-                  Save Sample
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right Column — Voice Profile */}
+        <div className="space-y-6">
+          {/* Voice Profile */}
           <div className="space-y-6">
             {voiceProfile ? (
               <>
