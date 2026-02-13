@@ -185,7 +185,7 @@ const Chat = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("profiles")
-        .select("display_name, threads_username, threads_profile_picture_url")
+        .select("display_name, threads_username, threads_profile_picture_url, threads_access_token")
         .eq("id", user!.id)
         .maybeSingle();
       return data as any;
@@ -453,7 +453,7 @@ const Chat = () => {
           setFlowMode("preview");
 
           // Second AI call for analysis
-          const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle — what perspective does it take?\n2. Hook — why does the opening line work?\n3. Content — what value does it deliver?\n4. Ending — how does it close?\n5. Optional improvements — 2-3 ways to make it stronger\n\nPost: ${fullDraft}\n\nRespond in clean paragraphs under each heading. Be specific and reference the actual content.`;
+          const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullDraft}`;
           let analysisText = "";
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
@@ -553,7 +553,7 @@ const Chat = () => {
       if (fullText.trim()) {
         await sendMessage({ content: fullText, role: "assistant" });
         // Run analysis
-        const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle\n2. Hook\n3. Content\n4. Ending\n5. Optional improvements\n\nPost: ${fullText}\n\nBe specific.`;
+        const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
         let analysisText = "";
         const resp2 = await fetch(CHAT_URL, {
           method: "POST",
@@ -799,6 +799,7 @@ const Chat = () => {
           displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
           username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
           profilePicUrl={profile?.threads_profile_picture_url}
+          threadsConnected={!!profile?.threads_access_token}
           onBack={handleBackFromPreview}
           onRegenerate={handleRegenerate}
           isRegenerating={isRegenerating}
