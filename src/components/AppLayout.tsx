@@ -19,15 +19,30 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const navItems = [
-  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { title: "Insights", path: "/insights", icon: Lightbulb },
-  { title: "Playbook", path: "/playbook", icon: Zap },
-  { title: "Content Queue", path: "/queue", icon: CalendarClock },
-  { title: "Identity", path: "/my-story", icon: BookOpen },
-  { title: "Voice", path: "/voice", icon: Mic2 },
-  { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
-  { title: "Settings", path: "/settings", icon: Settings },
+const navSections = [
+  {
+    label: "CREATE",
+    items: [
+      { title: "Content Queue", path: "/queue", icon: CalendarClock },
+      { title: "Playbook", path: "/playbook", icon: Zap },
+    ],
+  },
+  {
+    label: "ANALYZE",
+    items: [
+      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+      { title: "Insights", path: "/insights", icon: Lightbulb },
+    ],
+  },
+  {
+    label: "CONFIGURE",
+    items: [
+      { title: "Identity", path: "/my-story", icon: BookOpen },
+      { title: "Voice", path: "/voice", icon: Mic2 },
+      { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
+      { title: "Settings", path: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 const mobileTabItems = [
@@ -38,6 +53,7 @@ const mobileTabItems = [
 
 const moreItems = [
   { title: "Chat", path: "/chat", icon: PenSquare },
+  { title: "Playbook", path: "/playbook", icon: Zap },
   { title: "Identity", path: "/my-story", icon: BookOpen },
   { title: "Voice", path: "/voice", icon: Mic2 },
   { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
@@ -92,21 +108,30 @@ export function AppLayout({ children }: AppSidebarProps) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-1 px-2 py-2">
-        {navItems.map((item) => (
-          <RouterNavLink
-            key={item.path}
-            to={item.path}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              isActive(item.path)
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
-            )}
-          >
-            <item.icon className="h-4 w-4" />
-            {item.title}
-          </RouterNavLink>
+      <nav className="flex-1 px-2 py-2 space-y-4">
+        {navSections.map((section) => (
+          <div key={section.label}>
+            <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map((item) => (
+                <RouterNavLink
+                  key={item.path}
+                  to={item.path}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    isActive(item.path)
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {item.title}
+                </RouterNavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
