@@ -140,44 +140,32 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     funnelSection += `\n\nIMPORTANT: When writing TOF posts, the goal is Step 1 (awareness). When writing MOF posts, reference lead magnets or low-ticket offers from the funnel. When writing BOF posts, drive toward paid offers. Always use the REAL offer names, prices, and URLs from the funnel.`;
   }
 
-  return \`=== USER IDENTITY ===
-\${identitySection}
-
-=== CREATOR PROFILE ===
-\${profileSection}
-
-=== STORIES ===
-\${storiesSection}
-
-=== OFFERS ===
-\${offersSection}
-
-=== TARGET AUDIENCES ===
-\${audiencesSection}
-
-=== PERSONAL INFORMATION ===
-\${personalSection}
-
-=== VOICE & STYLE ===
-\${styleSection}
-Content Preferences:
-\${prefsSection}
-
-=== CONTENT ARCHETYPES ===
-\${archetypesSection}
-
-=== SALES FUNNEL ===
-\${funnelSection}
-
-=== KNOWLEDGE BASE ===
-\${knowledgeSection}
-
-=== KEY INSIGHTS FROM DATA ===
-\${insightsSection}
-
-=== TOP PERFORMING POSTS (for style reference) ===
-\${postsSection}
-
-=== PLANS ===
-\${plansSection}\`;
+  return "=== USER IDENTITY ===\n" +
+    identitySection + "\n\n" +
+    "=== CREATOR PROFILE ===\n" +
+    profileSection + "\n\n" +
+    "=== STORIES ===\n" +
+    storiesSection + "\n\n" +
+    "=== OFFERS ===\n" +
+    offersSection + "\n\n" +
+    "=== TARGET AUDIENCES ===\n" +
+    audiencesSection + "\n\n" +
+    "=== PERSONAL INFORMATION ===\n" +
+    personalSection + "\n\n" +
+    "=== VOICE & STYLE ===\n" +
+    styleSection + "\n" +
+    "Content Preferences:\n" +
+    prefsSection + "\n\n" +
+    "=== CONTENT ARCHETYPES ===\n" +
+    archetypesSection + "\n\n" +
+    "=== SALES FUNNEL ===\n" +
+    funnelSection + "\n\n" +
+    "=== KNOWLEDGE BASE ===\n" +
+    knowledgeSection + "\n\n" +
+    "=== KEY INSIGHTS FROM DATA ===\n" +
+    insightsSection + "\n\n" +
+    "=== TOP PERFORMING POSTS (for style reference) ===\n" +
+    postsSection + "\n\n" +
+    "=== PLANS ===\n" +
+    plansSection;
 }

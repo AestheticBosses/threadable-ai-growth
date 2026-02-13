@@ -428,6 +428,7 @@ export function ContentPlanTab() {
                                   </div>
                                 </div>
                               )}
+                            </div>
                           );
                         })}
                       </div>
