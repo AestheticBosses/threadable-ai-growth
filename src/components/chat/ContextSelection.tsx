@@ -3,210 +3,181 @@ import { BookOpen, Package, FileText, BarChart3, Plus, Check } from "lucide-reac
 import { cn } from "@/lib/utils";
 import type { ChatContextData } from "@/hooks/useChatContextData";
 
-interface ContextSelectionProps {
+interface InlineContextCardsProps {
   contextData: ChatContextData;
-  onSend: (contextText: string) => void;
-  onBack: () => void;
+  disabled: boolean;
+  selectedLabel?: string;
+  onSelect: (item: { type: string; label: string; content: string }) => void;
 }
 
-interface SelectedItem {
-  type: "story" | "offer" | "knowledge" | "post";
-  index: number;
-  label: string;
-  content: string;
-}
-
-export function ContextSelection({ contextData, onSend, onBack }: ContextSelectionProps) {
-  const [selected, setSelected] = useState<SelectedItem[]>([]);
+export function InlineContextCards({ contextData, disabled, selectedLabel, onSelect }: InlineContextCardsProps) {
   const { stories, offers, knowledge, topPosts } = contextData;
 
-  const isSelected = (type: string, index: number) =>
-    selected.some((s) => s.type === type && s.index === index);
+  const isItemSelected = (label: string) => selectedLabel === label;
+  const isDisabledItem = (label: string) => disabled && !isItemSelected(label);
 
-  const toggle = (item: SelectedItem) => {
-    setSelected((prev) => {
-      const exists = prev.find((s) => s.type === item.type && s.index === item.index);
-      if (exists) return prev.filter((s) => !(s.type === item.type && s.index === item.index));
-      return [...prev, item];
-    });
-  };
-
-  const handleSend = () => {
-    if (selected.length === 0) return;
-    const contextParts = selected.map((s) => `[${s.type.toUpperCase()}: ${s.label}]\n${s.content}`);
-    const contextText = `Generate 5 post ideas based on this context:\n\n${contextParts.join("\n\n")}`;
-    onSend(contextText);
+  const handleClick = (item: { type: string; label: string; content: string }) => {
+    if (disabled) return;
+    onSelect(item);
   };
 
   return (
-    <div className="max-w-[600px] mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground text-sm">← Back</button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className="text-lg">💡</span>
-        <h2 className="text-lg font-semibold text-foreground">What do you want your post ideas to be about?</h2>
-      </div>
-
-      {/* Knowledge Base */}
-      <section className="rounded-xl border border-border bg-card p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <FileText className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium text-foreground">Knowledge base ({knowledge.length} items)</span>
-        </div>
-        <p className="text-xs text-muted-foreground">Add your expertise and experiences to get personalized post ideas</p>
-        {knowledge.length === 0 ? (
-          <a href="/knowledge-base" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            <Plus className="h-3 w-3" /> Add Info
-          </a>
-        ) : (
-          <div className="space-y-2">
-            {knowledge.map((k, i) => (
-              <button
-                key={k.id}
-                onClick={() => toggle({ type: "knowledge", index: i, label: k.title, content: k.content || k.title })}
-                className={cn(
-                  "w-full text-left rounded-lg border px-3 py-2.5 text-xs transition-all",
-                  isSelected("knowledge", i)
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-card hover:border-primary/30 text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-medium truncate">{k.title}</span>
-                  </div>
-                  {isSelected("knowledge", i) && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </section>
-
+    <div className="space-y-4 py-2">
       {/* Stories */}
       {stories.length > 0 && (
-        <section className="space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 px-1">
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">My stories</span>
+            <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">My stories</span>
           </div>
-          <div className="space-y-2">
-            {stories.map((s, i) => (
-              <button
-                key={i}
-                onClick={() => toggle({ type: "story", index: i, label: s.title, content: `${s.story}\nLesson: ${s.lesson}` })}
-                className={cn(
-                  "w-full text-left rounded-lg border px-3 py-2.5 text-xs transition-all",
-                  isSelected("story", i)
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-card hover:border-primary/30 text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                      <span className="font-medium truncate">{s.title}</span>
-                    </div>
-                    <p className="mt-1 text-muted-foreground truncate pl-5.5">{s.story?.slice(0, 80)}...</p>
+          <div className="space-y-1.5">
+            {stories.map((s, i) => {
+              const label = s.title;
+              const selected = isItemSelected(label);
+              const faded = isDisabledItem(label);
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleClick({ type: "story", label, content: `${s.story}\nLesson: ${s.lesson}` })}
+                  disabled={disabled}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2 text-xs transition-all",
+                    selected
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : faded
+                      ? "border-border bg-card/50 text-muted-foreground/40 cursor-not-allowed"
+                      : "border-border bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground cursor-pointer"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{label}</span>
+                    {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
                   </div>
-                  {isSelected("story", i) && <Check className="h-3.5 w-3.5 text-primary shrink-0 ml-2" />}
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
-        </section>
+        </div>
       )}
 
       {/* Offers */}
       {offers.length > 0 && (
-        <section className="space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 px-1">
-            <Package className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">My offers</span>
+            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">My offers</span>
           </div>
-          <div className="space-y-2">
-            {offers.map((o, i) => (
-              <button
-                key={o.id}
-                onClick={() => toggle({ type: "offer", index: i, label: o.name, content: `${o.name}: ${o.description || ""}` })}
-                className={cn(
-                  "w-full text-left rounded-lg border px-3 py-2.5 text-xs transition-all",
-                  isSelected("offer", i)
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-card hover:border-primary/30 text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-3.5 w-3.5 shrink-0" />
-                      <span className="font-medium truncate">{o.name}</span>
-                    </div>
-                    {o.description && <p className="mt-1 text-muted-foreground truncate pl-5.5">{o.description.slice(0, 80)}...</p>}
+          <div className="space-y-1.5">
+            {offers.map((o) => {
+              const label = o.name;
+              const selected = isItemSelected(label);
+              const faded = isDisabledItem(label);
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => handleClick({ type: "offer", label, content: `${o.name}: ${o.description || ""}` })}
+                  disabled={disabled}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2 text-xs transition-all",
+                    selected
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : faded
+                      ? "border-border bg-card/50 text-muted-foreground/40 cursor-not-allowed"
+                      : "border-border bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground cursor-pointer"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{label}</span>
+                    {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
                   </div>
-                  {isSelected("offer", i) && <Check className="h-3.5 w-3.5 text-primary shrink-0 ml-2" />}
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
-        </section>
+        </div>
       )}
 
       {/* Top Posts */}
       {topPosts.length > 0 && (
-        <section className="space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center gap-2 px-1">
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Previous posts (top performing)</span>
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Previous posts (top performing)</span>
           </div>
-          <div className="space-y-2">
-            {topPosts.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => toggle({ type: "post", index: i, label: `"${(p.text_content || "").slice(0, 40)}..."`, content: p.text_content })}
-                className={cn(
-                  "w-full text-left rounded-lg border px-3 py-2.5 text-xs transition-all",
-                  isSelected("post", i)
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border bg-card hover:border-primary/30 text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="font-medium truncate">"{(p.text_content || "").slice(0, 50)}..."</span>
+          <div className="space-y-1.5">
+            {topPosts.map((p) => {
+              const label = `"${(p.text_content || "").slice(0, 40)}..."`;
+              const selected = isItemSelected(label);
+              const faded = isDisabledItem(label);
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => handleClick({ type: "post", label, content: p.text_content })}
+                  disabled={disabled}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2 text-xs transition-all",
+                    selected
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : faded
+                      ? "border-border bg-card/50 text-muted-foreground/40 cursor-not-allowed"
+                      : "border-border bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground cursor-pointer"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="truncate font-medium block">{label}</span>
+                      <span className="text-muted-foreground/60 text-[10px]">
+                        {(p.views || 0).toLocaleString()} views · {p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) : "0"}% eng
+                      </span>
                     </div>
-                    <p className="mt-1 text-muted-foreground pl-5.5">
-                      {(p.views || 0).toLocaleString()} views · {p.engagement_rate ? (p.engagement_rate * 100).toFixed(2) : "0"}% eng
-                    </p>
+                    {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
                   </div>
-                  {isSelected("post", i) && <Check className="h-3.5 w-3.5 text-primary shrink-0 ml-2" />}
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Send button */}
-      <div className="sticky bottom-0 bg-background pt-3 pb-2">
-        <button
-          onClick={handleSend}
-          disabled={selected.length === 0}
-          className={cn(
-            "w-full rounded-xl py-3 text-sm font-medium transition-all",
-            selected.length > 0
-              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : "bg-muted/20 text-muted-foreground cursor-not-allowed"
-          )}
-        >
-          {selected.length > 0 ? `Generate ideas from ${selected.length} selected` : "Select context to generate ideas"}
-        </button>
+      {/* Knowledge base */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 px-1">
+          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium text-muted-foreground">Knowledge base ({knowledge.length} items)</span>
+        </div>
+        {knowledge.length === 0 ? (
+          <a href="/knowledge-base" className="inline-flex items-center gap-1 text-xs text-primary hover:underline ml-1">
+            <Plus className="h-3 w-3" /> Add Info
+          </a>
+        ) : (
+          <div className="space-y-1.5">
+            {knowledge.map((k) => {
+              const label = k.title;
+              const selected = isItemSelected(label);
+              const faded = isDisabledItem(label);
+              return (
+                <button
+                  key={k.id}
+                  onClick={() => handleClick({ type: "knowledge", label, content: k.content || k.title })}
+                  disabled={disabled}
+                  className={cn(
+                    "w-full text-left rounded-lg border px-3 py-2 text-xs transition-all",
+                    selected
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : faded
+                      ? "border-border bg-card/50 text-muted-foreground/40 cursor-not-allowed"
+                      : "border-border bg-card hover:border-primary/40 text-muted-foreground hover:text-foreground cursor-pointer"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{label}</span>
+                    {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,29 +10,30 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import threadableIcon from "@/assets/threadable-icon.png";
-import { ContextSelection } from "@/components/chat/ContextSelection";
-import { PostIdeasView, parsePostIdeas } from "@/components/chat/PostIdeasView";
+import { InlineContextCards } from "@/components/chat/ContextSelection";
+import { parsePostIdeas } from "@/components/chat/PostIdeasView";
 import { DraftingProgress } from "@/components/chat/DraftingProgress";
 import { PostPreviewSplit } from "@/components/chat/PostPreviewSplit";
 import { useQuery } from "@tanstack/react-query";
 
-// Flow states for guided post creation
-type FlowState =
-  | "empty"          // Landing with quick actions
-  | "context"        // Context selection (after "Give post ideas")
-  | "chat"           // Free-form chat conversation
-  | "ideas"          // Post ideas cards
-  | "drafting"       // Loading progress steps
-  | "preview";       // Split screen post preview
+/* ─── Flow item types ─── */
+type FlowItem =
+  | { id: string; type: "user"; content: string }
+  | { id: string; type: "ai"; content: string }
+  | { id: string; type: "typing" }
+  | { id: string; type: "context-cards"; disabled: boolean; selectedLabel?: string }
+  | { id: string; type: "idea-cards"; ideas: { title: string; body: string }[] }
+  | { id: string; type: "drafting" }
+  | { id: string; type: "streaming"; content: string };
 
 const QUICK_ACTIONS = [
   { icon: "💡", label: "Give post ideas", action: "ideas" as const },
-  { icon: "📈", label: "What's trending", action: "chat" as const, message: "What topics are trending right now that align with my brand positioning and target audience? Give me 3-5 trending angles I could create Threads content about." },
-  { icon: "📋", label: "Give a template", action: "chat" as const, message: "Give me a post template based on my top-performing archetype. Include the structure, a fill-in-the-blank hook, and an example using my real stories and numbers." },
+  { icon: "📈", label: "What's trending", action: "trending" as const, message: "What topics are trending right now that align with my brand positioning and target audience? Give me 3-5 trending angles I could create Threads content about. Format each as a numbered idea with a bold title and 2-3 sentence description." },
+  { icon: "📋", label: "Give a template", action: "template" as const, message: "Give me 5 fill-in-the-blank post templates based on my top-performing archetypes. For each template, give a bold title and the template text with [blanks]. Format as numbered ideas." },
 ];
 
 const MORE_ACTIONS = [
-  { icon: "♻️", label: "Repurpose a post", message: "Take my top performing post and give me 3 ways to repurpose it using different archetypes." },
+  { icon: "♻️", label: "Repurpose a post", message: "Take my top performing post and give me 3 ways to repurpose it using different archetypes. Format as numbered ideas with a bold title and description." },
   { icon: "🔝", label: "Write a TOF post", message: "Write a top-of-funnel reach post using my Authority Insider Drop archetype. Use a real story from my Identity." },
   { icon: "🎯", label: "Write a BOF post", message: "Write a bottom-of-funnel conversion post that drives toward my main goal. Make it feel natural, not salesy." },
   { icon: "✏️", label: "Improve a draft", message: "I have a draft post I want to improve. I'll paste it and you score it against my content preferences and suggest improvements." },
@@ -109,9 +110,8 @@ async function streamAIResponse({
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let textBuffer = "";
-  let streamDone = false;
 
-  while (!streamDone) {
+  while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     textBuffer += decoder.decode(value, { stream: true });
@@ -123,7 +123,7 @@ async function streamAIResponse({
       if (line.startsWith(":") || line.trim() === "") continue;
       if (!line.startsWith("data: ")) continue;
       const jsonStr = line.slice(6).trim();
-      if (jsonStr === "[DONE]") { streamDone = true; break; }
+      if (jsonStr === "[DONE]") { onDone(); return; }
       try {
         const parsed = JSON.parse(jsonStr);
         const content = parsed.choices?.[0]?.delta?.content as string | undefined;
@@ -134,25 +134,27 @@ async function streamAIResponse({
       }
     }
   }
-
+  // flush
   if (textBuffer.trim()) {
     for (let raw of textBuffer.split("\n")) {
-      if (!raw) continue;
-      if (raw.endsWith("\r")) raw = raw.slice(0, -1);
-      if (raw.startsWith(":") || raw.trim() === "") continue;
-      if (!raw.startsWith("data: ")) continue;
+      if (!raw || !raw.startsWith("data: ")) continue;
       const jsonStr = raw.slice(6).trim();
       if (jsonStr === "[DONE]") continue;
       try {
         const parsed = JSON.parse(jsonStr);
-        const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-        if (content) onDelta(content);
+        const c = parsed.choices?.[0]?.delta?.content;
+        if (c) onDelta(c);
       } catch {}
     }
   }
   onDone();
 }
 
+const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let idCounter = 0;
+const uid = () => `flow-${++idCounter}-${Date.now()}`;
+
+/* ─── Main component ─── */
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
   const { user } = useAuth();
@@ -161,20 +163,23 @@ const Chat = () => {
   const { messages, isLoading: messagesLoading, sendMessage, refetch } = useChatMessages(activeSessionId);
   const contextData = useChatContextData();
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [streamingContent, setStreamingContent] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
-  const [flowState, setFlowState] = useState<FlowState>("empty");
+
+  // Flow state
+  const [flowItems, setFlowItems] = useState<FlowItem[]>([]);
+  const [flowMode, setFlowMode] = useState<"empty" | "guided" | "chat" | "preview">("empty");
   const [postIdeas, setPostIdeas] = useState<{ title: string; body: string }[]>([]);
   const [draftedPost, setDraftedPost] = useState("");
   const [postAnalysis, setPostAnalysis] = useState("");
   const [draftingIdea, setDraftingIdea] = useState<{ title: string; body: string } | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isBusy, setIsBusy] = useState(false);
 
-  // Fetch user profile for Threads preview
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Profile for Threads preview
   const profileQuery = useQuery({
     queryKey: ["user-profile-chat", user?.id],
     queryFn: async () => {
@@ -187,7 +192,6 @@ const Chat = () => {
     },
     enabled: !!user?.id,
   });
-
   const profile = profileQuery.data;
 
   // Auto-select recent session
@@ -195,17 +199,16 @@ const Chat = () => {
     if (sessionsLoading || activeSessionId) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const recentSession = sessions.find((s) => {
-      const d = new Date(s.created_at);
-      return d >= today && s.title === "New chat";
-    });
+    const recentSession = sessions.find((s) => new Date(s.created_at) >= today && s.title === "New chat");
     if (recentSession) setActiveSessionId(recentSession.id);
   }, [sessions, sessionsLoading, activeSessionId]);
 
+  // Scroll to bottom on flow changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping, streamingContent]);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [flowItems, messages]);
 
+  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -213,18 +216,34 @@ const Chat = () => {
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   }, [input]);
 
-  // When switching sessions, detect if we should show ideas/chat/empty
+  // On session change, detect mode
   useEffect(() => {
     if (messages.length > 0) {
-      setFlowState("chat");
+      setFlowMode("chat");
     } else {
-      setFlowState("empty");
+      setFlowMode("empty");
     }
+    setFlowItems([]);
     setPostIdeas([]);
     setDraftedPost("");
     setPostAnalysis("");
     setDraftingIdea(null);
   }, [activeSessionId]);
+
+  /* ─── Helpers ─── */
+  const addItem = useCallback((item: any) => {
+    const newItem = { ...item, id: uid() } as FlowItem;
+    setFlowItems((prev) => [...prev, newItem]);
+    return newItem.id;
+  }, []);
+
+  const removeItem = useCallback((id: string) => {
+    setFlowItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const updateItem = useCallback((id: string, updates: Partial<FlowItem>) => {
+    setFlowItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } as FlowItem : i)));
+  }, []);
 
   const ensureSession = async (): Promise<string> => {
     if (activeSessionId) return activeSessionId;
@@ -233,145 +252,260 @@ const Chat = () => {
     return session.id;
   };
 
-  const streamAndSave = useCallback(async (
+  const getMessageHistory = () => [...messages].slice(-20).map((m) => ({ role: m.role, content: m.content }));
+
+  /* ─── Core AI streaming with flow items ─── */
+  const streamToFlow = useCallback(async (
     msg: string,
-    opts?: { onComplete?: (fullText: string) => void; skipSaveUser?: boolean }
+    opts?: { saveToDb?: boolean; onComplete?: (text: string) => void }
   ) => {
     const sessionId = await ensureSession();
-    if (!opts?.skipSaveUser) {
+
+    if (opts?.saveToDb !== false) {
       await sendMessage({ content: msg, role: "user" });
+      if (messages.length === 0) {
+        const autoTitle = msg.slice(0, 50) + (msg.length > 50 ? "..." : "");
+        await updateTitle({ id: sessionId, title: autoTitle });
+      }
     }
 
-    // Auto-title from first message
-    if (messages.length === 0 && !opts?.skipSaveUser) {
-      const autoTitle = msg.slice(0, 50) + (msg.length > 50 ? "..." : "");
-      await updateTitle({ id: sessionId, title: autoTitle });
-    }
-
-    const history = [...messages].slice(-20).map((m) => ({ role: m.role, content: m.content }));
-
-    setIsTyping(true);
-    setStreamingContent("");
+    const streamingId = addItem({ type: "streaming", content: "" });
     let fullResponse = "";
 
     await streamAIResponse({
       message: msg,
-      messageHistory: history,
+      messageHistory: getMessageHistory(),
       onDelta: (chunk) => {
         fullResponse += chunk;
-        setStreamingContent(fullResponse);
+        updateItem(streamingId, { content: fullResponse });
       },
       onDone: async () => {
+        removeItem(streamingId);
         if (fullResponse.trim()) {
           await sendMessage({ content: fullResponse, role: "assistant" });
+          addItem({ type: "ai", content: fullResponse });
         }
-        setStreamingContent("");
-        setIsTyping(false);
         opts?.onComplete?.(fullResponse);
       },
       onError: async (errMsg) => {
+        removeItem(streamingId);
+        addItem({ type: "ai", content: `⚠️ ${errMsg}` });
         toast({ title: "Error", description: errMsg, variant: "destructive" });
-        await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant" });
-        setStreamingContent("");
-        setIsTyping(false);
       },
     });
-  }, [activeSessionId, messages, sendMessage, updateTitle, ensureSession]);
+  }, [activeSessionId, messages, sendMessage, updateTitle, ensureSession, addItem, removeItem, updateItem]);
 
-  // Free-form chat send
-  const handleSend = useCallback(async (text?: string) => {
-    const msg = (text || input).trim();
-    if (!msg || isTyping) return;
-    setInput("");
-    setFlowState("chat");
-    await streamAndSave(msg);
-  }, [input, isTyping, streamAndSave]);
+  /* ─── Flow: "Give post ideas" ─── */
+  const handlePostIdeasAction = useCallback(async () => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setFlowMode("guided");
+    setFlowItems([]);
 
-  // Handle "Give post ideas" → context selection
-  const handlePostIdeasAction = () => {
-    setFlowState("context");
-  };
+    addItem({ type: "user", content: "Give me post ideas" });
+    const typingId = addItem({ type: "typing" });
 
-  // Context selected → generate ideas
-  const handleContextSend = async (contextText: string) => {
-    setFlowState("chat"); // temporarily show chat while streaming
-    await streamAndSave(contextText, {
-      onComplete: (fullText) => {
-        const ideas = parsePostIdeas(fullText);
+    await ensureSession();
+    await sendMessage({ content: "Give me post ideas", role: "user" });
+
+    await delay(1500);
+    removeItem(typingId);
+    addItem({ type: "ai", content: "💡 What do you want your post ideas to be about?\nPick one to get started:" });
+    addItem({ type: "context-cards", disabled: false });
+
+    setIsBusy(false);
+  }, [isBusy, addItem, removeItem, ensureSession, sendMessage]);
+
+  /* ─── Flow: Context item selected (single select) ─── */
+  const handleContextSelect = useCallback(async (item: { type: string; label: string; content: string }) => {
+    if (isBusy) return;
+    setIsBusy(true);
+
+    // Disable context cards and mark selection
+    setFlowItems((prev) =>
+      prev.map((fi) =>
+        fi.type === "context-cards" ? { ...fi, disabled: true, selectedLabel: item.label } as FlowItem : fi
+      )
+    );
+
+    await delay(500);
+    addItem({ type: "user", content: `Generate ideas from: ${item.label}` });
+    const typingId = addItem({ type: "typing" });
+
+    const prompt = `Generate 5 post ideas based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nFor each idea, give a numbered title in bold and a 2-3 sentence description of the post angle.`;
+
+    await sendMessage({ content: prompt, role: "user" });
+
+    await delay(800);
+    removeItem(typingId);
+
+    // Stream the AI response
+    const streamingId = addItem({ type: "streaming", content: "" });
+    let fullResponse = "";
+
+    await streamAIResponse({
+      message: prompt,
+      messageHistory: getMessageHistory(),
+      onDelta: (chunk) => {
+        fullResponse += chunk;
+        updateItem(streamingId, { content: fullResponse });
+      },
+      onDone: async () => {
+        removeItem(streamingId);
+        if (fullResponse.trim()) {
+          await sendMessage({ content: fullResponse, role: "assistant" });
+        }
+        const ideas = parsePostIdeas(fullResponse);
         if (ideas.length > 0) {
           setPostIdeas(ideas);
-          setFlowState("ideas");
+          addItem({ type: "ai", content: "Here are 5 post ideas based on your selection:" });
+          addItem({ type: "idea-cards", ideas });
+        } else {
+          addItem({ type: "ai", content: fullResponse });
         }
+        setIsBusy(false);
+      },
+      onError: async (errMsg) => {
+        removeItem(streamingId);
+        addItem({ type: "ai", content: `⚠️ ${errMsg}` });
+        setIsBusy(false);
       },
     });
-  };
+  }, [isBusy, addItem, removeItem, updateItem, sendMessage]);
 
-  // Draft a specific idea
-  const handleDraftIdea = async (idea: { title: string; body: string }) => {
+  /* ─── Flow: Quick actions (trending, template, etc.) ─── */
+  const handleQuickAction = useCallback(async (label: string, message: string) => {
+    if (isBusy) return;
+    setIsBusy(true);
+    setFlowMode("guided");
+    setFlowItems([]);
+
+    addItem({ type: "user", content: label });
+    const typingId = addItem({ type: "typing" });
+
+    await ensureSession();
+    await sendMessage({ content: message, role: "user" });
+    if (messages.length === 0) {
+      const sid = activeSessionId || "";
+      if (sid) await updateTitle({ id: sid, title: label });
+    }
+
+    await delay(1800);
+    removeItem(typingId);
+
+    const streamingId = addItem({ type: "streaming", content: "" });
+    let fullResponse = "";
+
+    await streamAIResponse({
+      message,
+      messageHistory: getMessageHistory(),
+      onDelta: (chunk) => {
+        fullResponse += chunk;
+        updateItem(streamingId, { content: fullResponse });
+      },
+      onDone: async () => {
+        removeItem(streamingId);
+        if (fullResponse.trim()) {
+          await sendMessage({ content: fullResponse, role: "assistant" });
+        }
+        const ideas = parsePostIdeas(fullResponse);
+        if (ideas.length > 0) {
+          setPostIdeas(ideas);
+          addItem({ type: "ai", content: `Here are some ideas for you:` });
+          addItem({ type: "idea-cards", ideas });
+        } else {
+          addItem({ type: "ai", content: fullResponse });
+        }
+        setIsBusy(false);
+      },
+      onError: async (errMsg) => {
+        removeItem(streamingId);
+        addItem({ type: "ai", content: `⚠️ ${errMsg}` });
+        setIsBusy(false);
+      },
+    });
+  }, [isBusy, addItem, removeItem, updateItem, ensureSession, sendMessage, updateTitle, activeSessionId, messages]);
+
+  /* ─── Flow: Draft a post idea ─── */
+  const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
+    if (isBusy) return;
+    setIsBusy(true);
     setDraftingIdea(idea);
-    setFlowState("drafting");
     setDraftedPost("");
     setPostAnalysis("");
 
+    addItem({ type: "user", content: `Draft post: ${idea.title}` });
+    addItem({ type: "drafting" });
+
     const draftPrompt = `Write a complete Threads post based on this idea:\n\nTitle: ${idea.title}\nConcept: ${idea.body}\n\nWrite only the post text, ready to publish. Use my voice and style. Keep it under 500 characters. Format for mobile readability.`;
 
-    await streamAndSave(draftPrompt, {
-      onComplete: async (draftText) => {
-        setDraftedPost(draftText);
-        setFlowState("preview");
+    await sendMessage({ content: draftPrompt, role: "user" });
 
-        // Second AI call for analysis
-        const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle — what perspective does it take?\n2. Hook — why does the opening line work?\n3. Content — what value does it deliver?\n4. Ending — how does it close?\n5. Optional improvements — 2-3 ways to make it stronger\n\nPost: ${draftText}\n\nRespond in clean paragraphs under each heading. Be specific and reference the actual content.`;
+    let fullDraft = "";
+    await streamAIResponse({
+      message: draftPrompt,
+      messageHistory: getMessageHistory(),
+      onDelta: (chunk) => { fullDraft += chunk; },
+      onDone: async () => {
+        if (fullDraft.trim()) {
+          await sendMessage({ content: fullDraft, role: "assistant" });
+          setDraftedPost(fullDraft);
+          setFlowMode("preview");
 
-        let analysisText = "";
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const resp = await fetch(CHAT_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
-          body: JSON.stringify({
-            message: analysisPrompt,
-            message_history: [...messages].slice(-10).map((m) => ({ role: m.role, content: m.content })),
-          }),
-        });
-
-        if (resp.ok && resp.body) {
-          const reader = resp.body.getReader();
-          const decoder = new TextDecoder();
-          let buf = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            let idx: number;
-            while ((idx = buf.indexOf("\n")) !== -1) {
-              let line = buf.slice(0, idx);
-              buf = buf.slice(idx + 1);
-              if (line.endsWith("\r")) line = line.slice(0, -1);
-              if (!line.startsWith("data: ")) continue;
-              const j = line.slice(6).trim();
-              if (j === "[DONE]") break;
-              try {
-                const p = JSON.parse(j);
-                const c = p.choices?.[0]?.delta?.content;
-                if (c) { analysisText += c; setPostAnalysis(analysisText); }
-              } catch {}
+          // Second AI call for analysis
+          const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle — what perspective does it take?\n2. Hook — why does the opening line work?\n3. Content — what value does it deliver?\n4. Ending — how does it close?\n5. Optional improvements — 2-3 ways to make it stronger\n\nPost: ${fullDraft}\n\nRespond in clean paragraphs under each heading. Be specific and reference the actual content.`;
+          let analysisText = "";
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            const resp = await fetch(CHAT_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${session.access_token}`,
+                apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              },
+              body: JSON.stringify({ message: analysisPrompt, message_history: getMessageHistory() }),
+            });
+            if (resp.ok && resp.body) {
+              const reader = resp.body.getReader();
+              const decoder = new TextDecoder();
+              let buf = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                let idx: number;
+                while ((idx = buf.indexOf("\n")) !== -1) {
+                  let line = buf.slice(0, idx);
+                  buf = buf.slice(idx + 1);
+                  if (line.endsWith("\r")) line = line.slice(0, -1);
+                  if (!line.startsWith("data: ")) continue;
+                  const j = line.slice(6).trim();
+                  if (j === "[DONE]") break;
+                  try {
+                    const p = JSON.parse(j);
+                    const c = p.choices?.[0]?.delta?.content;
+                    if (c) { analysisText += c; setPostAnalysis(analysisText); }
+                  } catch {}
+                }
+              }
+              if (analysisText.trim()) {
+                await sendMessage({ content: analysisText, role: "assistant" });
+              }
             }
           }
-          // Save analysis as assistant message
-          if (analysisText.trim()) {
-            await sendMessage({ content: analysisText, role: "assistant" });
-          }
         }
+        setIsBusy(false);
+      },
+      onError: async (errMsg) => {
+        toast({ title: "Error", description: errMsg, variant: "destructive" });
+        setFlowMode("guided");
+        setIsBusy(false);
       },
     });
-  };
+  }, [isBusy, addItem, sendMessage]);
 
+  /* ─── Regenerate in preview ─── */
   const handleRegenerate = async () => {
     if (!draftingIdea || isRegenerating) return;
     setIsRegenerating(true);
@@ -390,10 +524,7 @@ const Chat = () => {
         Authorization: `Bearer ${session.access_token}`,
         apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
-      body: JSON.stringify({
-        message: draftPrompt,
-        message_history: [...messages].slice(-10).map((m) => ({ role: m.role, content: m.content })),
-      }),
+      body: JSON.stringify({ message: draftPrompt, message_history: getMessageHistory() }),
     });
 
     if (resp.ok && resp.body) {
@@ -421,49 +552,121 @@ const Chat = () => {
       }
       if (fullText.trim()) {
         await sendMessage({ content: fullText, role: "assistant" });
-      }
-    }
-    setIsRegenerating(false);
-
-    // Run analysis on new version
-    if (fullText.trim()) {
-      const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle\n2. Hook\n3. Content\n4. Ending\n5. Optional improvements\n\nPost: ${fullText}\n\nBe specific.`;
-      let analysisText = "";
-      const resp2 = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ message: analysisPrompt, message_history: [] }),
-      });
-      if (resp2.ok && resp2.body) {
-        const reader = resp2.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let idx: number;
-          while ((idx = buf.indexOf("\n")) !== -1) {
-            let line = buf.slice(0, idx);
-            buf = buf.slice(idx + 1);
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (!line.startsWith("data: ")) continue;
-            const j = line.slice(6).trim();
-            if (j === "[DONE]") break;
-            try {
-              const p = JSON.parse(j);
-              const c = p.choices?.[0]?.delta?.content;
-              if (c) { analysisText += c; setPostAnalysis(analysisText); }
-            } catch {}
+        // Run analysis
+        const analysisPrompt = `Analyze this Threads post and explain why it works. Break down:\n1. Angle\n2. Hook\n3. Content\n4. Ending\n5. Optional improvements\n\nPost: ${fullText}\n\nBe specific.`;
+        let analysisText = "";
+        const resp2 = await fetch(CHAT_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ message: analysisPrompt, message_history: [] }),
+        });
+        if (resp2.ok && resp2.body) {
+          const reader = resp2.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let idx: number;
+            while ((idx = buf.indexOf("\n")) !== -1) {
+              let line = buf.slice(0, idx);
+              buf = buf.slice(idx + 1);
+              if (line.endsWith("\r")) line = line.slice(0, -1);
+              if (!line.startsWith("data: ")) continue;
+              const j = line.slice(6).trim();
+              if (j === "[DONE]") break;
+              try {
+                const p = JSON.parse(j);
+                const c = p.choices?.[0]?.delta?.content;
+                if (c) { analysisText += c; setPostAnalysis(analysisText); }
+              } catch {}
+            }
           }
         }
       }
     }
+    setIsRegenerating(false);
   };
+
+  /* ─── Free-form chat send ─── */
+  const handleSend = useCallback(async (text?: string) => {
+    const msg = (text || input).trim();
+    if (!msg || isBusy) return;
+    setInput("");
+
+    if (flowMode === "empty" || flowMode === "chat") {
+      // Switch to chat mode with DB messages
+      setFlowMode("chat");
+      setFlowItems([]);
+      const sessionId = await ensureSession();
+      await sendMessage({ content: msg, role: "user" });
+      if (messages.length === 0) {
+        await updateTitle({ id: sessionId, title: msg.slice(0, 50) + (msg.length > 50 ? "..." : "") });
+      }
+      setIsBusy(true);
+      // We'll use a temporary streaming state for chat mode
+      let fullResponse = "";
+      await refetch();
+      await streamAIResponse({
+        message: msg,
+        messageHistory: getMessageHistory(),
+        onDelta: (chunk) => {
+          fullResponse += chunk;
+          // For chat mode, we update a streaming state
+          setFlowItems([{ id: "chat-stream", type: "streaming", content: fullResponse }]);
+        },
+        onDone: async () => {
+          setFlowItems([]);
+          if (fullResponse.trim()) {
+            await sendMessage({ content: fullResponse, role: "assistant" });
+          }
+          await refetch();
+          setIsBusy(false);
+        },
+        onError: async (errMsg) => {
+          setFlowItems([]);
+          toast({ title: "Error", description: errMsg, variant: "destructive" });
+          await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant" });
+          await refetch();
+          setIsBusy(false);
+        },
+      });
+    } else if (flowMode === "guided") {
+      // In guided mode, user typed a message — switch to chat
+      addItem({ type: "user", content: msg });
+      setIsBusy(true);
+      await sendMessage({ content: msg, role: "user" });
+
+      const streamingId = addItem({ type: "streaming", content: "" });
+      let fullResponse = "";
+      await streamAIResponse({
+        message: msg,
+        messageHistory: getMessageHistory(),
+        onDelta: (chunk) => {
+          fullResponse += chunk;
+          updateItem(streamingId, { content: fullResponse });
+        },
+        onDone: async () => {
+          removeItem(streamingId);
+          if (fullResponse.trim()) {
+            await sendMessage({ content: fullResponse, role: "assistant" });
+            addItem({ type: "ai", content: fullResponse });
+          }
+          setIsBusy(false);
+        },
+        onError: async (errMsg) => {
+          removeItem(streamingId);
+          addItem({ type: "ai", content: `⚠️ ${errMsg}` });
+          setIsBusy(false);
+        },
+      });
+    }
+  }, [input, isBusy, flowMode, ensureSession, sendMessage, updateTitle, messages, refetch, addItem, removeItem, updateItem]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -473,7 +676,8 @@ const Chat = () => {
     const session = await createSession();
     setActiveSessionId(session.id);
     setHistoryOpen(false);
-    setFlowState("empty");
+    setFlowMode("empty");
+    setFlowItems([]);
     setPostIdeas([]);
     setDraftedPost("");
     setPostAnalysis("");
@@ -484,104 +688,177 @@ const Chat = () => {
     setHistoryOpen(false);
   };
 
+  const handleBackFromPreview = () => {
+    setFlowMode("guided");
+    setDraftedPost("");
+    setPostAnalysis("");
+  };
+
   const grouped = groupSessionsByDate(sessions);
 
-  // Render main content based on flow state
-  const renderMainContent = () => {
-    switch (flowState) {
-      case "context":
+  /* ─── Render flow item ─── */
+  const renderFlowItem = (item: FlowItem) => {
+    switch (item.type) {
+      case "user":
         return (
-          <ContextSelection
-            contextData={contextData}
-            onSend={handleContextSend}
-            onBack={() => setFlowState("empty")}
-          />
+          <div key={item.id} className="flex justify-end">
+            <div className="max-w-[85%] rounded-xl px-4 py-3 bg-primary/15 text-foreground">
+              <p className="text-sm whitespace-pre-wrap">{item.content}</p>
+            </div>
+          </div>
         );
-
-      case "ideas":
+      case "ai":
         return (
-          <PostIdeasView
-            ideas={postIdeas}
-            onDraft={handleDraftIdea}
-            onBack={() => setFlowState("context")}
-          />
+          <div key={item.id} className="flex justify-start">
+            <div className="max-w-[85%] bg-card border border-border rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{item.content}</p>
+            </div>
+          </div>
         );
-
+      case "typing":
+        return (
+          <div key={item.id} className="flex justify-start">
+            <div className="bg-card border border-border rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+              </div>
+              <TypingIndicator />
+            </div>
+          </div>
+        );
+      case "streaming":
+        return (
+          <div key={item.id} className="flex justify-start">
+            <div className="max-w-[85%] bg-card border border-border rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{item.content || "..."}</p>
+            </div>
+          </div>
+        );
+      case "context-cards":
+        return (
+          <div key={item.id} className="flex justify-start">
+            <div className="max-w-[90%] w-full">
+              <InlineContextCards
+                contextData={contextData}
+                disabled={item.disabled}
+                selectedLabel={item.selectedLabel}
+                onSelect={handleContextSelect}
+              />
+            </div>
+          </div>
+        );
+      case "idea-cards":
+        return (
+          <div key={item.id} className="flex justify-start">
+            <div className="max-w-[90%] w-full space-y-3">
+              {item.ideas.map((idea, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                  <h4 className="text-sm font-semibold text-foreground">{i + 1}. {idea.title}</h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{idea.body}</p>
+                  <button
+                    onClick={() => handleDraftIdea(idea)}
+                    disabled={isBusy}
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50"
+                  >
+                    📄 Draft this post
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
       case "drafting":
-        return <DraftingProgress />;
-
-      case "preview":
         return (
-          <PostPreviewSplit
-            postContent={draftedPost}
-            analysis={postAnalysis}
-            displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
-            username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
-            profilePicUrl={profile?.threads_profile_picture_url}
-            onBack={() => setFlowState("ideas")}
-            onRegenerate={handleRegenerate}
-            isRegenerating={isRegenerating}
-          />
-        );
-
-      case "empty":
-        return (
-          <div className="flex flex-col items-center justify-center pt-20 max-w-[600px] mx-auto px-4">
-            <img src={threadableIcon} alt="Threadable" className="h-14 w-14 rounded-xl mb-6" />
-            <h2 className="text-2xl font-bold text-foreground mb-2">What are we creating today?</h2>
-            <p className="text-sm text-muted-foreground mb-8">Ask Threadable to brainstorm, draft, or refine your content.</p>
+          <div key={item.id} className="flex justify-start">
+            <div className="max-w-[85%]">
+              <DraftingProgress />
+            </div>
           </div>
         );
-
-      case "chat":
       default:
-        return (
-          <div className="max-w-[700px] mx-auto px-4 py-6 space-y-4">
-            {messages.map((m) => (
-              <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-                <div className={cn(
-                  "max-w-[85%] rounded-xl px-4 py-3",
-                  m.role === "user"
-                    ? "bg-primary/15 text-foreground"
-                    : "bg-card border border-border text-foreground"
-                )}>
-                  {m.role === "assistant" && (
-                    <div className="flex items-center gap-2 mb-2">
-                      <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
-                      <span className="text-xs font-medium text-muted-foreground">Threadable</span>
-                    </div>
-                  )}
-                  <p className="text-sm whitespace-pre-wrap">{m.content}</p>
-                </div>
-              </div>
-            ))}
-            {isTyping && streamingContent && (
-              <div className="flex justify-start">
-                <div className="max-w-[85%] bg-card border border-border rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
-                    <span className="text-xs font-medium text-muted-foreground">Threadable</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
-                </div>
-              </div>
-            )}
-            {isTyping && !streamingContent && (
-              <div className="flex justify-start">
-                <div className="bg-card border border-border rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
-                    <span className="text-xs font-medium text-muted-foreground">Threadable</span>
-                  </div>
-                  <TypingIndicator />
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        );
+        return null;
     }
   };
+
+  /* ─── Render main chat area ─── */
+  const renderMainContent = () => {
+    if (flowMode === "preview") {
+      return (
+        <PostPreviewSplit
+          postContent={draftedPost}
+          analysis={postAnalysis}
+          displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
+          username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
+          profilePicUrl={profile?.threads_profile_picture_url}
+          onBack={handleBackFromPreview}
+          onRegenerate={handleRegenerate}
+          isRegenerating={isRegenerating}
+        />
+      );
+    }
+
+    return (
+      <div className="max-w-[700px] mx-auto px-4 py-6 space-y-4">
+        {/* Empty state landing */}
+        {flowMode === "empty" && (
+          <div className="flex flex-col items-center justify-center pt-16 pb-8">
+            <img src={threadableIcon} alt="Threadable" className="h-14 w-14 rounded-xl mb-6" />
+            <h2 className="text-2xl font-bold text-foreground mb-2">What are we creating today?</h2>
+            <p className="text-sm text-muted-foreground mb-4">Ask Threadable to brainstorm, draft, or refine your content.</p>
+          </div>
+        )}
+
+        {/* Chat mode: show DB messages */}
+        {flowMode === "chat" && messages.map((m) => (
+          <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+            <div className={cn(
+              "max-w-[85%] rounded-xl px-4 py-3",
+              m.role === "user"
+                ? "bg-primary/15 text-foreground"
+                : "bg-card border border-border text-foreground"
+            )}>
+              {m.role === "assistant" && (
+                <div className="flex items-center gap-2 mb-2">
+                  <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                  <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+                </div>
+              )}
+              <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+            </div>
+          </div>
+        ))}
+
+        {/* Flow items (guided mode + chat streaming) */}
+        {flowItems.map(renderFlowItem)}
+
+        {/* Chat mode typing indicator */}
+        {flowMode === "chat" && isBusy && flowItems.length === 0 && (
+          <div className="flex justify-start">
+            <div className="bg-card border border-border rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+              </div>
+              <TypingIndicator />
+            </div>
+          </div>
+        )}
+
+        <div style={{ height: 1 }} />
+      </div>
+    );
+  };
+
+  const showInput = flowMode !== "preview";
 
   return (
     <AppLayout>
@@ -623,7 +900,7 @@ const Chat = () => {
                         onClick={async (e) => {
                           e.stopPropagation();
                           await deleteSession(s.id);
-                          if (activeSessionId === s.id) { setActiveSessionId(null); setFlowState("empty"); }
+                          if (activeSessionId === s.id) { setActiveSessionId(null); setFlowMode("empty"); }
                         }}
                       />
                     </button>
@@ -647,12 +924,12 @@ const Chat = () => {
           </div>
 
           {/* Messages / flow content */}
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 overflow-auto" ref={scrollRef}>
             {renderMainContent()}
           </div>
 
-          {/* Input area — show for empty and chat states */}
-          {(flowState === "empty" || flowState === "chat") && (
+          {/* Input area */}
+          {showInput && (
             <div className="border-t border-border bg-background">
               <div className="max-w-[600px] mx-auto px-4 py-3">
                 <div className="relative rounded-xl border border-border bg-card overflow-hidden">
@@ -671,7 +948,7 @@ const Chat = () => {
                       size="icon"
                       className="h-8 w-8 rounded-full"
                       onClick={() => handleSend()}
-                      disabled={!input.trim() || isTyping}
+                      disabled={!input.trim() || isBusy}
                     >
                       <ArrowUp className="h-4 w-4" />
                     </Button>
@@ -679,7 +956,7 @@ const Chat = () => {
                 </div>
 
                 {/* Quick actions — only in empty state */}
-                {flowState === "empty" && (
+                {flowMode === "empty" && (
                   <div className="mt-3 space-y-2">
                     <div className="flex gap-2 flex-wrap justify-center">
                       {QUICK_ACTIONS.map((action) => (
@@ -689,7 +966,7 @@ const Chat = () => {
                             if (action.action === "ideas") {
                               handlePostIdeasAction();
                             } else if (action.message) {
-                              handleSend(action.message);
+                              handleQuickAction(action.label, action.message);
                             }
                           }}
                           className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
@@ -715,7 +992,7 @@ const Chat = () => {
                         {MORE_ACTIONS.map((action) => (
                           <button
                             key={action.label}
-                            onClick={() => handleSend(action.message)}
+                            onClick={() => handleQuickAction(action.label, action.message)}
                             className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
                           >
                             <span>{action.icon}</span>
