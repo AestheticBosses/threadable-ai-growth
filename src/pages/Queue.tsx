@@ -57,7 +57,9 @@ import {
 import { WeeklyCalendar } from "@/components/queue/WeeklyCalendar";
 import { PostStatusIndicator } from "@/components/queue/PostStatusIndicator";
 import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
-
+import { BulkScheduleDialog } from "@/components/queue/BulkScheduleDialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 type Post = {
   id: string;
   text_content: string | null;
@@ -149,6 +151,8 @@ const Queue = () => {
   const [fixContextId, setFixContextId] = useState<string | null>(null);
   const [fixFeedback, setFixFeedback] = useState("");
   const [fixingId, setFixingId] = useState<string | null>(null);
+  const [bulkScheduleOpen, setBulkScheduleOpen] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
@@ -485,6 +489,27 @@ const Queue = () => {
     await supabase.from("scheduled_posts").delete().in("id", ids);
     setPosts((prev) => prev.filter((p) => !selected.has(p.id)));
     setSelected(new Set());
+    setConfirmBulkDelete(false);
+    toast({ title: `${ids.length} posts deleted` });
+  };
+
+  const handleBulkSchedule = async (assignments: { id: string; scheduled_for: string }[]) => {
+    for (const a of assignments) {
+      await supabase.from("scheduled_posts").update({ scheduled_for: a.scheduled_for, status: "scheduled" }).eq("id", a.id);
+    }
+    setPosts((prev) =>
+      prev.map((p) => {
+        const a = assignments.find((x) => x.id === p.id);
+        return a ? { ...p, scheduled_for: a.scheduled_for, status: "scheduled" } : p;
+      })
+    );
+    setSelected(new Set());
+    toast({ title: `${assignments.length} posts scheduled!` });
+  };
+
+  const selectAllVisible = () => {
+    const allIds = new Set(filteredPosts.map((p) => p.id));
+    setSelected(allIds);
   };
 
   const toggleSelect = (id: string) => {
@@ -662,21 +687,43 @@ const Queue = () => {
 
         {/* Bulk actions */}
         {selected.size > 0 && (
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3">
+          <div className="sticky top-0 z-20 flex items-center gap-3 rounded-lg border-2 border-primary/30 bg-card px-4 py-3 shadow-md">
             <span className="text-sm font-medium text-foreground">
               {selected.size} selected
             </span>
-            <Button size="sm" variant="outline" onClick={handleBulkApprove} className="gap-1">
+            <Button size="sm" variant="outline" onClick={handleBulkApprove} className="gap-1"
+              disabled={!Array.from(selected).some((id) => posts.find((p) => p.id === id)?.status === "draft")}
+            >
               <Check className="h-3 w-3" />
-              Approve All
+              Approve
             </Button>
-            <Button size="sm" variant="outline" onClick={handleBulkDelete} className="gap-1 text-destructive hover:text-destructive">
+            <Button size="sm" variant="outline" onClick={() => setBulkScheduleOpen(true)} className="gap-1">
+              <CalendarClock className="h-3 w-3" />
+              Schedule
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirmBulkDelete(true)} className="gap-1 text-destructive hover:text-destructive">
               <Trash2 className="h-3 w-3" />
               Delete
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} className="ml-auto">
               <X className="h-3 w-3" />
             </Button>
+          </div>
+        )}
+
+        {/* Select All */}
+        {filteredPosts.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={filteredPosts.length > 0 && filteredPosts.every((p) => selected.has(p.id))}
+              onCheckedChange={(checked) => {
+                if (checked) selectAllVisible();
+                else setSelected(new Set());
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              Select all ({filteredPosts.length})
+            </span>
           </div>
         )}
 
@@ -689,7 +736,7 @@ const Queue = () => {
         ) : (
           <div className="space-y-3">
             {sortedPosts.map((post) => (
-              <Card key={post.id} className="overflow-hidden">
+              <Card key={post.id} className={cn("overflow-hidden", selected.has(post.id) && "ring-1 ring-primary/40")}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <Checkbox
@@ -728,12 +775,46 @@ const Queue = () => {
                             {post.source === "content_plan" ? "From Content Plan" : post.source === "chat" ? "From Chat" : "Generated"}
                           </Badge>
                         )}
-                        <Badge
-                          variant="secondary"
-                          className={cn("text-xs", scoreBg(post.pre_post_score), scoreColor(post.pre_post_score))}
-                        >
-                          Score: {post.pre_post_score ?? "?"}/6
-                        </Badge>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant="secondary"
+                                className={cn("text-xs cursor-help gap-1", scoreBg(post.pre_post_score), scoreColor(post.pre_post_score))}
+                              >
+                                {post.pre_post_score != null ? `Score: ${post.pre_post_score}/6` : "Not scored"}
+                                <Info className="h-3 w-3" />
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs p-3 space-y-2">
+                              <p className="text-xs font-semibold">Post Score Breakdown</p>
+                              {post.score_breakdown ? (
+                                <div className="space-y-1">
+                                  {Object.entries(post.score_breakdown)
+                                    .filter(([key]) => key !== "total")
+                                    .map(([key, val]) => {
+                                      const item = val as any;
+                                      const passed = typeof item === "object" ? (item.passed ?? item.score === 1) : !!item;
+                                      const label = typeof item === "object" && item.question ? item.question : key;
+                                      return (
+                                        <div key={key} className="flex items-center gap-1.5 text-xs">
+                                          <span>{passed ? "✅" : "❌"}</span>
+                                          <span className={passed ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">Click "Score" to analyze this post</p>
+                              )}
+                              <div className="border-t border-border pt-1.5 space-y-0.5 text-[10px] text-muted-foreground">
+                                <p>Score 0-2: Don't post</p>
+                                <p>Score 3: Rework it</p>
+                                <p>Score 4+: Ship it ✅</p>
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         {post.user_edited && (
                           <Badge variant="outline" className="text-xs">Edited</Badge>
                         )}
@@ -916,7 +997,7 @@ const Queue = () => {
                                 className="gap-1 h-7 text-xs"
                               >
                                 <Wand2 className="h-3 w-3" />
-                                Fix Context
+                                Improve Post
                               </Button>
                             </>
                           )}
@@ -993,7 +1074,7 @@ const Queue = () => {
       <Dialog open={!!fixContextId} onOpenChange={(open) => { if (!open) { setFixContextId(null); setFixFeedback(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>✏️ Fix Context</DialogTitle>
+            <DialogTitle>✏️ Improve Post</DialogTitle>
             <DialogDescription>Tell the AI what's wrong and it'll rewrite the post.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -1020,6 +1101,31 @@ const Queue = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Schedule Dialog */}
+      <BulkScheduleDialog
+        open={bulkScheduleOpen}
+        onOpenChange={setBulkScheduleOpen}
+        postCount={selected.size}
+        postIds={Array.from(selected)}
+        onConfirm={handleBulkSchedule}
+      />
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selected.size} posts?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete {selected.size} Posts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 };

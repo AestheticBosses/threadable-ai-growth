@@ -9,13 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Sparkles, RefreshCw, ArrowRight, ChevronDown, Check, MessageSquare, ListPlus } from "lucide-react";
+import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const FUNNEL_BADGE: Record<string, string> = {
@@ -56,6 +53,8 @@ export function ContentPlanTab() {
   const [weekProgress, setWeekProgress] = useState({ current: 0, total: 0 });
   const [draftingPostKey, setDraftingPostKey] = useState<string | null>(null);
   const [draftedPosts, setDraftedPosts] = useState<Set<string>>(new Set());
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string, string>>({});
+  const [sentToQueue, setSentToQueue] = useState<Set<string>>(new Set());
 
   // Safe date parsing helper
   const safeISOString = (date: Date): string | null => {
@@ -169,7 +168,7 @@ export function ContentPlanTab() {
     }
   };
 
-  const handleDraftToQueue = async (post: any, dayName: string, postIndex: number) => {
+  const handleInlineDraft = async (post: any, dayName: string, postIndex: number) => {
     const key = `${dayName}-${postIndex}`;
     if (!session?.access_token) return;
 
@@ -185,11 +184,8 @@ export function ContentPlanTab() {
       schedDate.setDate(schedDate.getDate() + daysUntil);
       schedDate.setHours(9, 0, 0, 0);
 
-      // Validate the date before calling toISOString()
       const isoString = safeISOString(schedDate);
-      if (!isoString) {
-        throw new Error("Failed to create valid scheduled time");
-      }
+      if (!isoString) throw new Error("Failed to create valid scheduled time");
 
       const res = await supabase.functions.invoke("generate-draft-posts", {
         body: {
@@ -201,19 +197,29 @@ export function ContentPlanTab() {
             day: dayName,
             scheduled_time: isoString,
           }],
+          return_text: true,
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
       if (res.error) throw new Error(res.error.message);
 
+      // Try to get the generated text from the response
+      const posts = res.data?.posts || [];
+      const generatedText = posts[0]?.text_content || res.data?.text || "Draft generated — check your Content Queue";
+      setInlineDrafts((prev) => ({ ...prev, [key]: generatedText }));
       setDraftedPosts((prev) => new Set(prev).add(key));
-      toast({ title: "Draft added to Content Queue ✅" });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setDraftingPostKey(null);
     }
+  };
+
+  const handleSendDraftToQueue = async (key: string) => {
+    // The draft was already saved to queue during generation
+    setSentToQueue((prev) => new Set(prev).add(key));
+    toast({ title: "Draft is in your Content Queue ✅" });
   };
 
   if (!hasIdentity) {
@@ -372,38 +378,68 @@ export function ContentPlanTab() {
                             {post.hook_idea && (
                               <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
                             )}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 text-[10px] text-primary p-0 gap-0.5"
-                                  disabled={isDrafting}
-                                >
-                                  {isDrafting ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
+                            {/* Inline Draft Button */}
+                            {!inlineDrafts[postKey] ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] text-primary p-0 gap-0.5"
+                                disabled={isDrafting}
+                                onClick={() => handleInlineDraft(post, day.day, i)}
+                              >
+                                {isDrafting ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <><Zap className="h-3 w-3" /> Draft</>
+                                )}
+                              </Button>
+                            ) : (
+                              <div className="mt-2 space-y-2 border-t border-border pt-2">
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                                  — Generated Draft —
+                                </p>
+                                <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">
+                                  {inlineDrafts[postKey]}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {!sentToQueue.has(postKey) ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 text-[10px] gap-0.5"
+                                      onClick={() => handleSendDraftToQueue(postKey)}
+                                    >
+                                      <Send className="h-2.5 w-2.5" /> Send to Queue
+                                    </Button>
                                   ) : (
-                                    <>Draft this post <ChevronDown className="h-2.5 w-2.5" /></>
+                                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
+                                      <Check className="h-2.5 w-2.5" /> In Queue
+                                    </Badge>
                                   )}
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start">
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    navigate(`/chat?prefill=${encodeURIComponent(`Write a ${post.archetype} post about ${post.topic} for ${post.funnel_stage}. Hook idea: ${post.hook_idea || ""}`)}`)
-                                  }
-                                  className="gap-2 text-xs"
-                                >
-                                  <MessageSquare className="h-3.5 w-3.5" /> Draft in Chat
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleDraftToQueue(post, day.day, i)}
-                                  className="gap-2 text-xs"
-                                >
-                                  <ListPlus className="h-3.5 w-3.5" /> Draft to Queue
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 text-[10px] gap-0.5"
+                                    onClick={() => navigate(`/chat?prefill=${encodeURIComponent(inlineDrafts[postKey])}`)}
+                                  >
+                                    <MessageSquare className="h-2.5 w-2.5" /> Edit in Chat
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 text-[10px] gap-0.5"
+                                    disabled={isDrafting}
+                                    onClick={() => {
+                                      setInlineDrafts((prev) => { const n = { ...prev }; delete n[postKey]; return n; });
+                                      setSentToQueue((prev) => { const n = new Set(prev); n.delete(postKey); return n; });
+                                      handleInlineDraft(post, day.day, i);
+                                    }}
+                                  >
+                                    <RefreshCw className="h-2.5 w-2.5" /> Regenerate
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
