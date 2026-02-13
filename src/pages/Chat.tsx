@@ -38,7 +38,7 @@ type FlowItem =
   | { id: string; type: "ai"; content: string }
   | { id: string; type: "typing" }
   | { id: string; type: "context-cards"; disabled: boolean; selectedLabel?: string }
-  | { id: string; type: "idea-cards"; ideas: { title: string; body: string }[] }
+  | { id: string; type: "idea-cards"; ideas: { title: string; body: string; archetype?: string; funnelStage?: string }[] }
   | { id: string; type: "drafting" }
   | { id: string; type: "streaming"; content: string };
 
@@ -437,12 +437,14 @@ const Chat = () => {
     );
 
     await delay(500);
-    addItem({ type: "user", content: `Generate ideas from: ${item.label}` });
+    addItem({ type: "user", content: `Post ideas from: ${item.label}` });
     const typingId = addItem({ type: "typing" });
 
-    const prompt = `Generate 5 post ideas based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nFor each idea, give a numbered title in bold and a 2-3 sentence description of the post angle.`;
+    // Short visible label for user bubble; full context goes to AI only
+    const userLabel = `Post ideas from: ${item.label}`;
+    const prompt = `Generate 5 post ideas based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nFor each idea:\n- Give a numbered title in bold (e.g., **1. Title Here**)\n- Write a 2-3 sentence description of the post angle\n- Specify the Archetype name on its own line (e.g., Archetype: Authority Insider Drop)\n- Specify the Funnel Stage on its own line (e.g., Funnel Stage: TOF)\n\nFormat each idea clearly separated with line breaks.`;
 
-    await sendMessage({ content: prompt, role: "user" });
+    await sendMessage({ content: userLabel, role: "user" });
 
     await delay(800);
     removeItem(typingId);
@@ -964,11 +966,27 @@ const Chat = () => {
               {item.ideas.map((idea, i) => (
                 <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-2">
                   <h4 className="text-sm font-semibold text-foreground">{i + 1}. {idea.title}</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{idea.body}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {idea.body.length > 250 ? idea.body.slice(0, 250) + "..." : idea.body}
+                  </p>
+                  {((idea as any).archetype || (idea as any).funnelStage) && (
+                    <div className="flex gap-2 flex-wrap">
+                      {(idea as any).archetype && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                          {(idea as any).archetype}
+                        </span>
+                      )}
+                      {(idea as any).funnelStage && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground border border-border">
+                          {(idea as any).funnelStage}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={() => handleDraftIdea(idea)}
                     disabled={isBusy}
-                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px]"
                   >
                     📄 Draft this post
                   </button>
