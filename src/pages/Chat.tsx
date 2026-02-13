@@ -442,7 +442,7 @@ const Chat = () => {
 
     // Short visible label for user bubble; full context goes to AI only
     const userLabel = `Post ideas from: ${item.label}`;
-    const prompt = `Generate 5 post ideas based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nFor each idea:\n- Give a numbered title in bold (e.g., **1. Title Here**)\n- Write a 2-3 sentence description of the post angle\n- Specify the Archetype name on its own line (e.g., Archetype: Authority Insider Drop)\n- Specify the Funnel Stage on its own line (e.g., Funnel Stage: TOF)\n\nFormat each idea clearly separated with line breaks.`;
+    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nRules for each post:\n- Write the FULL post text, ready to copy and publish\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow the user's writing style and content preferences\n- Use REAL facts, numbers, and stories from the user's identity\n- Start each with a strong, scroll-stopping hook\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like the user, not like AI\n\nFormat your response as:\n**1. [Short title for reference]**\n[Full post text here]\n\n**2. [Short title for reference]**\n[Full post text here]\n\n(etc. for all 5)`;
 
     await sendMessage({ content: userLabel, role: "user" });
 
@@ -540,98 +540,80 @@ const Chat = () => {
     });
   }, [isBusy, activeSessionId, addItem, removeItem, updateItem, createSession, sendMessage, updateTitle]);
 
-  /* ─── Flow: Draft a post idea ─── */
+  /* ─── Flow: Draft a post idea (post text already written — only run analysis) ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
     if (isBusy) return;
     setIsBusy(true);
     setDraftingIdea(idea);
-    setDraftedPost("");
+    setDraftedPost(idea.body); // Post is already written
     setPostAnalysis("");
     setParsedAnalysisData(null);
     setHistoryPreviewData(null);
     setDraftMessageId(null);
 
-    addItem({ type: "user", content: `Draft post: ${idea.title}` });
+    addItem({ type: "user", content: `Draft: ${idea.title}` });
     addItem({ type: "drafting" });
 
-    const draftPrompt = `Write a complete Threads post based on this idea:\n\nTitle: ${idea.title}\nConcept: ${idea.body}\n\nWrite only the post text, ready to publish. Use my voice and style. Keep it under 500 characters. Format for mobile readability.`;
+    await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
-    await sendMessage({ content: draftPrompt, role: "user" });
+    // Go directly to preview with the already-written post
+    setFlowMode("preview");
 
-    let fullDraft = "";
-    await streamAIResponse({
-      message: draftPrompt,
-      messageHistory: getMessageHistory(),
-      onDelta: (chunk) => { fullDraft += chunk; },
-      onDone: async () => {
-        if (fullDraft.trim()) {
-          setDraftedPost(fullDraft);
-          setFlowMode("preview");
+    // Only AI call needed: analysis of the existing post
+    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${idea.body}`;
 
-          // Second AI call for analysis
-          const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullDraft}`;
-          let analysisText = "";
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            const resp = await fetch(CHAT_URL, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${session.access_token}`,
-                apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-              },
-              body: JSON.stringify({ message: analysisPrompt, message_history: getMessageHistory() }),
-            });
-            if (resp.ok && resp.body) {
-              const reader = resp.body.getReader();
-              const decoder = new TextDecoder();
-              let buf = "";
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buf += decoder.decode(value, { stream: true });
-                let idx: number;
-                while ((idx = buf.indexOf("\n")) !== -1) {
-                  let line = buf.slice(0, idx);
-                  buf = buf.slice(idx + 1);
-                  if (line.endsWith("\r")) line = line.slice(0, -1);
-                  if (!line.startsWith("data: ")) continue;
-                  const j = line.slice(6).trim();
-                  if (j === "[DONE]") break;
-                  try {
-                    const p = JSON.parse(j);
-                    const c = p.choices?.[0]?.delta?.content;
-                    if (c) { analysisText += c; setPostAnalysis(analysisText); }
-                  } catch {}
-                }
-              }
-
-              // Parse and save with metadata
-              const parsed = tryParseAnalysisJSON(analysisText);
-              setParsedAnalysisData(parsed);
-
-              // Save drafted post message with metadata
-              const metadata: ChatMessageMetadata = {
-                type: "drafted_post",
-                post_text: fullDraft,
-                analysis: parsed,
-                status: "draft",
-                queue_id: null,
-                published_at: null,
-              };
-              const savedMsg = await sendMessage({ content: analysisText || fullDraft, role: "assistant", metadata });
-              setDraftMessageId(savedMsg.id);
-            }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      let analysisText = "";
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ message: analysisPrompt, message_history: getMessageHistory() }),
+      });
+      if (resp.ok && resp.body) {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n")) !== -1) {
+            let line = buf.slice(0, idx);
+            buf = buf.slice(idx + 1);
+            if (line.endsWith("\r")) line = line.slice(0, -1);
+            if (!line.startsWith("data: ")) continue;
+            const j = line.slice(6).trim();
+            if (j === "[DONE]") break;
+            try {
+              const p = JSON.parse(j);
+              const c = p.choices?.[0]?.delta?.content;
+              if (c) { analysisText += c; setPostAnalysis(analysisText); }
+            } catch {}
           }
         }
-        setIsBusy(false);
-      },
-      onError: async (errMsg) => {
-        toast({ title: "Error", description: errMsg, variant: "destructive" });
-        setFlowMode("guided");
-        setIsBusy(false);
-      },
-    });
+
+        const parsed = tryParseAnalysisJSON(analysisText);
+        setParsedAnalysisData(parsed);
+
+        const metadata: ChatMessageMetadata = {
+          type: "drafted_post",
+          post_text: idea.body,
+          analysis: parsed,
+          status: "draft",
+          queue_id: null,
+          published_at: null,
+        };
+        const savedMsg = await sendMessage({ content: analysisText || idea.body, role: "assistant", metadata });
+        setDraftMessageId(savedMsg.id);
+      }
+    }
+    setIsBusy(false);
   }, [isBusy, addItem, sendMessage]);
 
   /* ─── Handle status change from PostPreviewSplit ─── */
@@ -657,7 +639,7 @@ const Chat = () => {
     setPostAnalysis("");
     setParsedAnalysisData(null);
 
-    const draftPrompt = `Write a completely different version of this Threads post idea:\n\nTitle: ${draftingIdea.title}\nConcept: ${draftingIdea.body}\n\nWrite only the post text, ready to publish. Use my voice and style. Keep it under 500 characters. Make it noticeably different from the previous version.`;
+    const draftPrompt = `Write a completely different version of this Threads post. Same topic and angle, but different execution.\n\nOriginal post:\n${draftedPost}\n\nWrite only the post text, ready to publish. Use my voice and style. Keep it under 500 characters. Make it noticeably different from the previous version.`;
 
     let fullText = "";
     const { data: { session } } = await supabase.auth.getSession();
@@ -964,11 +946,13 @@ const Chat = () => {
           <div key={item.id} className="flex justify-start">
             <div className="max-w-[90%] w-full space-y-3">
               {item.ideas.map((idea, i) => (
-                <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                  <h4 className="text-sm font-semibold text-foreground">{i + 1}. {idea.title}</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {idea.body.length > 250 ? idea.body.slice(0, 250) + "..." : idea.body}
-                  </p>
+                <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground">Idea {i + 1}: {idea.title}</h4>
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                      {idea.body}
+                    </p>
+                  </div>
                   {((idea as any).archetype || (idea as any).funnelStage) && (
                     <div className="flex gap-2 flex-wrap">
                       {(idea as any).archetype && (
@@ -986,9 +970,9 @@ const Chat = () => {
                   <button
                     onClick={() => handleDraftIdea(idea)}
                     disabled={isBusy}
-                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px]"
+                    className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px] w-full md:w-auto"
                   >
-                    📄 Draft this post
+                    📄 Draft post
                   </button>
                 </div>
               ))}
