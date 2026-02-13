@@ -9,7 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PostingHeatmap } from "@/components/insights/PostingHeatmap";
-import { ShareGrowthCard } from "@/components/insights/ShareGrowthCard";
+import { ShareableBadges } from "@/components/insights/ShareableBadges";
 
 function BarChart({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.max((value / max) * 100, 2);
@@ -180,8 +180,8 @@ export function GrowthSignals() {
           )}
         </div>
 
-        {/* Shareable Growth Card */}
-        <ShareGrowthCard />
+        {/* Shareable Badges */}
+        <ShareableBadges />
       </div>
     </TooltipProvider>
   );

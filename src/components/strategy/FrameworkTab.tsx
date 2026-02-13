@@ -1,6 +1,8 @@
 import { usePlaybookData } from "@/hooks/useStrategyData";
-import { Loader2, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const ARCHETYPE_BORDER_COLORS = [
   "border-violet-500/50", "border-emerald-500/50", "border-yellow-500/50",
@@ -13,6 +15,7 @@ const ARCHETYPE_LABEL_COLORS = [
 
 export function FrameworkTab() {
   const { data: playbook, isLoading } = usePlaybookData();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return (
@@ -61,25 +64,16 @@ export function FrameworkTab() {
         </section>
       )}
 
-      {/* Templates */}
-      {playbook.templates && (
+      {/* Templates link */}
+      <div className="rounded-lg border border-border p-4 flex items-center justify-between">
         <div>
-          <h4 className="text-sm font-bold text-primary uppercase tracking-wider mb-4">Templates by Archetype</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {playbook.templates.map((t, i) => (
-              <div key={t.archetype} className={`rounded-lg border-2 ${ARCHETYPE_BORDER_COLORS[i % ARCHETYPE_BORDER_COLORS.length]} bg-card p-5`}>
-                <div className="flex items-center gap-2 mb-3">
-                  <span>{t.emoji}</span>
-                  <h5 className={`text-sm font-bold ${ARCHETYPE_LABEL_COLORS[i % ARCHETYPE_LABEL_COLORS.length]}`}>
-                    {t.archetype}
-                  </h5>
-                </div>
-                <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">{t.template}</pre>
-              </div>
-            ))}
-          </div>
+          <h4 className="text-sm font-bold text-primary uppercase tracking-wider">Templates</h4>
+          <p className="text-xs text-muted-foreground mt-1">View and manage your post templates for each archetype.</p>
         </div>
-      )}
+        <Button variant="ghost" size="sm" className="gap-1.5 text-primary" onClick={() => navigate("/templates")}>
+          View Templates <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
       {/* Rules */}
       {playbook.rules && (

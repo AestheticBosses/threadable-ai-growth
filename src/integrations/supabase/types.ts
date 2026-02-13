@@ -200,6 +200,42 @@ export type Database = {
           },
         ]
       }
+      content_templates: {
+        Row: {
+          archetype: string
+          created_at: string | null
+          example_text: string | null
+          id: string
+          is_default: boolean | null
+          sort_order: number | null
+          template_text: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          archetype: string
+          created_at?: string | null
+          example_text?: string | null
+          id?: string
+          is_default?: boolean | null
+          sort_order?: number | null
+          template_text: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          archetype?: string
+          created_at?: string | null
+          example_text?: string | null
+          id?: string
+          is_default?: boolean | null
+          sort_order?: number | null
+          template_text?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       follower_snapshots: {
         Row: {
           follower_count: number
