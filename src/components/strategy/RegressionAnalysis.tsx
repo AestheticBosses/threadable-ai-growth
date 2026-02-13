@@ -22,8 +22,33 @@ const STRENGTH_COLORS: Record<string, string> = {
   weak: "bg-muted text-muted-foreground border-border",
 };
 
+/* ── Parse comparison numbers from evidence text ── */
+function parseComparison(evidence: string): { withVal: string; withoutVal: string; multiplier: string; metric: string } | null {
+  // Pattern: "X,XXX views with ... Y,YYY without" or "avg X,XXX ... avg Y,YYY"
+  const numPattern = /(\d[\d,]*\.?\d*)\s*(views|likes|reposts|replies|%|engagement)/gi;
+  const matches = [...evidence.matchAll(numPattern)];
+  if (matches.length >= 2) {
+    const a = parseFloat(matches[0][1].replace(/,/g, ""));
+    const b = parseFloat(matches[1][1].replace(/,/g, ""));
+    if (a > 0 && b > 0) {
+      const high = Math.max(a, b);
+      const low = Math.min(a, b);
+      const mult = low > 0 ? (high / low).toFixed(1) : "∞";
+      return {
+        withVal: high.toLocaleString(),
+        withoutVal: low.toLocaleString(),
+        multiplier: `${mult}x`,
+        metric: matches[0][2].toLowerCase(),
+      };
+    }
+  }
+  return null;
+}
+
 /* ── AI Insight Card ── */
 function InsightCard({ insight }: { insight: RegressionInsight }) {
+  const comparison = parseComparison(insight.evidence);
+
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -38,6 +63,26 @@ function InsightCard({ insight }: { insight: RegressionInsight }) {
         </div>
       </div>
       <p className="text-sm font-medium text-foreground">{insight.insight}</p>
+
+      {/* Comparison boxes */}
+      {comparison && (
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2 flex-1">
+            <div className="flex-1 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-center">
+              <p className="text-sm font-bold text-foreground">{comparison.withVal}</p>
+              <p className="text-[10px] text-muted-foreground">{comparison.metric}</p>
+              <p className="text-[10px] text-primary font-medium">w/ pattern</p>
+            </div>
+            <div className="flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 text-center">
+              <p className="text-sm font-bold text-foreground">{comparison.withoutVal}</p>
+              <p className="text-[10px] text-muted-foreground">{comparison.metric}</p>
+              <p className="text-[10px] text-muted-foreground">without</p>
+            </div>
+          </div>
+          <span className="text-sm font-bold text-emerald-400">{comparison.multiplier} better</span>
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground leading-relaxed">{insight.evidence}</p>
       {insight.recommendation && (
         <p className="text-xs text-primary font-medium">→ {insight.recommendation}</p>
