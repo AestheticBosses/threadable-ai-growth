@@ -2,9 +2,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ArrowUp, Trash2, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Plus, ArrowUp, MessageSquare, ChevronDown, ChevronUp, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useChatSessions, useChatMessages, type ChatSession } from "@/hooks/useChatData";
+import { useChatSessions, useChatMessages, type ChatSession, type ChatMessageMetadata } from "@/hooks/useChatData";
 import { useChatContextData } from "@/hooks/useChatContextData";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,8 +13,24 @@ import threadableIcon from "@/assets/threadable-icon.png";
 import { InlineContextCards } from "@/components/chat/ContextSelection";
 import { parsePostIdeas } from "@/components/chat/PostIdeasView";
 import { DraftingProgress } from "@/components/chat/DraftingProgress";
-import { PostPreviewSplit } from "@/components/chat/PostPreviewSplit";
+import { PostPreviewSplit, tryParseAnalysisJSON, type AnalysisData } from "@/components/chat/PostPreviewSplit";
 import { useQuery } from "@tanstack/react-query";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /* ─── Flow item types ─── */
 type FlowItem =
@@ -47,20 +63,34 @@ function groupSessionsByDate(sessions: ChatSession[]) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
   const weekAgo = new Date(today.getTime() - 7 * 86400000);
-  const groups: { label: string; sessions: ChatSession[] }[] = [
+
+  const pinned = sessions.filter((s) => s.pinned).sort((a, b) => {
+    const at = a.pinned_at ? new Date(a.pinned_at).getTime() : 0;
+    const bt = b.pinned_at ? new Date(b.pinned_at).getTime() : 0;
+    return bt - at;
+  });
+
+  const unpinned = sessions.filter((s) => !s.pinned);
+  const groups: { label: string; sessions: ChatSession[] }[] = [];
+
+  if (pinned.length > 0) groups.push({ label: "📌 Pinned", sessions: pinned });
+
+  const dateGroups: { label: string; sessions: ChatSession[] }[] = [
     { label: "Today", sessions: [] },
     { label: "Yesterday", sessions: [] },
     { label: "Previous 7 days", sessions: [] },
     { label: "Older", sessions: [] },
   ];
-  for (const s of sessions) {
+
+  for (const s of unpinned) {
     const d = new Date(s.created_at);
-    if (d >= today) groups[0].sessions.push(s);
-    else if (d >= yesterday) groups[1].sessions.push(s);
-    else if (d >= weekAgo) groups[2].sessions.push(s);
-    else groups[3].sessions.push(s);
+    if (d >= today) dateGroups[0].sessions.push(s);
+    else if (d >= yesterday) dateGroups[1].sessions.push(s);
+    else if (d >= weekAgo) dateGroups[2].sessions.push(s);
+    else dateGroups[3].sessions.push(s);
   }
-  return groups.filter((g) => g.sessions.length > 0);
+
+  return [...groups, ...dateGroups.filter((g) => g.sessions.length > 0)];
 }
 
 function TypingIndicator() {
@@ -134,9 +164,8 @@ async function streamAIResponse({
       }
     }
   }
-  // flush
   if (textBuffer.trim()) {
-    for (let raw of textBuffer.split("\n")) {
+    for (const raw of textBuffer.split("\n")) {
       if (!raw || !raw.startsWith("data: ")) continue;
       const jsonStr = raw.slice(6).trim();
       if (jsonStr === "[DONE]") continue;
@@ -154,13 +183,34 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let idCounter = 0;
 const uid = () => `flow-${++idCounter}-${Date.now()}`;
 
+/* ─── Auto-naming helpers ─── */
+function generateAutoTitle(action: string, contextLabel?: string): string {
+  if (action === "ideas" && contextLabel) {
+    const short = contextLabel.length > 40 ? contextLabel.slice(0, 40) + "..." : contextLabel;
+    return `Post ideas: ${short}`;
+  }
+  if (action === "ideas") return "Post ideas";
+  if (action === "trending") return "Trending topics";
+  if (action === "template") return "Post templates";
+  return action.slice(0, 50);
+}
+
+function generateTitleFromMessage(msg: string): string {
+  // Remove common prefixes
+  let clean = msg.replace(/^(hey|hi|hello|help me|can you|please|i want to|i need to)\s*/i, "").trim();
+  if (clean.length === 0) clean = msg;
+  // Capitalize first letter
+  clean = clean.charAt(0).toUpperCase() + clean.slice(1);
+  return clean.length > 50 ? clean.slice(0, 50) + "..." : clean;
+}
+
 /* ─── Main component ─── */
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
   const { user } = useAuth();
-  const { sessions, isLoading: sessionsLoading, createSession, updateTitle, deleteSession } = useChatSessions();
+  const { sessions, isLoading: sessionsLoading, createSession, updateTitle, togglePin, deleteSession } = useChatSessions();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const { messages, isLoading: messagesLoading, sendMessage, refetch } = useChatMessages(activeSessionId);
+  const { messages, isLoading: messagesLoading, sendMessage, updateMessageMetadata, refetch } = useChatMessages(activeSessionId);
   const contextData = useChatContextData();
   const [input, setInput] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -172,12 +222,28 @@ const Chat = () => {
   const [postIdeas, setPostIdeas] = useState<{ title: string; body: string }[]>([]);
   const [draftedPost, setDraftedPost] = useState("");
   const [postAnalysis, setPostAnalysis] = useState("");
+  const [parsedAnalysisData, setParsedAnalysisData] = useState<AnalysisData | null>(null);
   const [draftingIdea, setDraftingIdea] = useState<{ title: string; body: string } | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [draftMessageId, setDraftMessageId] = useState<string | null>(null);
+
+  // Sidebar editing
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // History preview (for loading drafts from history)
+  const [historyPreviewData, setHistoryPreviewData] = useState<{
+    postText: string;
+    analysis: AnalysisData | null;
+    analysisRaw: string;
+    status: string;
+  } | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Profile for Threads preview
   const profileQuery = useQuery({
@@ -216,10 +282,32 @@ const Chat = () => {
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   }, [input]);
 
-  // On session change, detect mode
+  // Focus rename input
   useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
+
+  // On session change, detect mode — check for drafted_post metadata
+  useEffect(() => {
+    setHistoryPreviewData(null);
     if (messages.length > 0) {
-      setFlowMode("chat");
+      // Check if last message has drafted_post metadata
+      const draftMsg = [...messages].reverse().find((m) => m.metadata?.type === "drafted_post");
+      if (draftMsg && draftMsg.metadata) {
+        const meta = draftMsg.metadata;
+        setHistoryPreviewData({
+          postText: meta.post_text,
+          analysis: meta.analysis,
+          analysisRaw: draftMsg.content,
+          status: meta.status,
+        });
+        setFlowMode("preview");
+      } else {
+        setFlowMode("chat");
+      }
     } else {
       setFlowMode("empty");
     }
@@ -227,8 +315,10 @@ const Chat = () => {
     setPostIdeas([]);
     setDraftedPost("");
     setPostAnalysis("");
+    setParsedAnalysisData(null);
     setDraftingIdea(null);
-  }, [activeSessionId]);
+    setDraftMessageId(null);
+  }, [activeSessionId, messages.length]);
 
   /* ─── Helpers ─── */
   const addItem = useCallback((item: any) => {
@@ -264,7 +354,7 @@ const Chat = () => {
     if (opts?.saveToDb !== false) {
       await sendMessage({ content: msg, role: "user" });
       if (messages.length === 0) {
-        const autoTitle = msg.slice(0, 50) + (msg.length > 50 ? "..." : "");
+        const autoTitle = generateTitleFromMessage(msg);
         await updateTitle({ id: sessionId, title: autoTitle });
       }
     }
@@ -301,12 +391,14 @@ const Chat = () => {
     setIsBusy(true);
     setFlowMode("guided");
     setFlowItems([]);
+    setHistoryPreviewData(null);
 
     addItem({ type: "user", content: "Give me post ideas" });
     const typingId = addItem({ type: "typing" });
 
-    await ensureSession();
+    const sessionId = await ensureSession();
     await sendMessage({ content: "Give me post ideas", role: "user" });
+    await updateTitle({ id: sessionId, title: "Post ideas" });
 
     await delay(1500);
     removeItem(typingId);
@@ -314,14 +406,19 @@ const Chat = () => {
     addItem({ type: "context-cards", disabled: false });
 
     setIsBusy(false);
-  }, [isBusy, addItem, removeItem, ensureSession, sendMessage]);
+  }, [isBusy, addItem, removeItem, ensureSession, sendMessage, updateTitle]);
 
   /* ─── Flow: Context item selected (single select) ─── */
   const handleContextSelect = useCallback(async (item: { type: string; label: string; content: string }) => {
     if (isBusy) return;
     setIsBusy(true);
 
-    // Disable context cards and mark selection
+    // Update session title with context
+    if (activeSessionId) {
+      const title = generateAutoTitle("ideas", item.label);
+      await updateTitle({ id: activeSessionId, title });
+    }
+
     setFlowItems((prev) =>
       prev.map((fi) =>
         fi.type === "context-cards" ? { ...fi, disabled: true, selectedLabel: item.label } as FlowItem : fi
@@ -339,7 +436,6 @@ const Chat = () => {
     await delay(800);
     removeItem(typingId);
 
-    // Stream the AI response
     const streamingId = addItem({ type: "streaming", content: "" });
     let fullResponse = "";
 
@@ -371,7 +467,7 @@ const Chat = () => {
         setIsBusy(false);
       },
     });
-  }, [isBusy, addItem, removeItem, updateItem, sendMessage]);
+  }, [isBusy, activeSessionId, addItem, removeItem, updateItem, sendMessage, updateTitle]);
 
   /* ─── Flow: Quick actions (trending, template, etc.) ─── */
   const handleQuickAction = useCallback(async (label: string, message: string) => {
@@ -379,16 +475,14 @@ const Chat = () => {
     setIsBusy(true);
     setFlowMode("guided");
     setFlowItems([]);
+    setHistoryPreviewData(null);
 
     addItem({ type: "user", content: label });
     const typingId = addItem({ type: "typing" });
 
-    await ensureSession();
+    const sessionId = await ensureSession();
     await sendMessage({ content: message, role: "user" });
-    if (messages.length === 0) {
-      const sid = activeSessionId || "";
-      if (sid) await updateTitle({ id: sid, title: label });
-    }
+    await updateTitle({ id: sessionId, title: generateAutoTitle(label.toLowerCase().includes("trending") ? "trending" : label.toLowerCase().includes("template") ? "template" : label) });
 
     await delay(1800);
     removeItem(typingId);
@@ -424,7 +518,7 @@ const Chat = () => {
         setIsBusy(false);
       },
     });
-  }, [isBusy, addItem, removeItem, updateItem, ensureSession, sendMessage, updateTitle, activeSessionId, messages]);
+  }, [isBusy, addItem, removeItem, updateItem, ensureSession, sendMessage, updateTitle]);
 
   /* ─── Flow: Draft a post idea ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
@@ -433,6 +527,9 @@ const Chat = () => {
     setDraftingIdea(idea);
     setDraftedPost("");
     setPostAnalysis("");
+    setParsedAnalysisData(null);
+    setHistoryPreviewData(null);
+    setDraftMessageId(null);
 
     addItem({ type: "user", content: `Draft post: ${idea.title}` });
     addItem({ type: "drafting" });
@@ -448,7 +545,6 @@ const Chat = () => {
       onDelta: (chunk) => { fullDraft += chunk; },
       onDone: async () => {
         if (fullDraft.trim()) {
-          await sendMessage({ content: fullDraft, role: "assistant" });
           setDraftedPost(fullDraft);
           setFlowMode("preview");
 
@@ -489,9 +585,22 @@ const Chat = () => {
                   } catch {}
                 }
               }
-              if (analysisText.trim()) {
-                await sendMessage({ content: analysisText, role: "assistant" });
-              }
+
+              // Parse and save with metadata
+              const parsed = tryParseAnalysisJSON(analysisText);
+              setParsedAnalysisData(parsed);
+
+              // Save drafted post message with metadata
+              const metadata: ChatMessageMetadata = {
+                type: "drafted_post",
+                post_text: fullDraft,
+                analysis: parsed,
+                status: "draft",
+                queue_id: null,
+                published_at: null,
+              };
+              const savedMsg = await sendMessage({ content: analysisText || fullDraft, role: "assistant", metadata });
+              setDraftMessageId(savedMsg.id);
             }
           }
         }
@@ -505,11 +614,28 @@ const Chat = () => {
     });
   }, [isBusy, addItem, sendMessage]);
 
+  /* ─── Handle status change from PostPreviewSplit ─── */
+  const handlePostStatusChange = useCallback(async (status: string, queueId?: string) => {
+    const msgId = draftMessageId;
+    if (!msgId) return;
+    try {
+      await updateMessageMetadata({
+        messageId: msgId,
+        metadata: {
+          status: status as any,
+          queue_id: queueId || null,
+          published_at: status === "published" ? new Date().toISOString() : null,
+        },
+      });
+    } catch {}
+  }, [draftMessageId, updateMessageMetadata]);
+
   /* ─── Regenerate in preview ─── */
   const handleRegenerate = async () => {
     if (!draftingIdea || isRegenerating) return;
     setIsRegenerating(true);
     setPostAnalysis("");
+    setParsedAnalysisData(null);
 
     const draftPrompt = `Write a completely different version of this Threads post idea:\n\nTitle: ${draftingIdea.title}\nConcept: ${draftingIdea.body}\n\nWrite only the post text, ready to publish. Use my voice and style. Keep it under 500 characters. Make it noticeably different from the previous version.`;
 
@@ -551,7 +677,6 @@ const Chat = () => {
         }
       }
       if (fullText.trim()) {
-        await sendMessage({ content: fullText, role: "assistant" });
         // Run analysis
         const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
         let analysisText = "";
@@ -587,6 +712,21 @@ const Chat = () => {
               } catch {}
             }
           }
+
+          const parsed = tryParseAnalysisJSON(analysisText);
+          setParsedAnalysisData(parsed);
+
+          // Save new draft with metadata
+          const metadata: ChatMessageMetadata = {
+            type: "drafted_post",
+            post_text: fullText,
+            analysis: parsed,
+            status: "draft",
+            queue_id: null,
+            published_at: null,
+          };
+          const savedMsg = await sendMessage({ content: analysisText || fullText, role: "assistant", metadata });
+          setDraftMessageId(savedMsg.id);
         }
       }
     }
@@ -600,16 +740,15 @@ const Chat = () => {
     setInput("");
 
     if (flowMode === "empty" || flowMode === "chat") {
-      // Switch to chat mode with DB messages
       setFlowMode("chat");
       setFlowItems([]);
+      setHistoryPreviewData(null);
       const sessionId = await ensureSession();
       await sendMessage({ content: msg, role: "user" });
       if (messages.length === 0) {
-        await updateTitle({ id: sessionId, title: msg.slice(0, 50) + (msg.length > 50 ? "..." : "") });
+        await updateTitle({ id: sessionId, title: generateTitleFromMessage(msg) });
       }
       setIsBusy(true);
-      // We'll use a temporary streaming state for chat mode
       let fullResponse = "";
       await refetch();
       await streamAIResponse({
@@ -617,7 +756,6 @@ const Chat = () => {
         messageHistory: getMessageHistory(),
         onDelta: (chunk) => {
           fullResponse += chunk;
-          // For chat mode, we update a streaming state
           setFlowItems([{ id: "chat-stream", type: "streaming", content: fullResponse }]);
         },
         onDone: async () => {
@@ -637,7 +775,6 @@ const Chat = () => {
         },
       });
     } else if (flowMode === "guided") {
-      // In guided mode, user typed a message — switch to chat
       addItem({ type: "user", content: msg });
       setIsBusy(true);
       await sendMessage({ content: msg, role: "user" });
@@ -681,6 +818,9 @@ const Chat = () => {
     setPostIdeas([]);
     setDraftedPost("");
     setPostAnalysis("");
+    setParsedAnalysisData(null);
+    setHistoryPreviewData(null);
+    setDraftMessageId(null);
   };
 
   const handleSelectSession = (id: string) => {
@@ -692,6 +832,44 @@ const Chat = () => {
     setFlowMode("guided");
     setDraftedPost("");
     setPostAnalysis("");
+    setParsedAnalysisData(null);
+    setHistoryPreviewData(null);
+  };
+
+  /* ─── Sidebar: rename ─── */
+  const handleStartRename = (session: ChatSession) => {
+    setRenamingId(session.id);
+    setRenameValue(session.title);
+  };
+
+  const handleFinishRename = async () => {
+    if (renamingId && renameValue.trim()) {
+      await updateTitle({ id: renamingId, title: renameValue.trim() });
+    }
+    setRenamingId(null);
+  };
+
+  /* ─── Sidebar: pin ─── */
+  const handleTogglePin = async (session: ChatSession) => {
+    if (!session.pinned) {
+      const pinnedCount = sessions.filter((s) => s.pinned).length;
+      if (pinnedCount >= 5) {
+        toast({ title: "Pin limit reached", description: "You can pin up to 5 chats. Unpin one first." });
+        return;
+      }
+    }
+    await togglePin({ id: session.id, pinned: !session.pinned });
+  };
+
+  /* ─── Sidebar: delete ─── */
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmId) return;
+    await deleteSession(deleteConfirmId);
+    if (activeSessionId === deleteConfirmId) {
+      setActiveSessionId(null);
+      setFlowMode("empty");
+    }
+    setDeleteConfirmId(null);
   };
 
   const grouped = groupSessionsByDate(sessions);
@@ -791,11 +969,32 @@ const Chat = () => {
 
   /* ─── Render main chat area ─── */
   const renderMainContent = () => {
+    // Preview from history
+    if (flowMode === "preview" && historyPreviewData) {
+      return (
+        <PostPreviewSplit
+          postContent={historyPreviewData.postText}
+          analysis={historyPreviewData.analysisRaw}
+          parsedAnalysisOverride={historyPreviewData.analysis}
+          displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
+          username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
+          profilePicUrl={profile?.threads_profile_picture_url}
+          threadsConnected={!!profile?.threads_access_token}
+          onBack={handleBackFromPreview}
+          readOnly={historyPreviewData.status === "published"}
+          initialStatus={historyPreviewData.status as any}
+          onStatusChange={handlePostStatusChange}
+        />
+      );
+    }
+
+    // Live preview (just drafted)
     if (flowMode === "preview") {
       return (
         <PostPreviewSplit
           postContent={draftedPost}
           analysis={postAnalysis}
+          parsedAnalysisOverride={parsedAnalysisData}
           displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
           username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
           profilePicUrl={profile?.threads_profile_picture_url}
@@ -803,6 +1002,7 @@ const Chat = () => {
           onBack={handleBackFromPreview}
           onRegenerate={handleRegenerate}
           isRegenerating={isRegenerating}
+          onStatusChange={handlePostStatusChange}
         />
       );
     }
@@ -818,8 +1018,8 @@ const Chat = () => {
           </div>
         )}
 
-        {/* Chat mode: show DB messages */}
-        {flowMode === "chat" && messages.map((m) => (
+        {/* Chat mode: show DB messages (skip drafted_post metadata messages) */}
+        {flowMode === "chat" && messages.filter((m) => !m.metadata?.type).map((m) => (
           <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
             <div className={cn(
               "max-w-[85%] rounded-xl px-4 py-3",
@@ -885,26 +1085,63 @@ const Chat = () => {
                 <div key={group.label}>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 mb-1">{group.label}</p>
                   {group.sessions.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => handleSelectSession(s.id)}
-                      className={cn(
-                        "w-full text-left rounded-md px-2 py-1.5 text-xs transition-colors truncate flex items-center justify-between group",
-                        s.id === activeSessionId
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    <div key={s.id} className="group relative">
+                      {renamingId === s.id ? (
+                        <input
+                          ref={renameInputRef}
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={handleFinishRename}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleFinishRename();
+                            if (e.key === "Escape") setRenamingId(null);
+                          }}
+                          className="w-full rounded-md px-2 py-1.5 text-xs bg-background border border-primary/50 text-foreground focus:outline-none"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => handleSelectSession(s.id)}
+                          className={cn(
+                            "w-full text-left rounded-md px-2 py-1.5 text-xs transition-colors truncate flex items-center gap-1 pr-7",
+                            s.id === activeSessionId
+                              ? "bg-primary/10 text-primary"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                          )}
+                        >
+                          {s.pinned && <Pin className="h-2.5 w-2.5 shrink-0 text-primary/60" />}
+                          <span className="truncate">{s.title}</span>
+                        </button>
                       )}
-                    >
-                      <span className="truncate">{s.title}</span>
-                      <Trash2
-                        className="h-3 w-3 opacity-0 group-hover:opacity-60 hover:!opacity-100 shrink-0 ml-1"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          await deleteSession(s.id);
-                          if (activeSessionId === s.id) { setActiveSessionId(null); setFlowMode("empty"); }
-                        }}
-                      />
-                    </button>
+                      {renamingId !== s.id && (
+                        <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button className="h-5 w-5 flex items-center justify-center rounded hover:bg-accent">
+                                <MoreHorizontal className="h-3 w-3 text-muted-foreground" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-36">
+                              <DropdownMenuItem onClick={() => handleStartRename(s)}>
+                                <Pencil className="h-3 w-3 mr-2" /> Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleTogglePin(s)}>
+                                {s.pinned ? (
+                                  <><PinOff className="h-3 w-3 mr-2" /> Unpin</>
+                                ) : (
+                                  <><Pin className="h-3 w-3 mr-2" /> Pin to top</>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setDeleteConfirmId(s.id)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3 mr-2" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               ))
@@ -1009,6 +1246,24 @@ const Chat = () => {
           )}
         </div>
       </div>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this chat and all its messages. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 };
