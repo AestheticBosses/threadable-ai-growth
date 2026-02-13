@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
@@ -24,7 +24,8 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { subDays, startOfDay, differenceInCalendarDays } from "date-fns";
 
-function PctChange({ value }: { value: number }) {
+function PctChange({ value, hide }: { value: number; hide?: boolean }) {
+  if (hide) return null;
   if (value === 0) return <span className="text-xs text-muted-foreground">—</span>;
   const isUp = value > 0;
   const Icon = isUp ? ArrowUp : ArrowDown;
@@ -68,6 +69,7 @@ const Dashboard = () => {
   const [customTo, setCustomTo] = useState<Date | undefined>();
   const [fetching, setFetching] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const [profileRefreshed, setProfileRefreshed] = useState(false);
 
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
   const { data: discoveredArchetypes } = useArchetypeDiscovery();
@@ -144,6 +146,32 @@ const Dashboard = () => {
     return s;
   }, [publishedPosts]);
 
+  // Auto-refresh profile from Threads API on mount
+  useEffect(() => {
+    if (!user || profileRefreshed) return;
+    const refreshProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const { data } = await supabase.functions.invoke("refresh-profile", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (data?.success) {
+          queryClient.invalidateQueries({ queryKey: ["dashboard-profile"] });
+          queryClient.invalidateQueries({ queryKey: ["dashboard-follower-snapshots"] });
+        }
+      } catch {
+        // Silently fall back to cached data
+      } finally {
+        setProfileRefreshed(true);
+      }
+    };
+    refreshProfile();
+  }, [user, profileRefreshed]);
+
+  // Determine if we should hide % change badges
+  const isAllTime = range === "all";
+
   const posts = useMemo(() => allPosts ? filterPostsByRange(allPosts, range, customFrom, customTo) : [], [allPosts, range, customFrom, customTo]);
 
   const prevPosts = useMemo(() => {
@@ -158,6 +186,8 @@ const Dashboard = () => {
       return d >= prevStart && d < start;
     });
   }, [allPosts, range, customFrom, customTo]);
+
+  const hidePctChange = isAllTime || prevPosts.length === 0;
 
   const periodStats = {
     views: sumField(posts, "views"),
@@ -356,7 +386,7 @@ const Dashboard = () => {
                     <s.icon className="h-3.5 w-3.5 text-muted-foreground" />
                   </div>
                   <p className="text-2xl font-bold text-foreground font-mono">{s.value.toLocaleString()}</p>
-                  <PctChange value={s.change} />
+                  <PctChange value={s.change} hide={hidePctChange} />
                 </div>
               ))}
             </div>
