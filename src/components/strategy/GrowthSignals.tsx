@@ -8,6 +8,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { PostingHeatmap } from "@/components/insights/PostingHeatmap";
+import { ShareGrowthCard } from "@/components/insights/ShareGrowthCard";
 
 function BarChart({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.max((value / max) * 100, 2);
@@ -103,11 +105,26 @@ export function GrowthSignals() {
   const maxEngRate = topEngRate[0]?.engRate ?? 1;
   const maxViralCoeff = topViralCoeff[0]?.viralCoeff ?? 1;
 
+  // Trend: average engagement rate
+  const avgEngRate = useMemo(() => {
+    if (qualifiedRows.length === 0) return 0;
+    return qualifiedRows.reduce((s, r) => s + r.engRate, 0) / qualifiedRows.length;
+  }, [qualifiedRows]);
+
+  const avgViralCoeff = useMemo(() => {
+    const coeffRows = qualifiedRows.map((t) => t.views > 0 ? ((t.reposts + (t.replies * 0.3)) / t.views) * 100 : 0);
+    if (coeffRows.length === 0) return 0;
+    return coeffRows.reduce((s, v) => s + v, 0) / coeffRows.length;
+  }, [qualifiedRows]);
+
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-8">
+        {/* Heatmap */}
+        <PostingHeatmap />
+
         <div>
           <h3 className="text-lg font-semibold text-foreground">Top Performer Rankings</h3>
           <p className="text-sm text-muted-foreground mt-1">
@@ -119,7 +136,12 @@ export function GrowthSignals() {
 
         {/* Engagement Rate — Top 10 */}
         <div>
-          <h4 className="text-sm font-bold text-violet-400 mb-4">Engagement Rate — Top 10</h4>
+          <div className="flex items-center gap-3 mb-4">
+            <h4 className="text-sm font-bold text-violet-400">Engagement Rate — Top 10</h4>
+            {avgEngRate > 0 && (
+              <span className="text-xs text-muted-foreground font-mono">Avg: {avgEngRate.toFixed(2)}%</span>
+            )}
+          </div>
           {topEngRate.length === 0 ? (
             <p className="text-xs text-muted-foreground">No posts with 50+ views found.</p>
           ) : (
@@ -137,7 +159,12 @@ export function GrowthSignals() {
 
         {/* Viral Coefficient */}
         <div>
-          <h4 className="text-sm font-bold text-emerald-400 mb-4">Viral Coefficient (Reposts+Replies ÷ Views) — Top 10</h4>
+          <div className="flex items-center gap-3 mb-4">
+            <h4 className="text-sm font-bold text-emerald-400">Viral Coefficient (Reposts+Replies ÷ Views) — Top 10</h4>
+            {avgViralCoeff > 0 && (
+              <span className="text-xs text-muted-foreground font-mono">Avg: {avgViralCoeff.toFixed(2)}%</span>
+            )}
+          </div>
           {topViralCoeff.length === 0 ? (
             <p className="text-xs text-muted-foreground">No posts with 50+ views found.</p>
           ) : (
@@ -152,6 +179,9 @@ export function GrowthSignals() {
             </div>
           )}
         </div>
+
+        {/* Shareable Growth Card */}
+        <ShareGrowthCard />
       </div>
     </TooltipProvider>
   );

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { FloatingChat } from "@/components/FloatingChat";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
 import Analyze from "./pages/Analyze";
@@ -65,6 +66,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <FloatingChat />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
