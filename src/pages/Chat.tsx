@@ -290,24 +290,11 @@ const Chat = () => {
     }
   }, [renamingId]);
 
-  // On session change, detect mode — check for drafted_post metadata
+  // On session change, detect mode — drafted posts now render inline in chat mode
   useEffect(() => {
     setHistoryPreviewData(null);
     if (messages.length > 0) {
-      // Check if last message has drafted_post metadata
-      const draftMsg = [...messages].reverse().find((m) => m.metadata?.type === "drafted_post");
-      if (draftMsg && draftMsg.metadata) {
-        const meta = draftMsg.metadata;
-        setHistoryPreviewData({
-          postText: meta.post_text,
-          analysis: meta.analysis,
-          analysisRaw: draftMsg.content,
-          status: meta.status,
-        });
-        setFlowMode("preview");
-      } else {
-        setFlowMode("chat");
-      }
+      setFlowMode("chat");
     } else {
       setFlowMode("empty");
     }
@@ -829,7 +816,12 @@ const Chat = () => {
   };
 
   const handleBackFromPreview = () => {
-    setFlowMode("guided");
+    // If we were viewing from history, go back to chat mode
+    if (historyPreviewData) {
+      setFlowMode("chat");
+    } else {
+      setFlowMode("guided");
+    }
     setDraftedPost("");
     setPostAnalysis("");
     setParsedAnalysisData(null);
@@ -1018,25 +1010,108 @@ const Chat = () => {
           </div>
         )}
 
-        {/* Chat mode: show DB messages (skip drafted_post metadata messages) */}
-        {flowMode === "chat" && messages.filter((m) => !m.metadata?.type).map((m) => (
-          <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-            <div className={cn(
-              "max-w-[85%] rounded-xl px-4 py-3",
-              m.role === "user"
-                ? "bg-primary/15 text-foreground"
-                : "bg-card border border-border text-foreground"
-            )}>
-              {m.role === "assistant" && (
-                <div className="flex items-center gap-2 mb-2">
-                  <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
-                  <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+        {/* Chat mode: render messages with inline split-screen for drafted posts */}
+        {flowMode === "chat" && messages.map((m, idx) => {
+          // Check if this is a drafted post (via metadata)
+          if (m.metadata?.type === "drafted_post") {
+            const meta = m.metadata;
+            return (
+              <div key={m.id}>
+                <PostPreviewSplit
+                  postContent={meta.post_text}
+                  analysis={m.content}
+                  parsedAnalysisOverride={meta.analysis}
+                  displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
+                  username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
+                  profilePicUrl={profile?.threads_profile_picture_url}
+                  threadsConnected={!!profile?.threads_access_token}
+                  onBack={() => {}}
+                  readOnly={meta.status === "published"}
+                  initialStatus={meta.status}
+                  onStatusChange={(status, queueId) => {
+                    updateMessageMetadata({ messageId: m.id, metadata: { status: status as any, queue_id: queueId || null, published_at: status === "published" ? new Date().toISOString() : null } });
+                  }}
+                />
+              </div>
+            );
+          }
+
+          // Skip analysis messages that are linked to a drafted post above
+          if (m.metadata?.type === "post_analysis") return null;
+
+          // Fallback detection: if no metadata, check if this AI message looks like a draft
+          // followed by an analysis message
+          if (m.role === "assistant" && !m.metadata?.type) {
+            const nextMsg = messages[idx + 1];
+            const looksLikeDraft = m.content.length < 2200 && m.content.length > 20;
+            const nextIsAnalysis = nextMsg?.role === "assistant" && !nextMsg.metadata?.type &&
+              (nextMsg.content.includes("Angle") && nextMsg.content.includes("Hook") && nextMsg.content.includes("Content"));
+
+            if (looksLikeDraft && nextIsAnalysis) {
+              const parsed = tryParseAnalysisJSON(nextMsg.content);
+              return (
+                <div key={m.id}>
+                  <PostPreviewSplit
+                    postContent={m.content}
+                    analysis={nextMsg.content}
+                    parsedAnalysisOverride={parsed}
+                    displayName={profile?.display_name || user?.email?.split("@")[0] || "User"}
+                    username={profile?.threads_username || user?.email?.split("@")[0] || "user"}
+                    profilePicUrl={profile?.threads_profile_picture_url}
+                    threadsConnected={!!profile?.threads_access_token}
+                    onBack={() => {}}
+                    onStatusChange={(status, queueId) => {}}
+                  />
                 </div>
-              )}
-              <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+              );
+            }
+
+            // Skip if this message was consumed as analysis by the previous draft
+            if (idx > 0) {
+              const prevMsg = messages[idx - 1];
+              const prevIsDraft = prevMsg?.role === "assistant" && prevMsg.content.length < 2200 && prevMsg.content.length > 20;
+              const thisIsAnalysis = m.content.includes("Angle") && m.content.includes("Hook") && m.content.includes("Content");
+              if (prevIsDraft && thisIsAnalysis) return null;
+            }
+          }
+
+          // Regular message rendering
+          return (
+            <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+              <div className={cn(
+                "max-w-[85%] rounded-xl px-4 py-3",
+                m.role === "user"
+                  ? "bg-primary/15 text-foreground"
+                  : "bg-card border border-border text-foreground"
+              )}>
+                {m.role === "assistant" && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                    <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+                  </div>
+                )}
+                <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                {/* "View as preview" button for short AI messages that look like posts */}
+                {m.role === "assistant" && m.content.length > 20 && m.content.length < 600 && (
+                  <button
+                    onClick={() => {
+                      setHistoryPreviewData({
+                        postText: m.content,
+                        analysis: null,
+                        analysisRaw: "",
+                        status: "draft",
+                      });
+                      setFlowMode("preview");
+                    }}
+                    className="flex items-center gap-1 mt-2 text-[11px] text-muted-foreground/60 hover:text-primary transition-colors"
+                  >
+                    👁️ View as post preview
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Flow items (guided mode + chat streaming) */}
         {flowItems.map(renderFlowItem)}
