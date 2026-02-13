@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,82 +31,27 @@ serve(async (req) => {
       });
     }
 
-    const supabaseAnon = createClient(
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsErr } = await supabaseAnon.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch user context
-    const [identityRes, storiesRes, offersRes, audiencesRes, personalRes, styleRes, prefsRes, postsRes, kbRes] = await Promise.all([
-      admin.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
-      admin.from("user_story_vault").select("data").eq("user_id", userId),
-      admin.from("user_offers").select("name, description").eq("user_id", userId),
-      admin.from("user_audiences").select("name").eq("user_id", userId),
-      admin.from("user_personal_info").select("content").eq("user_id", userId),
-      admin.from("user_writing_style").select("selected_style, custom_style_description").eq("user_id", userId).maybeSingle(),
-      admin.from("content_preferences").select("content").eq("user_id", userId).order("sort_order"),
-      admin.from("posts_analyzed").select("text_content, engagement_rate, likes, views").eq("user_id", userId).eq("source", "own").order("engagement_rate", { ascending: false }).limit(5),
-      admin.from("knowledge_base").select("title, content, summary, type").eq("user_id", userId).eq("processed", true).limit(20),
-    ]);
-
-    const identity = identityRes.data;
-    const stories = (storiesRes.data || []).flatMap((s: any) => {
-      const d = s.data;
-      if (Array.isArray(d)) return d;
-      if (d && typeof d === "object") return Object.values(d).flat();
-      return [];
-    });
-    const offers = offersRes.data || [];
-    const audiences = audiencesRes.data || [];
-    const personal = personalRes.data || [];
-    const style = styleRes.data;
-    const prefs = prefsRes.data || [];
-    const topPosts = postsRes.data || [];
-    const kb = kbRes.data || [];
-
-    // Build identity context
-    const identitySection = identity
-      ? `About: ${identity.about_you || "Not set"}\nDesired Perception: ${identity.desired_perception || "Not set"}\nMain Goal: ${identity.main_goal || "Not set"}`
-      : "No identity data available.";
-
-    const storiesSection = stories.length > 0
-      ? stories.map((s: any) => `- ${s.title || ""}: ${s.body || s.description || ""}`).join("\n")
-      : "No stories yet.";
-
-    const offersSection = offers.length > 0
-      ? offers.map((o: any) => `- ${o.name}: ${o.description || ""}`).join("\n")
-      : "No offers yet.";
-
-    const audiencesSection = audiences.map((a: any) => `- ${a.name}`).join("\n") || "Not defined.";
-    const personalSection = personal.map((p: any) => `- ${p.content}`).join("\n") || "Not set.";
-
-    const styleSection = style ? `Selected style: ${style.selected_style}${style.custom_style_description ? `\nCustom: ${style.custom_style_description}` : ""}` : "Default style.";
-    const prefsSection = prefs.map((p: any) => `- ${p.content}`).join("\n") || "No specific preferences.";
-
-    const topPostsSection = topPosts.map((p: any) =>
-      `"${(p.text_content || "").slice(0, 300)}" (${p.likes || 0} likes, ${p.views || 0} views)`
-    ).join("\n\n") || "No posts yet.";
-
-    const kbSection = kb.map((k: any) => {
-      const content = k.summary || k.content || "";
-      return `- [${k.type}] ${k.title}: ${content.slice(0, 200)}`;
-    }).join("\n") || "Empty.";
+    // Fetch full user context using shared utility
+    const userContext = await getUserContext(admin, user.id);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -127,32 +73,7 @@ serve(async (req) => {
         chunk.map(async (post: any) => {
           const systemPrompt = `You are Threadable AI — a Threads content writer. Write a single Threads post based on the specifications below.
 
-=== USER IDENTITY ===
-${identitySection}
-
-Stories:
-${storiesSection}
-
-Offers:
-${offersSection}
-
-Target Audiences:
-${audiencesSection}
-
-Personal Information:
-${personalSection}
-
-=== WRITING STYLE ===
-${styleSection}
-
-Content Preferences:
-${prefsSection}
-
-=== TOP PERFORMING POST EXAMPLES ===
-${topPostsSection}
-
-=== KNOWLEDGE BASE ===
-${kbSection}
+${userContext}
 
 === POST SPECIFICATIONS ===
 Archetype: ${post.archetype || "General"}
@@ -203,7 +124,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
 
             // Insert into scheduled_posts
             const insertData: Record<string, any> = {
-              user_id: userId,
+              user_id: user.id,
               text_content: text,
               content_category: post.archetype || null,
               funnel_stage: post.funnel_stage || "TOF",
