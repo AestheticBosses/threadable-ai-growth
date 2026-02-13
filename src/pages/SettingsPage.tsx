@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { ThreadsConnectionCard } from "@/components/settings/ThreadsConnectionCard";
-import { ProfileCard } from "@/components/settings/ProfileCard";
+
 import { ContentPreferencesCard } from "@/components/settings/ContentPreferencesCard";
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { DangerZoneCard } from "@/components/settings/DangerZoneCard";
@@ -64,13 +64,6 @@ const SettingsPage = () => {
               threadsUsername={profile.threads_username}
               tokenExpiresAt={profile.threads_token_expires_at}
               onDisconnect={fetchProfile}
-            />
-
-            <ProfileCard
-              niche={profile.niche ?? ""}
-              dreamClient={profile.dream_client ?? ""}
-              endGoal={profile.end_goal ?? ""}
-              onSaved={fetchProfile}
             />
 
             <ContentPreferencesCard
