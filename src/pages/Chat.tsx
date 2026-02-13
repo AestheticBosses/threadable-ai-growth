@@ -228,6 +228,9 @@ const Chat = () => {
   const [isBusy, setIsBusy] = useState(false);
   const [draftMessageId, setDraftMessageId] = useState<string | null>(null);
 
+  // Pending action ref — survives re-renders caused by session creation
+  const pendingActionRef = useRef<{ type: string; label?: string; message?: string } | null>(null);
+
   // Sidebar editing
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -290,8 +293,22 @@ const Chat = () => {
     }
   }, [renamingId]);
 
-  // On session change, detect mode — drafted posts now render inline in chat mode
+  // On session change, detect mode — but skip reset if a pending action is queued
   useEffect(() => {
+    if (pendingActionRef.current && activeSessionId) {
+      // A quick action triggered session creation — execute it now
+      const action = pendingActionRef.current;
+      pendingActionRef.current = null;
+      if (action.type === "ideas") {
+        handlePostIdeasAction();
+      } else if (action.type === "quick" && action.label && action.message) {
+        handleQuickAction(action.label, action.message);
+      } else if (action.type === "more" && action.label && action.message) {
+        handleQuickAction(action.label, action.message);
+      }
+      return;
+    }
+
     setHistoryPreviewData(null);
     if (messages.length > 0) {
       setFlowMode("chat");
@@ -375,6 +392,14 @@ const Chat = () => {
   /* ─── Flow: "Give post ideas" ─── */
   const handlePostIdeasAction = useCallback(async () => {
     if (isBusy) return;
+
+    // If no session, store pending action and create session — the useEffect will re-trigger this
+    if (!activeSessionId) {
+      pendingActionRef.current = { type: "ideas" };
+      createSession().then((s) => setActiveSessionId(s.id));
+      return;
+    }
+
     setIsBusy(true);
     setFlowMode("guided");
     setFlowItems([]);
@@ -383,9 +408,8 @@ const Chat = () => {
     addItem({ type: "user", content: "Give me post ideas" });
     const typingId = addItem({ type: "typing" });
 
-    const sessionId = await ensureSession();
     await sendMessage({ content: "Give me post ideas", role: "user" });
-    await updateTitle({ id: sessionId, title: "Post ideas" });
+    await updateTitle({ id: activeSessionId, title: "Post ideas" });
 
     await delay(1500);
     removeItem(typingId);
@@ -393,7 +417,7 @@ const Chat = () => {
     addItem({ type: "context-cards", disabled: false });
 
     setIsBusy(false);
-  }, [isBusy, addItem, removeItem, ensureSession, sendMessage, updateTitle]);
+  }, [isBusy, activeSessionId, addItem, removeItem, createSession, sendMessage, updateTitle]);
 
   /* ─── Flow: Context item selected (single select) ─── */
   const handleContextSelect = useCallback(async (item: { type: string; label: string; content: string }) => {
@@ -459,6 +483,14 @@ const Chat = () => {
   /* ─── Flow: Quick actions (trending, template, etc.) ─── */
   const handleQuickAction = useCallback(async (label: string, message: string) => {
     if (isBusy) return;
+
+    // If no session, store pending action and create session — the useEffect will re-trigger this
+    if (!activeSessionId) {
+      pendingActionRef.current = { type: "quick", label, message };
+      createSession().then((s) => setActiveSessionId(s.id));
+      return;
+    }
+
     setIsBusy(true);
     setFlowMode("guided");
     setFlowItems([]);
@@ -467,9 +499,8 @@ const Chat = () => {
     addItem({ type: "user", content: label });
     const typingId = addItem({ type: "typing" });
 
-    const sessionId = await ensureSession();
     await sendMessage({ content: message, role: "user" });
-    await updateTitle({ id: sessionId, title: generateAutoTitle(label.toLowerCase().includes("trending") ? "trending" : label.toLowerCase().includes("template") ? "template" : label) });
+    await updateTitle({ id: activeSessionId, title: generateAutoTitle(label.toLowerCase().includes("trending") ? "trending" : label.toLowerCase().includes("template") ? "template" : label) });
 
     await delay(1800);
     removeItem(typingId);
@@ -505,7 +536,7 @@ const Chat = () => {
         setIsBusy(false);
       },
     });
-  }, [isBusy, addItem, removeItem, updateItem, ensureSession, sendMessage, updateTitle]);
+  }, [isBusy, activeSessionId, addItem, removeItem, updateItem, createSession, sendMessage, updateTitle]);
 
   /* ─── Flow: Draft a post idea ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
