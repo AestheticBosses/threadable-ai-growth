@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles, Check } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import threadableIcon from "@/assets/threadable-icon.png";
+import { IdentityCompleteness } from "@/components/identity/IdentityCompleteness";
 
 const PROGRESS_STEPS = [
   "Fetching your posts...",
@@ -139,14 +140,16 @@ const MyStory = () => {
           )}
         </div>
 
-        <AboutYouSection />
-        <StoriesSection />
-        <NumbersSection />
-        <OffersSection />
-        <AudiencesSection />
-        <PersonalInfoSection />
-        <DesiredPerceptionSection />
-        <MainGoalSection />
+        <IdentityCompleteness />
+
+        <div id="about-you"><AboutYouSection /></div>
+        <div id="stories"><StoriesSection /></div>
+        <div id="numbers"><NumbersSection /></div>
+        <div id="offers"><OffersSection /></div>
+        <div id="audiences"><AudiencesSection /></div>
+        <div id="personal-info"><PersonalInfoSection /></div>
+        <div id="perception"><DesiredPerceptionSection /></div>
+        <div id="goal"><MainGoalSection /></div>
       </div>
 
       {extractedData && (

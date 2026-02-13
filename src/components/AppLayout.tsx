@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
+import { OnboardingTracker } from "@/components/dashboard/OnboardingTracker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -106,6 +107,9 @@ export function AppLayout({ children }: AppSidebarProps) {
           Chat
         </RouterNavLink>
       </div>
+
+      {/* Onboarding Progress */}
+      <OnboardingTracker />
 
       {/* Nav */}
       <nav className="flex-1 px-2 py-2 space-y-4">
