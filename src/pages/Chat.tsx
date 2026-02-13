@@ -465,9 +465,9 @@ const Chat = () => {
           await sendMessage({ content: fullResponse, role: "assistant" });
         }
         const ideas = parsePostIdeas(fullResponse);
-        if (ideas.length > 0) {
+        if (ideas && ideas.length >= 2) {
           setPostIdeas(ideas);
-          addItem({ type: "ai", content: "Here are 5 post ideas based on your selection:" });
+          addItem({ type: "ai", content: `Here are ${ideas.length} post ideas based on your selection:` });
           addItem({ type: "idea-cards", ideas });
         } else {
           addItem({ type: "ai", content: fullResponse });
@@ -523,7 +523,7 @@ const Chat = () => {
           await sendMessage({ content: fullResponse, role: "assistant" });
         }
         const ideas = parsePostIdeas(fullResponse);
-        if (ideas.length > 0) {
+        if (ideas && ideas.length >= 2) {
           setPostIdeas(ideas);
           addItem({ type: "ai", content: `Here are some ideas for you:` });
           addItem({ type: "idea-cards", ideas });
