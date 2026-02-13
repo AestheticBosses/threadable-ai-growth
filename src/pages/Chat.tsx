@@ -294,9 +294,9 @@ const Chat = () => {
   }, [renamingId]);
 
   // On session change, detect mode — but skip reset if a pending action is queued
+  // or if we're in guided/preview mode (those manage their own flow items)
   useEffect(() => {
     if (pendingActionRef.current && activeSessionId) {
-      // A quick action triggered session creation — execute it now
       const action = pendingActionRef.current;
       pendingActionRef.current = null;
       if (action.type === "ideas") {
@@ -308,6 +308,11 @@ const Chat = () => {
       }
       return;
     }
+
+    // Don't reset flow items if we're in guided or preview mode — those modes
+    // manage their own items and a messages.length change (from saving to DB)
+    // should not wipe them out.
+    if (flowMode === "guided" || flowMode === "preview") return;
 
     setHistoryPreviewData(null);
     if (messages.length > 0) {
