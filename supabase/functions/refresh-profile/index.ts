@@ -28,17 +28,17 @@ Deno.serve(async (req) => {
     const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: claimsData, error: claimsError } =
-      await anonClient.auth.getClaims(token);
+    const { data: { user }, error: userError } = await anonClient.auth.getUser();
 
-    if (claimsError || !claimsData?.claims) {
+    if (userError || !user) {
+      console.error("Auth error:", userError?.message);
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: profile, error: profileError } = await adminClient
@@ -57,13 +57,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch profile data from Threads API
-    const profileUrl = `https://graph.threads.net/v1.0/${profile.threads_user_id}?fields=threads_profile_picture_url,username,name,threads_biography,followers_count&access_token=${profile.threads_access_token}`;
+    // Fetch profile data from Threads API (without followers_count which requires separate call)
+    const profileUrl = `https://graph.threads.net/v1.0/me?fields=id,username,name,threads_profile_picture_url,threads_biography&access_token=${profile.threads_access_token}`;
     const profileRes = await fetch(profileUrl);
     const profileJson = await profileRes.json();
 
     if (profileJson.error) {
-      console.error("Threads API error:", JSON.stringify(profileJson.error));
+      console.error("Threads API profile error:", JSON.stringify(profileJson.error));
       return new Response(
         JSON.stringify({
           error: profileJson.error.message,
@@ -76,6 +76,27 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log("Threads profile fetched:", JSON.stringify({ username: profileJson.username, name: profileJson.name, has_pic: !!profileJson.threads_profile_picture_url }));
+
+    // Fetch follower count via Threads Insights API (separate endpoint)
+    let followerCount: number | null = null;
+    try {
+      const insightsUrl = `https://graph.threads.net/v1.0/me/threads_insights?metric=followers_count&access_token=${profile.threads_access_token}`;
+      const insightsRes = await fetch(insightsUrl);
+      const insightsJson = await insightsRes.json();
+      if (insightsJson.data) {
+        const fcMetric = insightsJson.data.find((m: any) => m.name === "followers_count");
+        if (fcMetric?.total_value?.value != null) {
+          followerCount = fcMetric.total_value.value;
+        }
+      }
+      if (insightsJson.error) {
+        console.error("Insights API error:", JSON.stringify(insightsJson.error));
+      }
+    } catch (e) {
+      console.error("Follower count fetch failed:", e);
+    }
+
     // Build update payload
     const profileUpdate: Record<string, unknown> = {};
     if (profileJson.username)
@@ -85,16 +106,17 @@ Deno.serve(async (req) => {
     if (profileJson.threads_profile_picture_url)
       profileUpdate.threads_profile_picture_url =
         profileJson.threads_profile_picture_url;
-    if (typeof profileJson.followers_count === "number")
-      profileUpdate.follower_count = profileJson.followers_count;
-    if (profileJson.followers_count >= 500) profileUpdate.is_established = true;
+    if (followerCount !== null) {
+      profileUpdate.follower_count = followerCount;
+      if (followerCount >= 500) profileUpdate.is_established = true;
+    }
 
     if (Object.keys(profileUpdate).length > 0) {
       await adminClient.from("profiles").update(profileUpdate).eq("id", userId);
     }
 
     // Save follower snapshot (deduplicate: only if last snapshot is different or > 1hr old)
-    if (typeof profileJson.followers_count === "number") {
+    if (followerCount !== null) {
       const { data: lastSnapshot } = await adminClient
         .from("follower_snapshots")
         .select("follower_count, recorded_at")
@@ -105,14 +127,14 @@ Deno.serve(async (req) => {
 
       const shouldInsert =
         !lastSnapshot ||
-        lastSnapshot.follower_count !== profileJson.followers_count ||
+        lastSnapshot.follower_count !== followerCount ||
         Date.now() - new Date(lastSnapshot.recorded_at).getTime() >
           60 * 60 * 1000;
 
       if (shouldInsert) {
         await adminClient.from("follower_snapshots").insert({
           user_id: userId,
-          follower_count: profileJson.followers_count,
+          follower_count: followerCount,
         });
       }
     }
@@ -123,7 +145,7 @@ Deno.serve(async (req) => {
         username: profileJson.username,
         name: profileJson.name,
         profile_picture_url: profileJson.threads_profile_picture_url,
-        follower_count: profileJson.followers_count,
+        follower_count: followerCount,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
