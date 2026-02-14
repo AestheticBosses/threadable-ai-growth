@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Trash2, UserX } from "lucide-react";
+import { AlertTriangle, Trash2, UserX, RotateCcw } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +23,49 @@ export function DangerZoneCard() {
   const navigate = useNavigate();
   const [deletingContent, setDeletingContent] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [resettingOnboarding, setResettingOnboarding] = useState(false);
+
+  const handleResetOnboarding = async () => {
+    if (!user) return;
+    setResettingOnboarding(true);
+    try {
+      // Reset onboarding flag and clear niche/goal fields, keep Threads connection
+      await supabase
+        .from("profiles")
+        .update({ onboarding_complete: false, niche: null, dream_client: null, end_goal: null })
+        .eq("id", user.id);
+
+      // Clear all generated data
+      await Promise.all([
+        supabase.from("content_strategies").delete().eq("user_id", user.id),
+        supabase.from("posts_analyzed").delete().eq("user_id", user.id),
+        supabase.from("scheduled_posts").delete().eq("user_id", user.id),
+        supabase.from("user_plans").delete().eq("user_id", user.id),
+        supabase.from("user_writing_style").delete().eq("user_id", user.id),
+        supabase.from("user_identity").delete().eq("user_id", user.id),
+        supabase.from("user_story_vault").delete().eq("user_id", user.id),
+        supabase.from("user_offers").delete().eq("user_id", user.id),
+        supabase.from("user_audiences").delete().eq("user_id", user.id),
+        supabase.from("user_personal_info").delete().eq("user_id", user.id),
+        supabase.from("user_sales_funnel").delete().eq("user_id", user.id),
+        supabase.from("competitor_accounts").delete().eq("user_id", user.id),
+        supabase.from("voice_samples").delete().eq("user_id", user.id),
+        supabase.from("knowledge_base").delete().eq("user_id", user.id),
+        supabase.from("content_templates").delete().eq("user_id", user.id),
+        supabase.from("content_preferences").delete().eq("user_id", user.id),
+        supabase.from("weekly_reports").delete().eq("user_id", user.id),
+        supabase.from("chat_messages").delete().eq("user_id", user.id),
+        supabase.from("chat_sessions").delete().eq("user_id", user.id),
+      ]);
+
+      toast.success("Onboarding reset — redirecting…");
+      navigate("/onboarding");
+    } catch {
+      toast.error("Failed to reset onboarding");
+    } finally {
+      setResettingOnboarding(false);
+    }
+  };
 
   const handleDeleteContent = async () => {
     if (!user) return;
@@ -81,6 +124,40 @@ export function DangerZoneCard() {
         <CardDescription>Irreversible actions — proceed with caution</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Reset onboarding */}
+        <div className="flex items-center justify-between rounded-lg border border-destructive/20 p-4">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Reset Onboarding</p>
+            <p className="text-xs text-muted-foreground">Start fresh without disconnecting Threads</p>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="border-destructive/30 text-destructive hover:bg-destructive/10">
+                <RotateCcw className="h-4 w-4 mr-1.5" />
+                Reset
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset onboarding?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will clear all your content, strategies, identity, and analysis data. Your Threads connection will remain intact. You'll be redirected to start onboarding again.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleResetOnboarding}
+                  disabled={resettingOnboarding}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {resettingOnboarding ? "Resetting…" : "Yes, Reset Everything"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+
         {/* Delete generated content */}
         <div className="flex items-center justify-between rounded-lg border border-destructive/20 p-4">
           <div className="space-y-0.5">
