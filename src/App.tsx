@@ -21,6 +21,7 @@ import SettingsPage from "./pages/SettingsPage";
 import Templates from "./pages/Templates";
 import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
+import Privacy from "./pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/landing" element={<Landing />} />
+            <Route path="/privacy" element={<Privacy />} />
             <Route path="/login" element={<Login />} />
             <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
             <Route path="/analyze" element={<ProtectedRoute><Analyze /></ProtectedRoute>} />

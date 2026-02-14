@@ -1072,7 +1072,7 @@ const Landing = () => {
               <div className="logo-icon" style={{ width: 24, height: 24, fontSize: '0.7rem', borderRadius: 6 }}>T</div>
               <span className="logo-text" style={{ fontSize: '0.9rem' }}>Threadable.ai</span>
             </a>
-            <div><a href="#">Privacy</a> · <a href="#">Terms</a></div>
+            <div><a href="/privacy">Privacy</a> · <a href="#">Terms</a></div>
             <div>© 2026 Threadable.ai. All rights reserved.</div>
           </div>
         </footer>
