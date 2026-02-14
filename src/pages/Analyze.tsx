@@ -1,115 +1,117 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Loader2,
   ArrowRight,
-  TrendingUp,
-  Clock,
-  MessageSquare,
   BarChart3,
-  Sparkles,
   Users,
   Zap,
 } from "lucide-react";
 
-// Mock suggested accounts by niche keyword
-function getSuggestedAccounts(niche: string): { username: string; reason: string }[] {
-  const lower = niche.toLowerCase();
-  if (lower.includes("fitness") || lower.includes("gym") || lower.includes("health")) {
-    return [
-      { username: "fitfounder", reason: "Fitness brand building expert" },
-      { username: "strengthcoach_pro", reason: "Strength coaching content creator" },
-      { username: "wellnesswithjay", reason: "Wellness & health niche leader" },
-    ];
-  }
-  if (lower.includes("market") || lower.includes("agency") || lower.includes("brand")) {
-    return [
-      { username: "marketingmax", reason: "Growth marketing strategist" },
-      { username: "brandbuilder_co", reason: "Brand strategy content creator" },
-      { username: "adspend_guru", reason: "Performance marketing expert" },
-    ];
-  }
-  if (lower.includes("tech") || lower.includes("saas") || lower.includes("dev") || lower.includes("ai")) {
-    return [
-      { username: "buildinpublic_dev", reason: "Build-in-public SaaS founder" },
-      { username: "techstartupguy", reason: "Startup growth content creator" },
-      { username: "ai_insights_daily", reason: "AI & tech thought leader" },
-    ];
-  }
-  if (lower.includes("real estate") || lower.includes("property")) {
-    return [
-      { username: "realestate_mogul", reason: "Real estate investing content" },
-      { username: "propertypro_tips", reason: "Property management expert" },
-      { username: "homeselling_ace", reason: "Residential real estate leader" },
-    ];
-  }
-  return [
-    { username: "growthmindset_daily", reason: "Personal growth content creator" },
-    { username: "nicheleader_pro", reason: "Authority building strategist" },
-    { username: "contentking_threads", reason: "Threads growth specialist" },
-  ];
+interface RealAnalysis {
+  avgEngagement: string;
+  bestDay: string;
+  bestHour: number;
+  postsAnalyzed: number;
+  topContentTypes: { type: string; avgEngagement: string }[];
+  topInsights: string[];
 }
 
-function generateMockOwnAnalysis() {
-  return {
-    bestDay: "Tuesday",
-    bestHour: 9,
-    avgEngagement: (2.5 + Math.random() * 4).toFixed(1),
-    topContentTypes: [
-      { type: "Personal stories", avgEngagement: (4 + Math.random() * 3).toFixed(1) },
-      { type: "Actionable tips", avgEngagement: (3 + Math.random() * 3).toFixed(1) },
-      { type: "Hot takes", avgEngagement: (2.5 + Math.random() * 3).toFixed(1) },
-    ],
-    postsAnalyzed: 25 + Math.floor(Math.random() * 20),
-    topInsights: [
-      "Posts with credibility markers get 180% more views",
-      "Questions drive 3x more replies than statements",
-      "Your best posts are under 50 words",
-    ],
-  };
-}
+function deriveAnalysis(posts: ReturnType<typeof usePostsAnalyzed>["data"]): RealAnalysis | null {
+  if (!posts || posts.length === 0) return null;
 
-function generateMockStrategy(niche: string) {
-  const lower = niche.toLowerCase();
-  const patterns = lower.includes("fitness")
-    ? [
-        "Transformation stories get 340% more engagement",
-        "Workout routine questions get 2x more replies",
-        "Posts with specific numbers outperform by 180%",
-      ]
-    : lower.includes("market")
-    ? [
-        "Revenue/growth numbers get 280% more engagement",
-        "Contrarian takes outperform agreeable content by 3x",
-        "Numbered list posts get 2.5x more saves",
-      ]
-    : [
-        "Personal stories get 220% more engagement",
-        "Questions drive 3x more replies",
-        "Credibility markers boost views by 180%",
-      ];
+  const totalEng = posts.reduce((s, p) => s + (p.engagement_rate ?? 0), 0);
+  const avgEngagement = ((totalEng / posts.length) * 100).toFixed(1);
+
+  // Best day
+  const dayMap: Record<string, { views: number; count: number }> = {};
+  posts.forEach((p) => {
+    const d = p.day_of_week ?? "Unknown";
+    if (!dayMap[d]) dayMap[d] = { views: 0, count: 0 };
+    dayMap[d].views += p.views ?? 0;
+    dayMap[d].count += 1;
+  });
+  const bestDay = Object.entries(dayMap).sort((a, b) => b[1].views / b[1].count - a[1].views / a[1].count)[0]?.[0] ?? "N/A";
+
+  // Best hour
+  const hourMap: Record<number, { views: number; count: number }> = {};
+  posts.forEach((p) => {
+    if (p.hour_posted == null) return;
+    if (!hourMap[p.hour_posted]) hourMap[p.hour_posted] = { views: 0, count: 0 };
+    hourMap[p.hour_posted].views += p.views ?? 0;
+    hourMap[p.hour_posted].count += 1;
+  });
+  const bestHour = Number(Object.entries(hourMap).sort((a, b) => b[1].views / b[1].count - a[1].views / a[1].count)[0]?.[0] ?? 9);
+
+  // Top content types
+  const catMap: Record<string, { eng: number; count: number }> = {};
+  posts.forEach((p) => {
+    const c = p.content_category ?? "Uncategorized";
+    if (!catMap[c]) catMap[c] = { eng: 0, count: 0 };
+    catMap[c].eng += (p.engagement_rate ?? 0) * 100;
+    catMap[c].count += 1;
+  });
+  const topContentTypes = Object.entries(catMap)
+    .map(([type, v]) => ({ type, avgEngagement: (v.eng / v.count).toFixed(1) }))
+    .sort((a, b) => parseFloat(b.avgEngagement) - parseFloat(a.avgEngagement))
+    .slice(0, 4);
+
+  // Key insights derived from actual data
+  const topInsights: string[] = [];
+  const withQuestion = posts.filter((p) => p.has_question);
+  const withoutQuestion = posts.filter((p) => !p.has_question);
+  if (withQuestion.length >= 3 && withoutQuestion.length >= 3) {
+    const qAvg = withQuestion.reduce((s, p) => s + (p.views ?? 0), 0) / withQuestion.length;
+    const nqAvg = withoutQuestion.reduce((s, p) => s + (p.views ?? 0), 0) / withoutQuestion.length;
+    if (qAvg > nqAvg * 1.2) {
+      topInsights.push(`Posts with questions get ${Math.round((qAvg / nqAvg - 1) * 100)}% more views`);
+    }
+  }
+
+  const withCred = posts.filter((p) => p.has_credibility_marker);
+  const withoutCred = posts.filter((p) => !p.has_credibility_marker);
+  if (withCred.length >= 3 && withoutCred.length >= 3) {
+    const cAvg = withCred.reduce((s, p) => s + (p.views ?? 0), 0) / withCred.length;
+    const ncAvg = withoutCred.reduce((s, p) => s + (p.views ?? 0), 0) / withoutCred.length;
+    if (cAvg > ncAvg * 1.2) {
+      topInsights.push(`Credibility markers boost views by ${Math.round((cAvg / ncAvg - 1) * 100)}%`);
+    }
+  }
+
+  const shortPosts = posts.filter((p) => (p.word_count ?? 999) < 50);
+  const longPosts = posts.filter((p) => (p.word_count ?? 0) >= 50);
+  if (shortPosts.length >= 3 && longPosts.length >= 3) {
+    const sAvg = shortPosts.reduce((s, p) => s + (p.views ?? 0), 0) / shortPosts.length;
+    const lAvg = longPosts.reduce((s, p) => s + (p.views ?? 0), 0) / longPosts.length;
+    if (sAvg > lAvg * 1.1) {
+      topInsights.push("Your short-form posts (<50 words) outperform longer ones");
+    } else if (lAvg > sAvg * 1.1) {
+      topInsights.push("Your longer posts (50+ words) outperform shorter ones");
+    }
+  }
+
+  if (topInsights.length === 0) {
+    topInsights.push(`Your top post received ${posts[0]?.views?.toLocaleString() ?? 0} views`);
+  }
 
   return {
-    patterns,
-    best_day: "Tuesday",
-    best_hour: 9,
-    avg_word_count: 35 + Math.floor(Math.random() * 25),
-    total_posts: 30 + Math.floor(Math.random() * 20),
-    top_openers: [
-      "Stop doing this if you want to grow",
-      "I spent 6 months testing this",
-      "Most people don't realize that",
-    ],
+    avgEngagement,
+    bestDay,
+    bestHour,
+    postsAnalyzed: posts.length,
+    topContentTypes,
+    topInsights,
   };
 }
 
@@ -121,16 +123,11 @@ const Analyze = () => {
   const [isEstablished, setIsEstablished] = useState<boolean | null>(null);
   const [niche, setNiche] = useState("");
   const [loading, setLoading] = useState(true);
-
-  // Established path state
-  const [ownAnalysis, setOwnAnalysis] = useState<ReturnType<typeof generateMockOwnAnalysis> | null>(null);
-  const [analyzingOwn, setAnalyzingOwn] = useState(false);
-  const [progressValue, setProgressValue] = useState(0);
-  const [progressMsg, setProgressMsg] = useState("");
-
-  // Shared state
   const [additionalUsernames, setAdditionalUsernames] = useState("");
   const [building, setBuilding] = useState(false);
+
+  const { data: posts, isLoading: postsLoading } = usePostsAnalyzed();
+  const analysis = useMemo(() => deriveAnalysis(posts ?? null), [posts]);
 
   useEffect(() => {
     const load = async () => {
@@ -147,86 +144,50 @@ const Analyze = () => {
     load();
   }, [user]);
 
-  // Auto-trigger own analysis for established users
-  const runOwnAnalysis = useCallback(async () => {
-    setAnalyzingOwn(true);
-    setProgressMsg("Pulling your posts from Threads...");
-    setProgressValue(20);
-    await new Promise((r) => setTimeout(r, 800));
-    setProgressMsg("Analyzing engagement patterns...");
-    setProgressValue(50);
-    await new Promise((r) => setTimeout(r, 800));
-    setProgressMsg("Running regression analysis...");
-    setProgressValue(80);
-    await new Promise((r) => setTimeout(r, 600));
-    setProgressValue(100);
-    setProgressMsg("Analysis complete!");
-    setOwnAnalysis(generateMockOwnAnalysis());
-    setAnalyzingOwn(false);
-  }, []);
-
-  useEffect(() => {
-    if (isEstablished === true && !ownAnalysis && !analyzingOwn) {
-      runOwnAnalysis();
-    }
-  }, [isEstablished, ownAnalysis, analyzingOwn, runOwnAnalysis]);
-
-  const suggestedAccounts = getSuggestedAccounts(niche);
-
   const handleBuildStrategy = async () => {
     if (!user) return;
     setBuilding(true);
     try {
-      // Parse additional usernames
       const extras = additionalUsernames
         .split("\n")
         .map((u) => u.trim().replace(/^@/, ""))
         .filter(Boolean);
 
-      const allUsernames = [
-        ...suggestedAccounts.map((a) => a.username),
-        ...extras,
-      ];
-
-      // Save competitor accounts
-      const rows = allUsernames.map((u) => ({
-        user_id: user.id,
-        threads_username: u,
-      }));
-      if (rows.length) {
+      if (extras.length) {
+        const rows = extras.map((u) => ({
+          user_id: user.id,
+          threads_username: u,
+        }));
         await supabase.from("competitor_accounts").upsert(rows, {
           onConflict: "user_id,threads_username",
           ignoreDuplicates: true,
         });
       }
 
-      // Get profile info
       const { data: profile } = await supabase
         .from("profiles")
         .select("niche, dream_client, end_goal")
         .eq("id", user.id)
         .maybeSingle();
 
-      const mockData = generateMockStrategy(profile?.niche || "");
       const now = new Date();
       const startOfYear = new Date(now.getFullYear(), 0, 1);
       const weekNumber = Math.ceil(
         ((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7
       );
 
-      await supabase.from("content_strategies").insert({
+      await supabase.from("content_strategies").insert([{
         user_id: user.id,
         week_number: weekNumber,
         year: now.getFullYear(),
         status: "active",
-        regression_insights: {
-          competitor_analysis: mockData,
-          own_analysis: ownAnalysis || null,
-          niche: profile?.niche,
-          dream_client: profile?.dream_client,
-          end_goal: profile?.end_goal,
-        },
-      });
+        regression_insights: JSON.parse(JSON.stringify({
+          own_analysis: analysis || null,
+          niche: profile?.niche ?? null,
+          dream_client: profile?.dream_client ?? null,
+          end_goal: profile?.end_goal ?? null,
+        })),
+      }]);
 
       await refreshProfile();
       toast({ title: "Strategy created!", description: "Your content strategy is ready." });
@@ -246,238 +207,151 @@ const Analyze = () => {
     );
   }
 
+  const hasPosts = (posts?.length ?? 0) > 0;
+
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-3xl px-6 py-12 space-y-8">
-        {isEstablished ? <EstablishedPath /> : <NewAccountPath />}
+        {/* Header */}
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            {isEstablished ? "Let's Analyze What's Working For You" : "Let's Find Your Content Playbook"}
+          </h1>
+          <p className="text-muted-foreground text-lg">
+            {isEstablished
+              ? "We'll study your posts to find your winning patterns, then find accounts to level up your strategy."
+              : "Add accounts in your niche to learn from, and we'll build your starting strategy."}
+          </p>
+        </div>
+
+        {/* Performance Analysis — only for established users with posts */}
+        {isEstablished && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                Your Performance Analysis
+              </CardTitle>
+              <CardDescription>Patterns discovered from your Threads posts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {postsLoading ? (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-20 rounded-lg" />
+                    ))}
+                  </div>
+                  <Skeleton className="h-32 rounded-lg" />
+                </div>
+              ) : !hasPosts ? (
+                <div className="py-8 text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">No Threads posts found yet.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Connect your Threads account and sync your posts from Settings to see your performance analysis.
+                  </p>
+                </div>
+              ) : analysis ? (
+                <div className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+                      <p className="text-2xl font-bold text-foreground">{analysis.avgEngagement}%</p>
+                      <p className="text-xs text-muted-foreground mt-1">Avg Engagement Rate</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+                      <p className="text-2xl font-bold text-foreground">{analysis.bestDay}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Best Day to Post</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+                      <p className="text-2xl font-bold text-foreground">{analysis.bestHour}:00</p>
+                      <p className="text-xs text-muted-foreground mt-1">Best Hour to Post</p>
+                    </div>
+                  </div>
+
+                  {analysis.topContentTypes.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium text-foreground mb-2">Top Content Types</p>
+                      <div className="space-y-2">
+                        {analysis.topContentTypes.map((ct) => (
+                          <div key={ct.type} className="flex items-center justify-between rounded-lg border border-border p-3">
+                            <span className="text-sm text-foreground">{ct.type}</span>
+                            <Badge variant="secondary" className="font-mono">{ct.avgEngagement}% eng</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-sm font-medium text-foreground mb-2">Key Insights</p>
+                    <div className="space-y-2">
+                      {analysis.topInsights.map((insight, i) => (
+                        <div key={i} className="flex items-start gap-2 rounded-lg bg-primary/5 border border-primary/10 p-3">
+                          <Zap className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                          <p className="text-sm text-foreground">{insight}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    Based on {analysis.postsAnalyzed} posts analyzed
+                  </p>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        )}
+
+        {isEstablished && <Separator />}
+
+        {/* Accounts to Emulate — input only, no fake suggestions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              Accounts to Learn From
+            </CardTitle>
+            <CardDescription>
+              Add Threads accounts in your {niche || "niche"} that you'd like to learn from
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={additionalUsernames}
+              onChange={(e) => setAdditionalUsernames(e.target.value)}
+              placeholder={"Enter usernames, one per line\ne.g. @creator_name"}
+              rows={4}
+              className="resize-none font-mono text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Think of creators whose style, audience, or growth you admire — we'll study their patterns for your strategy.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* CTA */}
+        <Button
+          size="lg"
+          onClick={handleBuildStrategy}
+          disabled={building || (isEstablished && postsLoading)}
+          className="gap-2 w-full sm:w-auto"
+        >
+          {building ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {isEstablished ? "Building Strategy..." : "Analyzing & Building..."}
+            </>
+          ) : (
+            <>
+              {isEstablished ? "Build My Strategy" : "Analyze & Build Strategy"}
+              <ArrowRight className="h-4 w-4" />
+            </>
+          )}
+        </Button>
       </div>
     </div>
   );
-
-  function EstablishedPath() {
-    return (
-      <>
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Let's Analyze What's Working For You
-          </h1>
-          <p className="text-muted-foreground text-lg">
-            We'll study your posts to find your winning patterns, then find accounts to level up your strategy.
-          </p>
-        </div>
-
-        {/* Section 1: Own Performance */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
-              Your Performance Analysis
-            </CardTitle>
-            <CardDescription>Patterns discovered from your Threads posts</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!ownAnalysis ? (
-              <div className="space-y-4 py-4">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  <span className="text-sm font-medium text-foreground">{progressMsg}</span>
-                </div>
-                <Progress value={progressValue} className="h-2" />
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{ownAnalysis.avgEngagement}%</p>
-                    <p className="text-xs text-muted-foreground mt-1">Avg Engagement Rate</p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{ownAnalysis.bestDay}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Best Day to Post</p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-                    <p className="text-2xl font-bold text-foreground">{ownAnalysis.bestHour}:00</p>
-                    <p className="text-xs text-muted-foreground mt-1">Best Hour to Post</p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium text-foreground mb-2">Top Content Types</p>
-                  <div className="space-y-2">
-                    {ownAnalysis.topContentTypes.map((ct) => (
-                      <div key={ct.type} className="flex items-center justify-between rounded-lg border border-border p-3">
-                        <span className="text-sm text-foreground">{ct.type}</span>
-                        <Badge variant="secondary" className="font-mono">{ct.avgEngagement}% eng</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium text-foreground mb-2">Key Insights</p>
-                  <div className="space-y-2">
-                    {ownAnalysis.topInsights.map((insight, i) => (
-                      <div key={i} className="flex items-start gap-2 rounded-lg bg-primary/5 border border-primary/10 p-3">
-                        <Zap className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                        <p className="text-sm text-foreground">{insight}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  Based on {ownAnalysis.postsAnalyzed} posts analyzed
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Separator />
-
-        {/* Section 2: Suggested Accounts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              Suggested Accounts to Emulate
-            </CardTitle>
-            <CardDescription className="flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
-              AI-suggested based on your niche
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {suggestedAccounts.map((acct) => (
-              <div key={acct.username} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">@{acct.username}</p>
-                  <p className="text-xs text-muted-foreground">{acct.reason}</p>
-                </div>
-                <Badge variant="outline" className="text-xs">Suggested</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Section 3: Additional accounts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Add accounts you admire</CardTitle>
-            <CardDescription>Optional — add more accounts to strengthen your strategy</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={additionalUsernames}
-              onChange={(e) => setAdditionalUsernames(e.target.value)}
-              placeholder="Enter usernames, one per line"
-              rows={3}
-              className="resize-none font-mono text-sm"
-            />
-          </CardContent>
-        </Card>
-
-        {/* CTA */}
-        <Button
-          size="lg"
-          onClick={handleBuildStrategy}
-          disabled={building || !ownAnalysis}
-          className="gap-2 w-full sm:w-auto"
-        >
-          {building ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Building Strategy...
-            </>
-          ) : (
-            <>
-              Build My Strategy
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </Button>
-      </>
-    );
-  }
-
-  function NewAccountPath() {
-    return (
-      <>
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
-            Let's Find Your Content Playbook
-          </h1>
-          <p className="text-muted-foreground text-lg">
-            We'll analyze top accounts in your space to build your starting strategy.
-          </p>
-        </div>
-
-        {/* Section 1: Suggested Accounts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              Suggested Accounts in Your Niche
-            </CardTitle>
-            <CardDescription className="flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
-              AI-suggested based on your niche
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {suggestedAccounts.map((acct) => (
-              <div key={acct.username} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">@{acct.username}</p>
-                  <p className="text-xs text-muted-foreground">{acct.reason}</p>
-                </div>
-                <Badge variant="outline" className="text-xs">Suggested</Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Section 2: Additional accounts */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Add other accounts you want to emulate</CardTitle>
-            <CardDescription>Optional — enter usernames of creators you admire</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={additionalUsernames}
-              onChange={(e) => setAdditionalUsernames(e.target.value)}
-              placeholder="Enter usernames, one per line"
-              rows={3}
-              className="resize-none font-mono text-sm"
-            />
-          </CardContent>
-        </Card>
-
-        {/* CTA */}
-        <Button
-          size="lg"
-          onClick={handleBuildStrategy}
-          disabled={building}
-          className="gap-2 w-full sm:w-auto"
-        >
-          {building ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Analyzing & Building...
-            </>
-          ) : (
-            <>
-              Analyze & Build Strategy
-              <ArrowRight className="h-4 w-4" />
-            </>
-          )}
-        </Button>
-      </>
-    );
-  }
 };
 
 export default Analyze;
