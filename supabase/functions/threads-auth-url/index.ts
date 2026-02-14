@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     const params = new URLSearchParams({
       client_id: THREADS_APP_ID,
       redirect_uri: THREADS_REDIRECT_URI,
-      scope: "threads_basic,threads_content_publish,threads_manage_insights,threads_manage_replies",
+      scope: "threads_basic,threads_profile_discovery,threads_content_publish,threads_manage_insights,threads_manage_replies",
       response_type: "code",
       state: userId,
     });
