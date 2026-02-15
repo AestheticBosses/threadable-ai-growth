@@ -29,13 +29,11 @@ export function DangerZoneCard() {
     if (!user) return;
     setResettingOnboarding(true);
     try {
-      // Reset onboarding flag and clear niche/goal fields, keep Threads connection
       await supabase
         .from("profiles")
         .update({ onboarding_complete: false, niche: null, dream_client: null, end_goal: null })
         .eq("id", user.id);
 
-      // Clear all generated data
       await Promise.all([
         supabase.from("content_strategies").delete().eq("user_id", user.id),
         supabase.from("posts_analyzed").delete().eq("user_id", user.id),
@@ -58,11 +56,13 @@ export function DangerZoneCard() {
         supabase.from("chat_sessions").delete().eq("user_id", user.id),
       ]);
 
+      // Brief delay to ensure state is clean before navigating
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       toast.success("Onboarding reset — redirecting…");
       navigate("/onboarding");
     } catch {
       toast.error("Failed to reset onboarding");
-    } finally {
       setResettingOnboarding(false);
     }
   };
@@ -115,7 +115,15 @@ export function DangerZoneCard() {
   };
 
   return (
-    <Card className="border-destructive/30">
+    <>
+      {resettingOnboarding && (
+        <div className="fixed inset-0 z-50 bg-background/95 flex flex-col items-center justify-center gap-4">
+          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
+          <p className="text-foreground text-lg font-medium">Resetting your account...</p>
+          <p className="text-muted-foreground text-sm">This will just take a moment</p>
+        </div>
+      )}
+      <Card className="border-destructive/30">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg text-destructive">
           <AlertTriangle className="h-5 w-5" />
@@ -226,6 +234,7 @@ export function DangerZoneCard() {
           </AlertDialog>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+    </>
   );
 }
