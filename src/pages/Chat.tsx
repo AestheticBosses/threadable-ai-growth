@@ -1111,6 +1111,53 @@ const Chat = () => {
               const thisIsAnalysis = m.content.includes("Angle") && m.content.includes("Hook") && m.content.includes("Content");
               if (prevIsDraft && thisIsAnalysis) return null;
             }
+
+            // Try parsing as idea cards — works for BOTH "post ideas" and "template" responses
+            const parsedIdeas = parsePostIdeas(m.content);
+            if (parsedIdeas && parsedIdeas.length >= 2) {
+              return (
+                <div key={m.id} className="flex justify-start">
+                  <div className="max-w-[90%] w-full space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                      <span className="text-xs font-medium text-muted-foreground">Threadable</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">Here are {parsedIdeas.length} post ideas:</p>
+                    {parsedIdeas.map((idea, i) => (
+                      <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                        <h4 className="text-sm font-semibold text-foreground">Idea {i + 1}: {idea.title}</h4>
+                        <div className="max-h-[300px] overflow-y-auto">
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                            {idea.body}
+                          </p>
+                        </div>
+                        {(idea.archetype || idea.funnelStage) && (
+                          <div className="flex gap-2 flex-wrap">
+                            {idea.archetype && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                {idea.archetype}
+                              </span>
+                            )}
+                            {idea.funnelStage && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground border border-border">
+                                {idea.funnelStage}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => handleDraftIdea(idea)}
+                          disabled={isBusy}
+                          className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px] w-full md:w-auto"
+                        >
+                          📄 Draft post
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
           }
 
           // Regular message rendering
