@@ -34,9 +34,9 @@ export function DangerZoneCard() {
         .update({ onboarding_complete: false, niche: null, dream_client: null, end_goal: null })
         .eq("id", user.id);
 
+      // Keep posts_analyzed & follower_snapshots — real Threads data, not generated content
       await Promise.all([
         supabase.from("content_strategies").delete().eq("user_id", user.id),
-        supabase.from("posts_analyzed").delete().eq("user_id", user.id),
         supabase.from("scheduled_posts").delete().eq("user_id", user.id),
         supabase.from("user_plans").delete().eq("user_id", user.id),
         supabase.from("user_writing_style").delete().eq("user_id", user.id),
