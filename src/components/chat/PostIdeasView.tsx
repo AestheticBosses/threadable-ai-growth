@@ -60,7 +60,7 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
     if (ideas.length >= 2) return ideas;
   }
 
-  // Fallback: try 1. **Title** (number outside bold)
+  // Fallback: 1. **Title** (number outside bold)
   const altPattern = /(?:^|\n)\s*\d+[\.\)]\s*\*\*(.+?)\*\*\s*\n([\s\S]*?)(?=(?:\n\s*\d+[\.\)]\s*\*\*)|$)/g;
   const altIdeas: PostIdea[] = [];
   let match;
@@ -80,6 +80,43 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
     if (title && body) headerIdeas.push({ title, body });
   }
   if (headerIdeas.length >= 2) return headerIdeas;
+
+  // Fallback: Non-numbered **Title** appearing multiple times
+  if (text.includes("**")) {
+    const titleMatches = [...text.matchAll(/\*\*([^*]+)\*\*/g)];
+    if (titleMatches.length >= 2) {
+      const ideas: PostIdea[] = [];
+      for (let i = 0; i < titleMatches.length; i++) {
+        const title = titleMatches[i][1].trim();
+        // Skip titles that look like labels (e.g. "Archetype:", "Funnel Stage:")
+        if (title.endsWith(":") || title.length < 3) continue;
+        const startAfterTitle = titleMatches[i].index! + titleMatches[i][0].length;
+        const endIndex = i < titleMatches.length - 1
+          ? titleMatches[i + 1].index!
+          : text.length;
+        let body = text.substring(startAfterTitle, endIndex).trim();
+
+        // Extract archetype and funnel stage if present
+        const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
+        const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
+        body = body
+          .replace(/Archetype:\s*.+/gi, "")
+          .replace(/Funnel\s*Stage:\s*.+/gi, "")
+          .trim();
+
+        // Only count as an idea if the content is substantial
+        if (title && body && body.length > 50) {
+          ideas.push({
+            title,
+            body,
+            archetype: archetypeMatch?.[1]?.trim(),
+            funnelStage: funnelMatch?.[1]?.trim(),
+          });
+        }
+      }
+      if (ideas.length >= 2) return ideas;
+    }
+  }
 
   // Can't parse — return null so caller falls back to plain text
   return null;
