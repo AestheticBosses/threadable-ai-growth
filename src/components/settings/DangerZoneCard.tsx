@@ -58,8 +58,8 @@ export function DangerZoneCard() {
 
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      toast.success("Onboarding reset — redirecting…");
-      navigate("/onboarding");
+      // Force full page reload so onboarding status is re-evaluated from scratch
+      window.location.href = '/onboarding';
     } catch {
       toast.error("Failed to reset onboarding");
       setResettingOnboarding(false);
