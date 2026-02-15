@@ -45,7 +45,7 @@ type FlowItem =
 const QUICK_ACTIONS = [
   { icon: "💡", label: "Give post ideas", action: "ideas" as const },
   { icon: "📈", label: "What's trending", action: "trending" as const, message: "What topics are trending right now that align with my brand positioning and target audience? Give me 3-5 trending angles I could create Threads content about. Format each as a numbered idea with a bold title and 2-3 sentence description." },
-  { icon: "📋", label: "Give a template", action: "template" as const, message: "Give me 5 fill-in-the-blank post templates based on my top-performing archetypes. For each template, give a bold title and the template text with [blanks]. Format as numbered ideas." },
+  { icon: "📋", label: "Give a template", action: "template" as const, message: "Write 5 complete, ready-to-publish Threads posts — each one following a different archetype template structure. Do NOT return fill-in-the-blank templates with brackets. Write COMPLETE posts using my real data. I want to see finished posts that demonstrate each archetype's structure, using my actual stories, numbers, and experiences. For each post, label it with the archetype name, then write the full post." },
 ];
 
 const MORE_ACTIONS = [
@@ -447,7 +447,7 @@ const Chat = () => {
 
     // Short visible label for user bubble; full context goes to AI only
     const userLabel = `Post ideas from: ${item.label}`;
-    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n[${item.type.toUpperCase()}: ${item.label}]\n${item.content}\n\nRules for each post:\n- Write the FULL post text, ready to copy and publish\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow the user's writing style and content preferences\n- Use REAL facts, numbers, and stories from the user's identity\n- Start each with a strong, scroll-stopping hook\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like the user, not like AI\n\nFormat your response as:\n**1. [Short title for reference]**\n[Full post text here]\n\n**2. [Short title for reference]**\n[Full post text here]\n\n(etc. for all 5)`;
+    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n${item.type.toUpperCase()}: ${item.label}\n${item.content}\n\nCRITICAL: Every post must be 100% finished — real stories, real numbers, real examples from my data. Do NOT use square brackets or placeholders anywhere. Write each post as if I'm going to copy-paste it directly to Threads right now.\n\nFor each post:\n- Start with **1. Archetype Name** as the header\n- Then write the complete post text underneath\n- Each post should use a different archetype\n- Use my real stories, real dollar amounts, and real experiences\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow my writing style and content preferences\n- Start each with a strong, scroll-stopping hook\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like me, not like AI`;
 
     await sendMessage({ content: userLabel, role: "user" });
 
