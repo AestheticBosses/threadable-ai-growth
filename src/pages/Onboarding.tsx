@@ -6,7 +6,7 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ArrowLeft, ArrowRight, AtSign, Sparkles, TrendingUp } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, AtSign, Sparkles, TrendingUp, Loader2 } from "lucide-react";
 
 const STEPS = [
   "Connect Threads",
@@ -15,6 +15,53 @@ const STEPS = [
   "Dream Client",
   "End Goal",
 ];
+
+type PipelineStep = "fetch" | "analysis" | "archetypes" | "identity" | "voice";
+type StepStatus = "waiting" | "active" | "done" | "error";
+
+const PIPELINE_LABELS: Record<PipelineStep, string> = {
+  fetch: "Fetching your posts",
+  analysis: "Analyzing content patterns",
+  archetypes: "Discovering your archetypes",
+  identity: "Extracting your identity",
+  voice: "Analyzing your writing voice",
+};
+
+function ProgressStep({ label, status }: { label: string; status: StepStatus }) {
+  return (
+    <div className="flex items-center gap-3">
+      {status === "waiting" && (
+        <div className="w-5 h-5 rounded-full border border-muted-foreground/40" />
+      )}
+      {status === "active" && (
+        <div className="w-5 h-5 animate-spin border-2 border-primary border-t-transparent rounded-full" />
+      )}
+      {status === "done" && (
+        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+          <Check className="h-3 w-3 text-primary-foreground" />
+        </div>
+      )}
+      {status === "error" && (
+        <div className="w-5 h-5 rounded-full bg-destructive flex items-center justify-center">
+          <span className="text-destructive-foreground text-xs">!</span>
+        </div>
+      )}
+      <span
+        className={
+          status === "done"
+            ? "text-muted-foreground"
+            : status === "active"
+            ? "text-foreground font-medium"
+            : status === "error"
+            ? "text-destructive"
+            : "text-muted-foreground/60"
+        }
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
 
 const Onboarding = () => {
   const navigate = useNavigate();
@@ -30,6 +77,16 @@ const Onboarding = () => {
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
+
+  // Pipeline state
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineSteps, setPipelineSteps] = useState<Record<PipelineStep, StepStatus>>({
+    fetch: "waiting",
+    analysis: "waiting",
+    archetypes: "waiting",
+    identity: "waiting",
+    voice: "waiting",
+  });
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -75,6 +132,74 @@ const Onboarding = () => {
     }
   }, [searchParams, setSearchParams, user]);
 
+  const updatePipelineStep = (pStep: PipelineStep, status: StepStatus) => {
+    setPipelineSteps((prev) => ({ ...prev, [pStep]: status }));
+  };
+
+  const runOnboardingPipeline = async (skipFetch: boolean) => {
+    if (!user) return;
+    setPipelineRunning(true);
+
+    const pipelineOrder: PipelineStep[] = skipFetch
+      ? ["analysis", "archetypes", "identity", "voice"]
+      : ["fetch", "analysis", "archetypes", "identity", "voice"];
+
+    // Reset steps
+    const initial: Record<PipelineStep, StepStatus> = {
+      fetch: skipFetch ? "done" : "waiting",
+      analysis: "waiting",
+      archetypes: "waiting",
+      identity: "waiting",
+      voice: "waiting",
+    };
+    setPipelineSteps(initial);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = session ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+    for (const s of pipelineOrder) {
+      updatePipelineStep(s, "active");
+      try {
+        const fnMap: Record<PipelineStep, string> = {
+          fetch: "fetch-user-posts",
+          analysis: "run-analysis",
+          archetypes: "discover-archetypes",
+          identity: "extract-identity",
+          voice: "analyze-voice",
+        };
+        const body: any = { user_id: user.id };
+        if (s === "archetypes") {
+          body.niche = niche.trim();
+          body.goals = endGoal.trim();
+        }
+
+        const { error } = await supabase.functions.invoke(fnMap[s], {
+          body,
+          headers,
+        });
+
+        if (error) {
+          console.error(`Pipeline step ${s} failed:`, error);
+          updatePipelineStep(s, "error");
+          // Continue to next steps even if one fails
+        } else {
+          updatePipelineStep(s, "done");
+        }
+      } catch (err) {
+        console.error(`Pipeline step ${s} threw:`, err);
+        updatePipelineStep(s, "error");
+      }
+    }
+
+    await refreshProfile();
+    toast({
+      title: "✨ Setup complete!",
+      description: "We analyzed your posts and pre-filled your Identity. Review and edit anything that's not right.",
+    });
+    setPipelineRunning(false);
+    navigate("/my-story", { replace: true });
+  };
+
   const isStepValid = () => {
     switch (step) {
       case 0:
@@ -110,10 +235,17 @@ const Onboarding = () => {
       if (error) throw error;
       await refreshProfile();
 
-      if (isEstablished) {
-        // Established users go to analyze their existing posts
-        navigate("/analyze", { replace: true });
-      } else {
+      if (isEstablished && threadsConnected) {
+        // Check if posts already exist
+        const { count } = await supabase
+          .from("posts_analyzed")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("source", "own");
+
+        const skipFetch = (count ?? 0) > 0;
+        await runOnboardingPipeline(skipFetch);
+      } else if (!isEstablished) {
         // New accounts: call discover-archetypes with niche context for starter archetypes
         try {
           const { data: { session } } = await supabase.auth.getSession();
@@ -124,9 +256,12 @@ const Onboarding = () => {
             });
           }
         } catch {
-          // Non-critical — they can discover later
+          // Non-critical
         }
         navigate("/playbook", { replace: true });
+      } else {
+        // Established but no Threads connected
+        navigate("/analyze", { replace: true });
       }
     } catch (e: any) {
       toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
@@ -157,12 +292,33 @@ const Onboarding = () => {
     url.searchParams.set("scope", "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies,threads_manage_replies");
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", user.id);
-    console.log("Generated Threads OAuth URL:", url.toString());
     window.location.href = url.toString();
   };
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {/* Pipeline progress overlay */}
+      {pipelineRunning && (
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center gap-6">
+          <div className="text-center space-y-6">
+            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto" />
+            <div>
+              <p className="text-white text-xl font-semibold">Setting up your growth engine...</p>
+              <p className="text-gray-400 text-sm mt-2">This usually takes 30–60 seconds</p>
+            </div>
+            <div className="space-y-3 text-left max-w-sm mx-auto mt-8">
+              {(Object.keys(PIPELINE_LABELS) as PipelineStep[]).map((key) => (
+                <ProgressStep
+                  key={key}
+                  label={PIPELINE_LABELS[key]}
+                  status={pipelineSteps[key]}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stepper */}
       <div className="mx-auto w-full max-w-xl px-6 pt-12 pb-4">
         <div className="flex items-center justify-between gap-2">
@@ -367,7 +523,7 @@ const Onboarding = () => {
           </Button>
           <Button
             onClick={handleNext}
-            disabled={!isStepValid() || saving}
+            disabled={!isStepValid() || saving || pipelineRunning}
             className="gap-2 px-6"
           >
             {step === 4 ? (
