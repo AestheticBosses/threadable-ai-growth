@@ -56,8 +56,7 @@ export function DangerZoneCard() {
         supabase.from("chat_sessions").delete().eq("user_id", user.id),
       ]);
 
-      // Brief delay to ensure state is clean before navigating
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       toast.success("Onboarding reset — redirecting…");
       navigate("/onboarding");
@@ -117,10 +116,10 @@ export function DangerZoneCard() {
   return (
     <>
       {resettingOnboarding && (
-        <div className="fixed inset-0 z-50 bg-background/95 flex flex-col items-center justify-center gap-4">
-          <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" />
-          <p className="text-foreground text-lg font-medium">Resetting your account...</p>
-          <p className="text-muted-foreground text-sm">This will just take a moment</p>
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center gap-4">
+          <div className="animate-spin w-10 h-10 border-[3px] border-primary border-t-transparent rounded-full" />
+          <p className="text-white text-xl font-semibold">Resetting your account...</p>
+          <p className="text-gray-400 text-sm">This will just take a moment</p>
         </div>
       )}
       <Card className="border-destructive/30">
