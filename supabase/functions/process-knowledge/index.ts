@@ -19,46 +19,43 @@ Content:
 `;
 
 function stripHtml(html: string): string {
-  // Remove script, style, nav, footer, header tags and their content
   let text = html.replace(/<(script|style|nav|footer|header|aside|noscript)[^>]*>[\s\S]*?<\/\1>/gi, " ");
-  // Remove all remaining HTML tags
   text = text.replace(/<[^>]+>/g, " ");
-  // Decode common HTML entities
   text = text.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ");
-  // Clean up whitespace
   text = text.replace(/\s+/g, " ").trim();
   return text;
 }
 
 async function summarizeWithAI(text: string): Promise<string> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+  const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
 
   const truncated = text.slice(0, 10000);
 
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
       "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
       messages: [
         { role: "user", content: SUMMARIZE_PROMPT + truncated },
       ],
-      max_tokens: 1000,
     }),
   });
 
   if (!resp.ok) {
     const errText = await resp.text();
-    console.error("AI gateway error:", resp.status, errText);
+    console.error("Anthropic API error:", resp.status, errText);
     throw new Error("AI summarization failed");
   }
 
   const data = await resp.json();
-  return data.choices?.[0]?.message?.content || "No summary generated.";
+  return data.content?.[0]?.text || "No summary generated.";
 }
 
 serve(async (req) => {
@@ -80,7 +77,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch the knowledge item
     const { data: item, error: fetchErr } = await supabaseAdmin
       .from("knowledge_base")
       .select("*")
@@ -102,7 +98,6 @@ serve(async (req) => {
 
     try {
       if (type === "url") {
-        // Fetch and scrape URL
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000);
         const pageResp = await fetch(item.content, { signal: controller.signal, headers: { "User-Agent": "Mozilla/5.0 (compatible; Threadable/1.0)" } });
@@ -149,7 +144,6 @@ serve(async (req) => {
       } else if (type === "video") {
         processingError = "Video transcript extraction coming soon — the URL has been saved.";
       } else {
-        // text type — should not be processed, but handle gracefully
         processingError = null;
       }
     } catch (e) {
@@ -157,7 +151,6 @@ serve(async (req) => {
       processingError = e instanceof Error ? e.message : "Unknown processing error";
     }
 
-    // Update the knowledge_base row
     const updatePayload: Record<string, unknown> = {
       processed: true,
       processing_error: processingError,

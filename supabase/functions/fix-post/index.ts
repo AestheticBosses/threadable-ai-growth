@@ -14,9 +14,9 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
+    if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -50,7 +50,6 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch the post
     const { data: post, error: postError } = await adminClient
       .from("scheduled_posts")
       .select("text_content, content_category, funnel_stage")
@@ -64,7 +63,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch voice profile
     const { data: profile } = await adminClient
       .from("profiles")
       .select("voice_profile")
@@ -76,7 +74,6 @@ Deno.serve(async (req) => {
       ? `Voice: Tone: ${(voiceProfile.tone || []).join(", ")}. Style: ${voiceProfile.sentence_style || "natural"}. Quirks: ${(voiceProfile.unique_quirks || []).join(", ")}.`
       : "Write in a natural, conversational tone.";
 
-    // Fetch vault for context
     const { data: vaultRows } = await adminClient
       .from("user_story_vault")
       .select("section, data")
@@ -93,7 +90,13 @@ Deno.serve(async (req) => {
       vaultContext += `Real stories: ${vault.stories.map((s: any) => `"${s.title}": ${s.story.slice(0, 200)}`).join("; ")}\n`;
     }
 
-    const systemPrompt = `You are a content editor. Rewrite the post incorporating the user's feedback while keeping the same archetype, funnel stage (${post.funnel_stage}), and emotional tone. Stay under 500 characters. Match the user's voice: ${voiceText}
+    const systemPrompt = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
+1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
+2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
+3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
+4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+
+You are a content editor. Rewrite the post incorporating the user's feedback while keeping the same archetype, funnel stage (${post.funnel_stage}), and emotional tone. Stay under 500 characters. Match the user's voice: ${voiceText}
 
 ${vaultContext ? `Context from their vault:\n${vaultContext}` : ""}
 
@@ -105,29 +108,32 @@ User feedback: "${feedback}"
 
 Character limit: 500. Return ONLY the rewritten post.`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
       }),
     });
 
     if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("Anthropic API error:", aiResponse.status, errText);
       throw new Error("AI generation failed");
     }
 
     const aiData = await aiResponse.json();
-    let fixedText = (aiData.choices?.[0]?.message?.content || "").trim();
+    let fixedText = (aiData.content?.[0]?.text || "").trim();
     
-    // Remove surrounding quotes if present
     if ((fixedText.startsWith('"') && fixedText.endsWith('"')) || (fixedText.startsWith("'") && fixedText.endsWith("'"))) {
       fixedText = fixedText.slice(1, -1);
     }
@@ -136,7 +142,6 @@ Character limit: 500. Return ONLY the rewritten post.`;
       throw new Error("Empty response from AI");
     }
 
-    // Score the fixed post
     const scoreRes = await fetch(`${SUPABASE_URL}/functions/v1/score-post`, {
       method: "POST",
       headers: {
@@ -154,7 +159,6 @@ Character limit: 500. Return ONLY the rewritten post.`;
       newBreakdown = scoreData.breakdown;
     }
 
-    // Update the post
     const { data: updated, error: updateError } = await adminClient
       .from("scheduled_posts")
       .update({

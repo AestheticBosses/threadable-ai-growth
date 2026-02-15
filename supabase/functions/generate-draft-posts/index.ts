@@ -8,6 +8,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const NO_BRACKETS_RULES = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
+1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
+2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
+3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
+4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+
+`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -22,7 +30,6 @@ serve(async (req) => {
       });
     }
 
-    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -50,12 +57,11 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch full user context using shared utility
     const userContext = await getUserContext(admin, user.id);
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY not configured" }), {
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
+      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -71,7 +77,7 @@ serve(async (req) => {
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
         chunk.map(async (post: any) => {
-          const systemPrompt = `You are Threadable AI — a Threads content writer. Write a single Threads post based on the specifications below.
+          const systemPrompt = `${NO_BRACKETS_RULES}You are Threadable AI — a Threads content writer. Write a single Threads post based on the specifications below.
 
 ${userContext}
 
@@ -96,33 +102,33 @@ Hook Idea: ${post.hook_idea || ""}
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
           try {
-            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
                 "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
-                model: "google/gemini-2.5-flash",
+                model: "claude-sonnet-4-20250514",
+                max_tokens: 1000,
+                system: systemPrompt,
                 messages: [
-                  { role: "system", content: systemPrompt },
                   { role: "user", content: `Write a ${post.funnel_stage || "TOF"} ${post.archetype || ""} post about: ${post.topic || "content relevant to my brand"}. Hook idea: ${post.hook_idea || "use a strong opening"}` },
                 ],
-                max_tokens: 1000,
               }),
             });
 
             if (!aiResp.ok) {
-              console.error("AI error:", aiResp.status);
+              console.error("Anthropic API error:", aiResp.status);
               return { error: "AI generation failed", post };
             }
 
             const aiData = await aiResp.json();
-            const text = aiData.choices?.[0]?.message?.content?.trim() || "";
+            const text = (aiData.content?.[0]?.text || "").trim();
 
             if (!text) return { error: "Empty response", post };
 
-            // Insert into scheduled_posts
             const insertData: Record<string, any> = {
               user_id: user.id,
               text_content: text,

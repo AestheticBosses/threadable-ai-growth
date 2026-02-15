@@ -145,13 +145,11 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // This function is called by cron with service role key, so process ALL users
-    // Or can be called per-user with auth header
     let userIds: string[] = [];
 
     const authHeader = req.headers.get("Authorization");
@@ -160,14 +158,12 @@ Deno.serve(async (req) => {
     if (body.user_id) {
       userIds = [body.user_id];
     } else if (authHeader?.includes(SUPABASE_SERVICE_ROLE_KEY)) {
-      // Cron call: process all users with Threads connected
       const { data: profiles } = await adminClient
         .from("profiles")
         .select("id, threads_access_token, threads_user_id, threads_username")
         .not("threads_access_token", "is", null);
       userIds = (profiles || []).map((p: any) => p.id);
     } else if (authHeader?.startsWith("Bearer ")) {
-      // User call
       const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
         global: { headers: { Authorization: authHeader } },
       });
@@ -191,7 +187,7 @@ Deno.serve(async (req) => {
 
     for (const userId of userIds) {
       try {
-        const report = await processUser(adminClient, userId, LOVABLE_API_KEY, SUPABASE_URL);
+        const report = await processUser(adminClient, userId, ANTHROPIC_API_KEY, SUPABASE_URL);
         results.push({ user_id: userId, status: "ok", report });
       } catch (e) {
         console.error(`Error processing user ${userId}:`, e);
@@ -215,7 +211,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
   const thisWeekStart = new Date(now.getTime() - 7 * 86400000);
   const prevWeekStart = new Date(now.getTime() - 14 * 86400000);
 
-  // 1 & 2: Fetch this week's and last week's posts
   const { data: thisWeekPosts } = await adminClient
     .from("posts_analyzed")
     .select("*")
@@ -235,11 +230,9 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
   const tw = thisWeekPosts || [];
   const pw = prevWeekPosts || [];
 
-  // 3 & 4: Calculate metrics
   const thisMetrics = computeMetrics(tw);
   const prevMetrics = computeMetrics(pw);
 
-  // 5: Week-over-week changes
   const changes = {
     views_change: pctChange(thisMetrics.total_views, prevMetrics.total_views),
     engagement_change: pctChange(thisMetrics.total_engagement, prevMetrics.total_engagement),
@@ -247,12 +240,10 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     posts_change: pctChange(thisMetrics.total_posts, prevMetrics.total_posts),
   };
 
-  // 6: Top and worst posts
   const sortedByViews = [...tw].sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
   const topPost = sortedByViews[0] || null;
   const worstPost = sortedByViews[sortedByViews.length - 1] || null;
 
-  // 7: Get follower count from Threads API
   const { data: profile } = await adminClient
     .from("profiles")
     .select("threads_access_token, threads_user_id, threads_username")
@@ -274,7 +265,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     }
   }
 
-  // Store follower snapshot
   if (followerCount !== null) {
     await adminClient.from("follower_snapshots").insert({
       user_id: userId,
@@ -283,7 +273,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     });
   }
 
-  // Get previous follower snapshot for growth
   const { data: prevSnapshot } = await adminClient
     .from("follower_snapshots")
     .select("follower_count")
@@ -297,7 +286,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     ? followerCount - prevFollowerCount
     : null;
 
-  // 8: Re-run regression on ALL user posts
   const { data: allPosts } = await adminClient
     .from("posts_analyzed")
     .select("*")
@@ -308,7 +296,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     regressionInsights = runRegression(allPosts);
   }
 
-  // Get current strategy
   const { data: currentStrategy } = await adminClient
     .from("content_strategies")
     .select("*")
@@ -319,7 +306,6 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
 
   const activeStrategy = currentStrategy?.[0] ?? null;
 
-  // 9: Call AI for insights
   const topPostInfo = topPost
     ? `"${(topPost.text_content || "").slice(0, 300)}" — ${topPost.views} views, ${topPost.likes} likes, ${topPost.replies} replies, ${(topPost.engagement_rate ?? 0).toFixed(2)}% engagement`
     : "No posts this week";
@@ -344,81 +330,70 @@ CURRENT STRATEGY: ${JSON.stringify(activeStrategy?.strategy_json || "No strategy
 
 UPDATED REGRESSION INSIGHTS: ${JSON.stringify(regressionInsights?.human_readable_insights || "Not enough data")}
 
-Generate a JSON response with these fields:
-{
-  "summary": "2-3 sentence performance summary",
-  "wins": ["what worked well this week"],
-  "improvements": ["what to change"],
-  "strategy_adjustments": ["specific tweaks to make to the content strategy"],
-  "updated_content_ratios": { "authority": number, "engagement": number, "storytelling": number, "cta": number },
-  "focus_for_next_week": "one key focus area"
-}`;
+Generate a response with summary, wins, improvements, strategy adjustments, updated content ratios, and focus for next week.`;
 
-  const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: "You are a Threads growth analyst. Return ONLY the requested data.",
       messages: [
-        { role: "system", content: "You are a Threads growth analyst. Return ONLY the requested JSON." },
         { role: "user", content: aiPrompt },
       ],
       tools: [
         {
-          type: "function",
-          function: {
-            name: "weekly_assessment",
-            description: "Output the weekly assessment insights",
-            parameters: {
-              type: "object",
-              properties: {
-                summary: { type: "string" },
-                wins: { type: "array", items: { type: "string" } },
-                improvements: { type: "array", items: { type: "string" } },
-                strategy_adjustments: { type: "array", items: { type: "string" } },
-                updated_content_ratios: {
-                  type: "object",
-                  properties: {
-                    authority: { type: "number" },
-                    engagement: { type: "number" },
-                    storytelling: { type: "number" },
-                    cta: { type: "number" },
-                  },
-                  required: ["authority", "engagement", "storytelling", "cta"],
+          name: "weekly_assessment",
+          description: "Output the weekly assessment insights",
+          input_schema: {
+            type: "object",
+            properties: {
+              summary: { type: "string" },
+              wins: { type: "array", items: { type: "string" } },
+              improvements: { type: "array", items: { type: "string" } },
+              strategy_adjustments: { type: "array", items: { type: "string" } },
+              updated_content_ratios: {
+                type: "object",
+                properties: {
+                  authority: { type: "number" },
+                  engagement: { type: "number" },
+                  storytelling: { type: "number" },
+                  cta: { type: "number" },
                 },
-                focus_for_next_week: { type: "string" },
+                required: ["authority", "engagement", "storytelling", "cta"],
               },
-              required: ["summary", "wins", "improvements", "strategy_adjustments", "updated_content_ratios", "focus_for_next_week"],
-              additionalProperties: false,
+              focus_for_next_week: { type: "string" },
             },
+            required: ["summary", "wins", "improvements", "strategy_adjustments", "updated_content_ratios", "focus_for_next_week"],
+            additionalProperties: false,
           },
         },
       ],
-      tool_choice: { type: "function", function: { name: "weekly_assessment" } },
+      tool_choice: { type: "tool", name: "weekly_assessment" },
     }),
   });
 
   let aiInsights: any = null;
   if (aiResponse.ok) {
     const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      aiInsights = typeof toolCall.function.arguments === "string"
-        ? JSON.parse(toolCall.function.arguments)
-        : toolCall.function.arguments;
+    const toolUse = aiData.content?.find((block: any) => block.type === "tool_use");
+    if (toolUse?.input) {
+      aiInsights = toolUse.input;
     } else {
-      const content = aiData.choices?.[0]?.message?.content || "";
+      const textBlock = aiData.content?.find((block: any) => block.type === "text");
+      const content = textBlock?.text || "";
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) aiInsights = JSON.parse(jsonMatch[0]);
     }
   } else {
-    console.error("AI gateway error:", aiResponse.status, await aiResponse.text());
+    console.error("Anthropic API error:", aiResponse.status, await aiResponse.text());
   }
 
-  // 10: Save to weekly_reports
   const weekStart = thisWeekStart.toISOString().split("T")[0];
   const weekEnd = now.toISOString().split("T")[0];
 
@@ -445,7 +420,6 @@ Generate a JSON response with these fields:
 
   if (reportErr) console.error("Failed to save weekly report:", reportErr);
 
-  // 11: Create new strategy, mark old as completed
   if (activeStrategy) {
     await adminClient
       .from("content_strategies")
@@ -466,13 +440,12 @@ Generate a JSON response with these fields:
   await adminClient.from("content_strategies").insert({
     user_id: userId,
     regression_insights: regressionInsights,
-    strategy_json: activeStrategy?.strategy_json || null, // Carry forward, will be updated by generate-strategy
+    strategy_json: activeStrategy?.strategy_json || null,
     week_number: weekNumber,
     year: now.getFullYear(),
     status: "active",
   });
 
-  // 12: Return the report
   return {
     week_start: weekStart,
     week_end: weekEnd,
