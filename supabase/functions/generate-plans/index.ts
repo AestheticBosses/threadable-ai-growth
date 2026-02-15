@@ -8,7 +8,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const CONTENT_PLAN_PROMPT = `You are a Threads content strategist. Based on the user's identity, archetypes, and top-performing content, create a 7-day content plan.
+const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
+
+Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
+
+Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
 
 Respond ONLY with valid JSON in this format:
 {
@@ -35,7 +39,6 @@ Respond ONLY with valid JSON in this format:
     }
   ]
 }`;
-
 const BRANDING_PLAN_PROMPT = `You are a personal branding strategist for Threads. Based on the user's identity, story, and audience, create a personal branding plan.
 
 Respond ONLY with valid JSON in this format:

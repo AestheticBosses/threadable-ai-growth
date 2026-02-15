@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,50 +64,37 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("voice_profile")
-      .eq("id", userId)
-      .single();
+    // Get full user context via shared utility
+    const userContext = await getUserContext(adminClient, userId);
 
-    const voiceProfile = profile?.voice_profile as any;
-    const voiceText = voiceProfile
-      ? `Voice: Tone: ${(voiceProfile.tone || []).join(", ")}. Style: ${voiceProfile.sentence_style || "natural"}. Quirks: ${(voiceProfile.unique_quirks || []).join(", ")}.`
-      : "Write in a natural, conversational tone.";
+    const systemPrompt = `You are Threadable — a data-driven content editor. You improve posts using regression-backed insights about what performs best for this user.
 
-    const { data: vaultRows } = await adminClient
-      .from("user_story_vault")
-      .select("section, data")
-      .eq("user_id", userId);
+Here is everything you know about this user:
 
-    const vault: Record<string, any> = {};
-    (vaultRows || []).forEach((r: any) => { vault[r.section] = r.data; });
+${userContext}
 
-    let vaultContext = "";
-    if (vault.numbers?.length) {
-      vaultContext += `Real numbers: ${vault.numbers.map((n: any) => `${n.label}: ${n.value} (${n.context})`).join("; ")}\n`;
-    }
-    if (vault.stories?.length) {
-      vaultContext += `Real stories: ${vault.stories.map((s: any) => `"${s.title}": ${s.story.slice(0, 200)}`).join("; ")}\n`;
-    }
+=== YOUR TASK ===
+Rewrite this post incorporating the user's feedback. Maintain the same archetype and funnel stage. Keep the same emotional core but make it stronger.
 
-    const systemPrompt = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
-1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
-2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
-3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
-4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+ORIGINAL POST:
+${post.text_content}
 
-You are a content editor. Rewrite the post incorporating the user's feedback while keeping the same archetype, funnel stage (${post.funnel_stage}), and emotional tone. Stay under 500 characters. Match the user's voice: ${voiceText}
+ARCHETYPE: ${post.content_category || "General"}
+FUNNEL STAGE: ${post.funnel_stage || "TOF"}
 
-${vaultContext ? `Context from their vault:\n${vaultContext}` : ""}
+USER'S FEEDBACK:
+${feedback}
+
+=== RULES ===
+- NEVER use placeholder brackets. Use the user's real data.
+- Write in this user's voice — match their tone, vocabulary, and rhythm.
+- Keep under 500 characters unless specified.
+- Use regression insights to strengthen the hook and structure.
+- Reference specific stories, numbers, and facts from their Identity.
 
 Return ONLY the corrected post text, nothing else. No quotes, no explanation.`;
 
-    const userPrompt = `Original post: "${post.text_content}"
-
-User feedback: "${feedback}"
-
-Character limit: 500. Return ONLY the rewritten post.`;
+    const userPrompt = `Rewrite this post with the feedback applied. Return ONLY the rewritten post.`;
 
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
