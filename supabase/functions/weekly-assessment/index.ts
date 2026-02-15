@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -314,7 +315,21 @@ async function processUser(adminClient: any, userId: string, apiKey: string, sup
     ? `"${(worstPost.text_content || "").slice(0, 300)}" — ${worstPost.views} views, ${worstPost.likes} likes, ${worstPost.replies} replies, ${(worstPost.engagement_rate ?? 0).toFixed(2)}% engagement`
     : "N/A";
 
-  const aiPrompt = `You are a Threads growth analyst. Review this week's performance data and generate actionable insights.
+  // Fetch full user context for richer assessment
+  const userContext = await getUserContext(adminClient, userId);
+
+  const aiPrompt = `You are Threadable — a data-driven Threads growth analyst. Review this week's performance data and generate actionable insights.
+
+You also know the user's business goals, sales funnel, and target audience. Frame the assessment in terms of their specific goals — not just vanity metrics. For example:
+- Are they posting enough BOF content to drive conversions?
+- Are their top-performing archetypes being used at the right frequency?
+- Is their content moving people through their sales funnel?
+- What should they update in their Identity, Voice, or Knowledge Base to improve next week's content?
+
+Always end with 2-3 specific, actionable recommendations tied to their data.
+
+USER CONTEXT:
+${userContext}
 
 THIS WEEK: ${JSON.stringify(thisMetrics)}
 
@@ -342,7 +357,7 @@ Generate a response with summary, wins, improvements, strategy adjustments, upda
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
-      system: "You are a Threads growth analyst. Return ONLY the requested data.",
+      system: "You are Threadable — a data-driven Threads growth analyst. Return ONLY the requested data.",
       messages: [
         { role: "user", content: aiPrompt },
       ],

@@ -283,12 +283,13 @@ Deno.serve(async (req) => {
     }
 
     // Fetch profile + strategy + top posts + playbook + vault data
-    const [profileRes, strategyRes, postsRes, playbookRes, vaultRes] = await Promise.all([
+    const [profileRes, strategyRes, postsRes, playbookRes, vaultRes, salesFunnelRes] = await Promise.all([
       adminClient.from("profiles").select("niche, dream_client, end_goal, voice_profile, funnel_goal, funnel_tof_pct, funnel_mof_pct, funnel_bof_pct").eq("id", userId).single(),
       adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       adminClient.from("posts_analyzed").select("text_content, engagement_rate, views").eq("user_id", userId).order("engagement_rate", { ascending: false }).limit(5),
       adminClient.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").limit(1).maybeSingle(),
       adminClient.from("user_story_vault").select("section, data").eq("user_id", userId),
+      adminClient.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
     ]);
 
     const profile = profileRes.data as any;
@@ -352,6 +353,14 @@ Deno.serve(async (req) => {
     if (offers.length > 0) {
       const offersText = offers.map((o: any) => `- ${o.offer_name} (${o.price}): ${o.description}\n  Target: ${o.target_audience}\n  CTA: "${o.cta_phrase}" | Link: ${o.link}`).join("\n");
       vaultContext += `\nTHEIR OFFERS (for BOF posts ONLY):\n${offersText}\n`;
+    }
+    // Add sales funnel data for BOF posts
+    const salesFunnel = salesFunnelRes.data || [];
+    if (salesFunnel.length > 0) {
+      const funnelText = salesFunnel.map((s: any) =>
+        `Step ${s.step_number} (${s.step_name}): ${s.what}${s.url ? ` at ${s.url}` : ""}${s.price ? ` — ${s.price}` : ""} → Goal: ${s.goal || "N/A"}`
+      ).join("\n");
+      vaultContext += `\nSALES FUNNEL (reference in BOF posts for real offer names, prices, URLs):\n${funnelText}\n`;
     }
     if (audience) {
       vaultContext += `\nTHEIR TARGET AUDIENCE:\nDescription: ${audience.description || "N/A"}\nPain points: ${(audience.pain_points || []).join(", ") || "N/A"}\nDesires: ${(audience.desires || []).join(", ") || "N/A"}\nLanguage they use: ${(audience.language_they_use || []).join(", ") || "N/A"}\n`;
@@ -459,6 +468,7 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
 2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
 3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
 4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+5. Reference the user's sales funnel when writing BOF posts — use their real offer names, prices, and CTAs.
 
 You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
 

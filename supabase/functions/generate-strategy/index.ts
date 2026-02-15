@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,19 +47,10 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("niche, dream_client, end_goal, voice_profile")
-      .eq("id", userId)
-      .single();
+    // Get full user context via shared utility
+    const userContext = await getUserContext(adminClient, userId);
 
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    // Still need the strategy row to update it
     const { data: strategy } = await adminClient
       .from("content_strategies")
       .select("*")
@@ -74,39 +66,22 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: topPosts } = await adminClient
-      .from("posts_analyzed")
-      .select("text_content, views, likes, replies, reposts, engagement_rate, virality_score, word_count, has_credibility_marker, has_question")
-      .eq("user_id", userId)
-      .order("engagement_rate", { ascending: false })
-      .limit(10);
+    const systemPrompt = `You are Threadable — a data-driven content strategist. You create strategies backed by regression analysis of this user's actual post performance.
 
-    const insights = strategy.regression_insights as any;
-    const insightsText = (insights.human_readable_insights || []).join("\n- ");
+Here is everything you know about this user:
 
-    const topPostsText = (topPosts || [])
-      .map((p: any, i: number) =>
-        `${i + 1}. "${(p.text_content || "").slice(0, 150)}..." — ${p.views} views, ${p.engagement_rate?.toFixed(1)}% eng, ${p.likes} likes, ${p.replies} replies`
-      )
-      .join("\n");
+${userContext}
 
-    const systemPrompt = `You are an expert Threads content strategist. Based on the user's niche, dream client, end goal, and data-driven insights from their post performance, create a weekly content strategy.
+=== YOUR TASK ===
+Analyze the user's regression insights and current performance to create an updated content strategy. The strategy should:
 
-USER CONTEXT:
-Niche: ${profile.niche || "Not specified"}
-Dream Client: ${profile.dream_client || "Not specified"}
-End Goal: ${profile.end_goal || "Not specified"}
+1. Identify which archetypes to use more/less based on recent performance data
+2. Recommend posting frequency and optimal times based on their data
+3. Suggest specific content angles that align with their top-performing patterns
+4. Map content recommendations to their funnel (TOF/MOF/BOF distribution)
+5. Reference their sales funnel to ensure content drives toward their business goals
 
-DATA INSIGHTS:
-- ${insightsText || "No insights available"}
-- Best posting day: ${insights.best_posting_day?.day || "N/A"} (avg ${insights.best_posting_day?.avg_views || 0} views)
-- Best posting hour: ${insights.best_posting_hour?.hour || "N/A"}:00 (avg ${insights.best_posting_hour?.avg_views || 0} views)
-- Optimal word count: ${insights.optimal_word_count_range?.min || 0}-${insights.optimal_word_count_range?.max || 0} words
-- Credibility marker lift: ${insights.credibility_marker_lift || 0}%
-- Question lift: ${insights.question_lift || 0}%
-
-TOP PERFORMING POSTS:
-${topPostsText || "No posts analyzed yet"}`;
+Base every recommendation on their data. Do not give generic advice.`;
 
     const userPrompt = `Generate a weekly content strategy. Return the strategy as a JSON object with this structure:
 {
@@ -208,12 +183,10 @@ Return ONLY valid JSON, no other text.`;
     const aiData = await aiResponse.json();
     let strategyJson: any;
 
-    // Extract from tool use response
     const toolUse = aiData.content?.find((block: any) => block.type === "tool_use");
     if (toolUse?.input) {
       strategyJson = toolUse.input;
     } else {
-      // Fallback: try parsing from text content
       const textBlock = aiData.content?.find((block: any) => block.type === "text");
       const content = textBlock?.text || "";
       const jsonMatch = content.match(/\{[\s\S]*\}/);

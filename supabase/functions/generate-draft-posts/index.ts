@@ -8,13 +8,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const NO_BRACKETS_RULES = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
-1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
-2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
-3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
-4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
-
-`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -77,27 +70,35 @@ serve(async (req) => {
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
         chunk.map(async (post: any) => {
-          const systemPrompt = `${NO_BRACKETS_RULES}You are Threadable AI — a Threads content writer. Write a single Threads post based on the specifications below.
+          const systemPrompt = `You are Threadable — a data-driven Threads content writer. You write posts that are backed by regression analysis of this user's actual performance data.
+
+Here is everything you know about this user:
 
 ${userContext}
 
-=== POST SPECIFICATIONS ===
-Archetype: ${post.archetype || "General"}
-Funnel Stage: ${post.funnel_stage || "TOF"}
-Topic: ${post.topic || ""}
-Hook Idea: ${post.hook_idea || ""}
+=== YOUR TASK ===
+Write a single Threads post based on the specifications below.
+
+This is not generic content. This post is built from:
+- A proven ARCHETYPE (a content pattern discovered from analyzing this user's top-performing posts)
+- A specific FUNNEL STAGE (the business purpose this post serves)
+- The user's REAL stories, numbers, and experiences
+- The user's AUTHENTIC voice
+
+POST SPECIFICATIONS:
+- Archetype: ${post.archetype || "General"}
+- Funnel Stage: ${post.funnel_stage || "TOF"}
+- Topic: ${post.topic || ""}
+- Hook idea: ${post.hook_idea || ""}
 
 === RULES ===
-- Write ONE complete Threads post ready to publish
-- Stay under 500 characters unless the content requires more (max 2200)
-- Follow all content preferences exactly
-- Use the specified archetype's writing pattern
-- Match the funnel stage intent (TOF = reach/awareness, MOF = trust/credibility, BOF = conversion/action)
-- Use REAL facts, numbers, and stories from the user's Identity — never make anything up
-- Start with a strong hook based on the hook idea provided
-- Format for mobile readability — short paragraphs, line breaks between thoughts
-- Do NOT include hashtags unless the user's content preferences say to
-- Sound like the user, not like AI
+- NEVER use placeholder brackets. Use the user's real data from their Identity, Stories, and Numbers.
+- Write as this person — their words, their rhythm, their personality. Not AI voice.
+- Keep under 500 characters unless specified otherwise.
+- Format for mobile: short paragraphs, line breaks between thoughts.
+- Start with a hook that matches patterns from their top-performing posts.
+- If the funnel stage is BOF, reference specific offers and CTAs from their sales funnel.
+- Use regression insights to inform the structure and angle.
 
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
