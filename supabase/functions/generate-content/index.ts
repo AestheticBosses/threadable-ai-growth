@@ -63,27 +63,22 @@ function buildHookAssignments(
   const posts: string[] = [];
   const stages: string[] = [];
 
-  // Build stage list
   for (let i = 0; i < tofCount; i++) stages.push("TOF");
   for (let i = 0; i < mofCount; i++) stages.push("MOF");
   for (let i = 0; i < bofCount; i++) stages.push("BOF");
-  // Pad or trim to match count
   while (stages.length < count) stages.push("TOF");
   stages.length = count;
 
-  // Shuffle stages so they're not all grouped
   for (let i = stages.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [stages[i], stages[j]] = [stages[j], stages[i]];
   }
 
-  // Assign hook styles — rotate and ensure no two adjacent posts share a style
   const shuffledHooks = [...HOOK_STYLES].sort(() => Math.random() - 0.5);
   const usedRecently: string[] = [];
 
   for (let i = 0; i < count; i++) {
     const stage = stages[i];
-    // Pick a hook that wasn't used in the last 2 posts
     let hook = shuffledHooks[i % shuffledHooks.length];
     for (const candidate of shuffledHooks) {
       if (!usedRecently.includes(candidate.name)) {
@@ -94,7 +89,6 @@ function buildHookAssignments(
     usedRecently.push(hook.name);
     if (usedRecently.length > 2) usedRecently.shift();
 
-    // Get archetype from playbook schedule if available
     const dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     const dayIdx = i % 7;
     let archetype = "";
@@ -121,49 +115,48 @@ async function callAI(
   useTool: boolean = true,
 ): Promise<any[]> {
   const body: any = {
-    model: "google/gemini-3-flash-preview",
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 8192,
+    system: systemPrompt,
     messages: [
-      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
   };
 
   if (useTool) {
     body.tools = [{
-      type: "function",
-      function: {
-        name: "output_posts",
-        description: "Output the generated posts",
-        parameters: {
-          type: "object",
-          properties: {
-            posts: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  text: { type: "string" },
-                  content_category: { type: "string" },
-                  funnel_stage: { type: "string", enum: ["TOF", "MOF", "BOF"] },
-                  suggested_day: { type: "string" },
-                  suggested_time: { type: "string" },
-                },
-                required: ["text", "content_category", "funnel_stage", "suggested_day", "suggested_time"],
+      name: "output_posts",
+      description: "Output the generated posts",
+      input_schema: {
+        type: "object",
+        properties: {
+          posts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: { type: "string" },
+                content_category: { type: "string" },
+                funnel_stage: { type: "string", enum: ["TOF", "MOF", "BOF"] },
+                suggested_day: { type: "string" },
+                suggested_time: { type: "string" },
               },
+              required: ["text", "content_category", "funnel_stage", "suggested_day", "suggested_time"],
             },
           },
-          required: ["posts"],
         },
+        required: ["posts"],
       },
     }];
-    body.tool_choice = { type: "function", function: { name: "output_posts" } };
+    body.tool_choice = { type: "tool", name: "output_posts" };
   }
 
-  const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(body),
   });
@@ -171,19 +164,20 @@ async function callAI(
   if (!aiResponse.ok) {
     const status = aiResponse.status;
     if (status === 429) throw new Error("Rate limit exceeded. Please try again shortly.");
-    if (status === 402) throw new Error("AI credits exhausted. Please add funds.");
     throw new Error("AI generation failed");
   }
 
   const aiData = await aiResponse.json();
-  const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-  if (toolCall?.function?.arguments) {
-    const parsed = typeof toolCall.function.arguments === "string"
-      ? JSON.parse(toolCall.function.arguments)
-      : toolCall.function.arguments;
-    return parsed.posts || parsed;
+  
+  // Extract from Anthropic tool_use response
+  const toolUse = aiData.content?.find((block: any) => block.type === "tool_use");
+  if (toolUse?.input) {
+    return toolUse.input.posts || toolUse.input;
   }
-  const content = aiData.choices?.[0]?.message?.content || "";
+  
+  // Fallback: try parsing from text content
+  const textBlock = aiData.content?.find((block: any) => block.type === "text");
+  const content = textBlock?.text || "";
   const jsonMatch = content.match(/\[[\s\S]*\]/);
   if (jsonMatch) return JSON.parse(jsonMatch[0]);
   throw new Error("Failed to parse AI response");
@@ -224,7 +218,6 @@ Return as a JSON array with objects containing: text, content_category, funnel_s
   try {
     const result = await callAI(apiKey, systemPrompt, userPrompt, true);
     if (Array.isArray(result) && result.length === posts.length) {
-      // Merge back any missing fields from originals
       return result.map((newPost: any, i: number) => ({
         ...posts[i],
         ...newPost,
@@ -247,9 +240,9 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
+    if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -323,12 +316,10 @@ Deno.serve(async (req) => {
     // Build vault context with role attribution
     let vaultContext = "";
     if (numbers.length > 0 || stories.length > 0) {
-      // Build numbers with story context cross-referenced
       vaultContext += `\nIMPORTANT CONTEXT FOR EACH STAT AND STORY:\n`;
       
       if (numbers.length > 0) {
         const numbersWithContext = numbers.map((n: any) => {
-          // Find matching story for this number
           const relatedStory = stories.find((s: any) => {
             const storyText = `${s.title} ${s.story}`.toLowerCase();
             const numLabel = (n.label || "").toLowerCase();
@@ -459,12 +450,17 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
     const actualCount = regeneratePostId ? 1 : postsCount;
     const categoryHint = regenerateCategory ? `\nContent category MUST be: ${regenerateCategory}` : "";
 
-    // Build dynamic hook assignments for each post
     const hookAssignments = buildHookAssignments(
       actualCount, tofCount, mofCount, bofCount, playbookSchedule,
     );
 
-    const systemPrompt = `You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
+    const systemPrompt = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
+1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
+2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
+3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
+4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+
+You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
 
 CRITICAL RULES FOR VARIETY:
 - NEVER repeat the same hook pattern twice. Every post must open with a completely different first line.
@@ -531,12 +527,12 @@ Return as a JSON array of objects with: text, content_category, funnel_stage (TO
     const savedPosts: any[] = [];
 
     // PASS 1: Generate posts with specific hook assignments
-    let generatedPosts = await callAI(LOVABLE_API_KEY, systemPrompt, userMessage, true);
+    let generatedPosts = await callAI(ANTHROPIC_API_KEY, systemPrompt, userMessage, true);
 
     // PASS 2: Deduplication — only for batches of 3+ posts
     if (generatedPosts.length >= 3) {
       console.log("Running deduplication pass on", generatedPosts.length, "posts");
-      generatedPosts = await deduplicatePosts(LOVABLE_API_KEY, generatedPosts, vaultContext);
+      generatedPosts = await deduplicatePosts(ANTHROPIC_API_KEY, generatedPosts, vaultContext);
     }
 
     for (const post of generatedPosts) {
@@ -548,7 +544,7 @@ Return as a JSON array of objects with: text, content_category, funnel_stage (TO
         retries++;
         try {
           const retryPosts = await callAI(
-            LOVABLE_API_KEY, systemPrompt,
+            ANTHROPIC_API_KEY, systemPrompt,
             `Generate exactly 1 post. It must use a COMPLETELY different hook style and angle than this post: "${bestText.slice(0, 200)}". Return as JSON array.`,
             true,
           );
@@ -571,7 +567,6 @@ Return as a JSON array of objects with: text, content_category, funnel_stage (TO
 
       // Enforce 500 character hard limit
       if (bestText.length > 500) {
-        // Truncate at last sentence boundary before 500 chars
         const truncated = bestText.slice(0, 497);
         const lastPeriod = Math.max(truncated.lastIndexOf('.'), truncated.lastIndexOf('\n'), truncated.lastIndexOf('!'), truncated.lastIndexOf('?'));
         bestText = lastPeriod > 200 ? truncated.slice(0, lastPeriod + 1) : truncated + "...";

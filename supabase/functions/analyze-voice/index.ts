@@ -14,9 +14,9 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
+    if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -43,7 +43,6 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch top 20 posts
     const { data: posts } = await adminClient
       .from("posts_analyzed")
       .select("text_content")
@@ -51,7 +50,6 @@ Deno.serve(async (req) => {
       .order("engagement_rate", { ascending: false })
       .limit(20);
 
-    // Fetch manual voice samples
     const { data: samples } = await adminClient
       .from("voice_samples")
       .select("sample_text")
@@ -74,19 +72,18 @@ Deno.serve(async (req) => {
 
     const samplesText = allSamples.map((s, i) => `--- Sample ${i + 1} ---\n${s}`).join("\n\n");
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: "You are an expert writing style analyst. Analyze the writing samples provided and extract a detailed voice profile.",
         messages: [
-          {
-            role: "system",
-            content: "You are an expert writing style analyst. Analyze the writing samples provided and extract a detailed voice profile.",
-          },
           {
             role: "user",
             content: `Analyze the writing style of these ${allSamples.length} samples:\n\n${samplesText}`,
@@ -94,30 +91,27 @@ Deno.serve(async (req) => {
         ],
         tools: [
           {
-            type: "function",
-            function: {
-              name: "output_voice_profile",
-              description: "Output the analyzed voice profile",
-              parameters: {
-                type: "object",
-                properties: {
-                  tone: { type: "array", items: { type: "string" }, description: "3-5 tone descriptors" },
-                  sentence_style: { type: "string", description: "Typical sentence length and structure" },
-                  vocabulary_level: { type: "string", enum: ["casual", "moderate", "advanced"] },
-                  common_phrases: { type: "array", items: { type: "string" }, description: "Phrases used repeatedly" },
-                  emoji_usage: { type: "string", enum: ["none", "minimal", "moderate", "heavy"] },
-                  formatting_patterns: { type: "string", description: "How they use line breaks, caps, etc." },
-                  opening_style: { type: "string", description: "How they typically start posts" },
-                  closing_style: { type: "string", description: "How they typically end posts" },
-                  unique_quirks: { type: "array", items: { type: "string" }, description: "Distinctive writing habits" },
-                  overall_summary: { type: "string", description: "2-3 sentence description of writing voice" },
-                },
-                required: ["tone", "sentence_style", "vocabulary_level", "common_phrases", "emoji_usage", "formatting_patterns", "opening_style", "closing_style", "unique_quirks", "overall_summary"],
+            name: "output_voice_profile",
+            description: "Output the analyzed voice profile",
+            input_schema: {
+              type: "object",
+              properties: {
+                tone: { type: "array", items: { type: "string" }, description: "3-5 tone descriptors" },
+                sentence_style: { type: "string", description: "Typical sentence length and structure" },
+                vocabulary_level: { type: "string", enum: ["casual", "moderate", "advanced"] },
+                common_phrases: { type: "array", items: { type: "string" }, description: "Phrases used repeatedly" },
+                emoji_usage: { type: "string", enum: ["none", "minimal", "moderate", "heavy"] },
+                formatting_patterns: { type: "string", description: "How they use line breaks, caps, etc." },
+                opening_style: { type: "string", description: "How they typically start posts" },
+                closing_style: { type: "string", description: "How they typically end posts" },
+                unique_quirks: { type: "array", items: { type: "string" }, description: "Distinctive writing habits" },
+                overall_summary: { type: "string", description: "2-3 sentence description of writing voice" },
               },
+              required: ["tone", "sentence_style", "vocabulary_level", "common_phrases", "emoji_usage", "formatting_patterns", "opening_style", "closing_style", "unique_quirks", "overall_summary"],
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: "output_voice_profile" } },
+        tool_choice: { type: "tool", name: "output_voice_profile" },
       }),
     });
 
@@ -128,12 +122,7 @@ Deno.serve(async (req) => {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      console.error("AI error:", status, await aiResponse.text());
+      console.error("Anthropic API error:", status, await aiResponse.text());
       return new Response(JSON.stringify({ error: "AI analysis failed" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -142,13 +131,12 @@ Deno.serve(async (req) => {
     const aiData = await aiResponse.json();
     let voiceProfile: any;
 
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      voiceProfile = typeof toolCall.function.arguments === "string"
-        ? JSON.parse(toolCall.function.arguments)
-        : toolCall.function.arguments;
+    const toolUse = aiData.content?.find((block: any) => block.type === "tool_use");
+    if (toolUse?.input) {
+      voiceProfile = toolUse.input;
     } else {
-      const content = aiData.choices?.[0]?.message?.content || "";
+      const textBlock = aiData.content?.find((block: any) => block.type === "text");
+      const content = textBlock?.text || "";
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         voiceProfile = JSON.parse(jsonMatch[0]);
@@ -159,10 +147,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Add default credibility toggle
     voiceProfile.include_credibility_markers = true;
 
-    // Save to profiles
     const { error: updateErr } = await adminClient
       .from("profiles")
       .update({ voice_profile: voiceProfile })

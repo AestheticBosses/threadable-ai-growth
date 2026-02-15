@@ -27,7 +27,6 @@ serve(async (req) => {
     const { message, message_history = [] } = await req.json();
     if (!message) throw new Error("No message provided");
 
-    // Use service role for fetching context (bypasses RLS for complete data)
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -35,7 +34,13 @@ serve(async (req) => {
 
     const userContext = await getUserContext(admin, user.id);
 
-    const systemPrompt = `You are Threadable AI — a Threads content strategist and writing assistant. You help creators write high-performing Threads posts, brainstorm ideas, and build their personal brand.
+    const systemPrompt = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
+1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
+2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
+3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.
+4. If you don't have specific data for something, make a reasonable inference from what you know. Never leave blanks.
+
+You are Threadable AI — a Threads content strategist and writing assistant. You help creators write high-performing Threads posts, brainstorm ideas, and build their personal brand.
 
 You have deep knowledge of this specific user. Here is everything you know about them:
 
@@ -54,29 +59,29 @@ ${userContext}
 
     // Build messages array (last 20 from history + new message)
     const trimmedHistory = message_history.slice(-20);
-    const messages = [
-      { role: "system", content: systemPrompt },
+    const conversationMessages = [
       ...trimmedHistory,
       { role: "user", content: message },
     ];
 
-    // Call Lovable AI Gateway
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 60000);
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages,
-        max_tokens: 2000,
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: conversationMessages,
         stream: true,
       }),
       signal: controller.signal,
@@ -85,25 +90,50 @@ ${userContext}
     clearTimeout(timeout);
 
     if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("Anthropic API error:", aiResponse.status, errText);
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit reached. Please try again in a moment." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (aiResponse.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add credits to continue." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
       throw new Error("AI temporarily unavailable. Please try again.");
     }
 
-    // Stream the response back
-    return new Response(aiResponse.body, {
+    // Transform Anthropic SSE stream to OpenAI-compatible SSE format
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        const lines = text.split("\n");
+        
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+          
+          try {
+            const event = JSON.parse(jsonStr);
+            
+            if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+              // Convert to OpenAI-compatible format
+              const openAIEvent = {
+                choices: [{ delta: { content: event.delta.text } }],
+              };
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(openAIEvent)}\n\n`));
+            } else if (event.type === "message_stop") {
+              controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+            }
+          } catch {
+            // Skip unparseable lines
+          }
+        }
+      },
+    });
+
+    const transformedBody = aiResponse.body!.pipeThrough(transformStream);
+
+    return new Response(transformedBody, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (err) {

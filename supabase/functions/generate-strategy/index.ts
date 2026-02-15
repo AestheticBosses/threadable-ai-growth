@@ -14,16 +14,15 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
+    if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Auth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -47,7 +46,6 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch profile
     const { data: profile } = await adminClient
       .from("profiles")
       .select("niche, dream_client, end_goal, voice_profile")
@@ -61,7 +59,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch latest content strategy with regression insights
     const { data: strategy } = await adminClient
       .from("content_strategies")
       .select("*")
@@ -77,7 +74,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch top 10 posts
     const { data: topPosts } = await adminClient
       .from("posts_analyzed")
       .select("text_content, views, likes, replies, reposts, engagement_rate, virality_score, word_count, has_credibility_marker, has_question")
@@ -85,7 +81,6 @@ Deno.serve(async (req) => {
       .order("engagement_rate", { ascending: false })
       .limit(10);
 
-    // Format insights for prompt
     const insights = strategy.regression_insights as any;
     const insightsText = (insights.human_readable_insights || []).join("\n- ");
 
@@ -113,7 +108,7 @@ DATA INSIGHTS:
 TOP PERFORMING POSTS:
 ${topPostsText || "No posts analyzed yet"}`;
 
-    const userPrompt = `Generate a weekly content strategy as a JSON object. Return ONLY valid JSON with this exact structure:
+    const userPrompt = `Generate a weekly content strategy. Return the strategy as a JSON object with this structure:
 {
   "content_pillars": [{ "name": "string", "description": "string", "percentage_of_content": number, "example_topics": ["string"] }],
   "weekly_schedule": [{ "day": "Monday", "posts_count": number, "content_types": ["string"], "best_time": "HH:MM" }],
@@ -121,76 +116,76 @@ ${topPostsText || "No posts analyzed yet"}`;
   "hooks_to_use": ["string - 10 proven hook formulas"],
   "topics_for_this_week": ["string - 14 to 21 specific post topics"],
   "avoid": ["string - things to avoid based on data"]
-}`;
+}
 
-    // Call Lovable AI Gateway
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+Return ONLY valid JSON, no other text.`;
+
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         tools: [
           {
-            type: "function",
-            function: {
-              name: "output_strategy",
-              description: "Output the weekly content strategy",
-              parameters: {
-                type: "object",
-                properties: {
-                  content_pillars: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        description: { type: "string" },
-                        percentage_of_content: { type: "number" },
-                        example_topics: { type: "array", items: { type: "string" } },
-                      },
-                      required: ["name", "description", "percentage_of_content", "example_topics"],
-                    },
-                  },
-                  weekly_schedule: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        day: { type: "string" },
-                        posts_count: { type: "number" },
-                        content_types: { type: "array", items: { type: "string" } },
-                        best_time: { type: "string" },
-                      },
-                      required: ["day", "posts_count", "content_types", "best_time"],
-                    },
-                  },
-                  content_ratios: {
+            name: "output_strategy",
+            description: "Output the weekly content strategy",
+            input_schema: {
+              type: "object",
+              properties: {
+                content_pillars: {
+                  type: "array",
+                  items: {
                     type: "object",
                     properties: {
-                      authority: { type: "number" },
-                      engagement: { type: "number" },
-                      storytelling: { type: "number" },
-                      cta: { type: "number" },
+                      name: { type: "string" },
+                      description: { type: "string" },
+                      percentage_of_content: { type: "number" },
+                      example_topics: { type: "array", items: { type: "string" } },
                     },
-                    required: ["authority", "engagement", "storytelling", "cta"],
+                    required: ["name", "description", "percentage_of_content", "example_topics"],
                   },
-                  hooks_to_use: { type: "array", items: { type: "string" } },
-                  topics_for_this_week: { type: "array", items: { type: "string" } },
-                  avoid: { type: "array", items: { type: "string" } },
                 },
-                required: ["content_pillars", "weekly_schedule", "content_ratios", "hooks_to_use", "topics_for_this_week", "avoid"],
+                weekly_schedule: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      day: { type: "string" },
+                      posts_count: { type: "number" },
+                      content_types: { type: "array", items: { type: "string" } },
+                      best_time: { type: "string" },
+                    },
+                    required: ["day", "posts_count", "content_types", "best_time"],
+                  },
+                },
+                content_ratios: {
+                  type: "object",
+                  properties: {
+                    authority: { type: "number" },
+                    engagement: { type: "number" },
+                    storytelling: { type: "number" },
+                    cta: { type: "number" },
+                  },
+                  required: ["authority", "engagement", "storytelling", "cta"],
+                },
+                hooks_to_use: { type: "array", items: { type: "string" } },
+                topics_for_this_week: { type: "array", items: { type: "string" } },
+                avoid: { type: "array", items: { type: "string" } },
               },
+              required: ["content_pillars", "weekly_schedule", "content_ratios", "hooks_to_use", "topics_for_this_week", "avoid"],
             },
           },
         ],
-        tool_choice: { type: "function", function: { name: "output_strategy" } },
+        tool_choice: { type: "tool", name: "output_strategy" },
       }),
     });
 
@@ -202,14 +197,8 @@ ${topPostsText || "No posts analyzed yet"}`;
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Please add funds." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const errText = await aiResponse.text();
-      console.error("AI gateway error:", status, errText);
+      console.error("Anthropic API error:", status, errText);
       return new Response(JSON.stringify({ error: "AI generation failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -219,15 +208,14 @@ ${topPostsText || "No posts analyzed yet"}`;
     const aiData = await aiResponse.json();
     let strategyJson: any;
 
-    // Extract from tool call
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      strategyJson = typeof toolCall.function.arguments === "string"
-        ? JSON.parse(toolCall.function.arguments)
-        : toolCall.function.arguments;
+    // Extract from tool use response
+    const toolUse = aiData.content?.find((block: any) => block.type === "tool_use");
+    if (toolUse?.input) {
+      strategyJson = toolUse.input;
     } else {
-      // Fallback: try parsing from content
-      const content = aiData.choices?.[0]?.message?.content || "";
+      // Fallback: try parsing from text content
+      const textBlock = aiData.content?.find((block: any) => block.type === "text");
+      const content = textBlock?.text || "";
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         strategyJson = JSON.parse(jsonMatch[0]);
@@ -239,7 +227,6 @@ ${topPostsText || "No posts analyzed yet"}`;
       }
     }
 
-    // Update strategy with generated JSON
     const { error: updateErr } = await adminClient
       .from("content_strategies")
       .update({ strategy_json: strategyJson })
