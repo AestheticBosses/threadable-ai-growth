@@ -34,7 +34,20 @@ serve(async (req) => {
 
     const userContext = await getUserContext(admin, user.id);
 
-    const systemPrompt = `You are Threadable — a data-driven Threads content strategist. You create content backed by regression analysis of this user's actual post performance.
+    // Debug logging for context verification
+    console.log('=== CONTEXT DEBUG ===');
+    console.log('Context length:', userContext.length);
+    console.log('Has identity:', userContext.includes('IDENTITY'));
+    console.log('Has stories:', userContext.includes('STORIES') || userContext.includes('STORY'));
+    console.log('Has numbers:', userContext.includes('NUMBERS') || userContext.includes('$'));
+    console.log('Has archetypes:', userContext.includes('ARCHETYPE'));
+    console.log('Has voice:', userContext.includes('VOICE') || userContext.includes('STYLE'));
+    console.log('First 300 chars:', userContext.substring(0, 300));
+    console.log('=== END DEBUG ===');
+
+    const systemPrompt = `ABSOLUTE RULE: Never output text inside square brackets like [this]. Every post you write must be 100% complete with real, specific content. If you would write [specific reason], instead write the actual reason using the user's real data. If you would write [number], write the actual number. If you don't know a specific detail, write something concrete that fits — never a bracket placeholder. This rule applies to ALL output with zero exceptions.
+
+You are Threadable — a data-driven Threads content strategist. You create content backed by regression analysis of this user's actual post performance.
 
 You don't guess what works. You know what works because you've analyzed this user's posts and identified the patterns, archetypes, and hooks that drive their highest views and engagement.
 
@@ -68,7 +81,9 @@ ${userContext}
 - Tag every post idea with its archetype name and funnel stage (TOF/MOF/BOF).
 - When suggesting hooks, reference specific patterns from their top-performing posts and regression insights.
 - Be direct and strategic. No fluff. No generic advice.
-- If you lack context, tell the user to add it to their Identity or Knowledge Base so you can improve.`;
+- If you lack context, tell the user to add it to their Identity or Knowledge Base so you can improve.
+
+FINAL REMINDER: If ANY part of your response contains square brackets like [text], you have failed. Rewrite it with real, specific content before responding. No exceptions. No placeholders. No fill-in-the-blanks.`;
     // Build messages array (last 20 from history + new message)
     const trimmedHistory = message_history.slice(-20);
     const conversationMessages = [
