@@ -147,6 +147,27 @@ const Onboarding = () => {
     }
   }, [searchParams, setSearchParams, user]);
 
+  const handleDisconnect = async () => {
+    if (!user) return;
+    const confirmed = window.confirm(
+      "Disconnect this Threads account? You can then connect a different one."
+    );
+    if (!confirmed) return;
+
+    await supabase.from("profiles").update({
+      threads_access_token: null,
+      threads_user_id: null,
+      threads_username: null,
+      threads_profile_picture_url: null,
+      display_name: null,
+    }).eq("id", user.id);
+
+    await supabase.from("posts_analyzed").delete().eq("user_id", user.id);
+
+    setThreadsConnected(false);
+    setThreadsUsername("");
+  };
+
   const updateStep = (stepId: string, status: "waiting" | "active" | "done" | "error") => {
     setPipelineSteps((prev) =>
       prev.map((s) => (s.id === stepId ? { ...s, status } : s))
@@ -579,9 +600,17 @@ const Onboarding = () => {
                 </p>
               </>
             ) : (
-              <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
-                <Check className="h-5 w-5" />
-                Connected as @{threadsUsername} ✓
+              <div className="space-y-3">
+                <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
+                  <Check className="h-5 w-5" />
+                  Connected as @{threadsUsername} ✓
+                </div>
+                <button
+                  onClick={handleDisconnect}
+                  className="text-muted-foreground hover:text-foreground text-sm underline transition-colors"
+                >
+                  Switch account
+                </button>
               </div>
             )}
           </div>
