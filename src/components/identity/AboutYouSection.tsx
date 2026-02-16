@@ -12,11 +12,11 @@ export function AboutYouSection() {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!initialized && data !== undefined) {
+    if (data !== undefined) {
       setText(data || "");
       setInitialized(true);
     }
-  }, [data, initialized]);
+  }, [data]);
 
   const handleSave = async () => {
     await save(text);

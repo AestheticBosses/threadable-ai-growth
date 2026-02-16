@@ -132,12 +132,13 @@ export function useExtractIdentity() {
         await supabase.from("user_personal_info").insert(infoInserts);
       }
 
-      // Invalidate all identity queries
-      qc.invalidateQueries({ queryKey: ["user-identity"] });
+      // Invalidate all identity queries (keys must include user.id to match consuming hooks)
+      qc.invalidateQueries({ queryKey: ["user-identity", user.id] });
+      qc.invalidateQueries({ queryKey: ["user-identity-full", user.id] });
       qc.invalidateQueries({ queryKey: ["story-vault"] });
-      qc.invalidateQueries({ queryKey: ["user-offers"] });
-      qc.invalidateQueries({ queryKey: ["user-audiences"] });
-      qc.invalidateQueries({ queryKey: ["user-personal-info"] });
+      qc.invalidateQueries({ queryKey: ["user-offers", user.id] });
+      qc.invalidateQueries({ queryKey: ["user-audiences", user.id] });
+      qc.invalidateQueries({ queryKey: ["user-personal-info", user.id] });
 
       toast({ title: "Identity saved! ✅", description: "You can edit any section on the Identity page." });
       setShowReview(false);

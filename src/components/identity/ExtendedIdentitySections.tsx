@@ -56,14 +56,12 @@ function useIdentityExtended() {
 export function DesiredPerceptionSection() {
   const { data, isLoading, save, isSaving } = useIdentityExtended();
   const [text, setText] = useState("");
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!initialized && data !== undefined) {
+    if (data !== undefined) {
       setText(data?.desired_perception || "");
-      setInitialized(true);
     }
-  }, [data, initialized]);
+  }, [data]);
 
   const handleSave = async () => {
     await save({ desired_perception: text });
@@ -99,14 +97,12 @@ export function DesiredPerceptionSection() {
 export function MainGoalSection() {
   const { data, isLoading, save, isSaving } = useIdentityExtended();
   const [text, setText] = useState("");
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (!initialized && data !== undefined) {
+    if (data !== undefined) {
       setText(data?.main_goal || "");
-      setInitialized(true);
     }
-  }, [data, initialized]);
+  }, [data]);
 
   const handleSave = async () => {
     await save({ main_goal: text });
