@@ -17,6 +17,10 @@ import {
   BarChart3,
   Users,
   Zap,
+  Sparkles,
+  Plus,
+  X,
+  Download,
 } from "lucide-react";
 
 interface RealAnalysis {
@@ -122,9 +126,16 @@ const Analyze = () => {
 
   const [isEstablished, setIsEstablished] = useState<boolean | null>(null);
   const [niche, setNiche] = useState("");
+  const [dreamClient, setDreamClient] = useState("");
   const [loading, setLoading] = useState(true);
   const [additionalUsernames, setAdditionalUsernames] = useState("");
   const [building, setBuilding] = useState(false);
+
+  // AI-suggested accounts
+  const [suggestedAccounts, setSuggestedAccounts] = useState<{ username: string; why: string; patterns: string[] }[]>([]);
+  const [savedUsernames, setSavedUsernames] = useState<Set<string>>(new Set());
+  const [suggesting, setSuggesting] = useState(false);
+  const [fetchingPosts, setFetchingPosts] = useState(false);
 
   const { data: posts, isLoading: postsLoading } = usePostsAnalyzed();
   const analysis = useMemo(() => deriveAnalysis(posts ?? null), [posts]);
@@ -132,17 +143,130 @@ const Analyze = () => {
   useEffect(() => {
     const load = async () => {
       if (!user) return;
-      const { data } = await supabase
+
+      // Load profile
+      const { data: profile } = await supabase
         .from("profiles")
-        .select("is_established, niche")
+        .select("is_established, niche, dream_client")
         .eq("id", user.id)
         .single();
-      setIsEstablished(data?.is_established ?? false);
-      setNiche(data?.niche ?? "");
+      setIsEstablished(profile?.is_established ?? false);
+      setNiche(profile?.niche ?? "");
+      setDreamClient(profile?.dream_client ?? "");
+
+      // Load saved competitor accounts
+      const { data: competitors } = await supabase
+        .from("competitor_accounts")
+        .select("threads_username")
+        .eq("user_id", user.id);
+      if (competitors) {
+        setSavedUsernames(new Set(competitors.map((c: any) => c.threads_username).filter(Boolean)));
+      }
+
+      // Load AI-suggested accounts from niche_discovery
+      const { data: nicheDiscovery } = await (supabase as any)
+        .from("content_strategies")
+        .select("strategy_data")
+        .eq("user_id", user.id)
+        .eq("strategy_type", "niche_discovery")
+        .maybeSingle();
+      if (nicheDiscovery?.strategy_data?.accounts) {
+        const accounts = nicheDiscovery.strategy_data.accounts
+          .filter((a: any) => {
+            const u = (a.username || "").replace(/^@/, "").trim();
+            return u && !u.includes(" "); // Only real usernames, not descriptions
+          })
+          .map((a: any) => ({
+            username: (a.username || "").replace(/^@/, "").trim(),
+            why: a.why || "",
+            patterns: a.patterns || [],
+          }));
+        setSuggestedAccounts(accounts);
+      }
+
       setLoading(false);
     };
     load();
   }, [user]);
+
+  const handleSuggestAccounts = async () => {
+    if (!user) return;
+    setSuggesting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+      const { data, error } = await supabase.functions.invoke("discover-niche-accounts", {
+        body: { niche, dream_client: dreamClient },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) throw error;
+      const accounts = (data?.data?.accounts || [])
+        .filter((a: any) => {
+          const u = (a.username || "").replace(/^@/, "").trim();
+          return u && !u.includes(" ");
+        })
+        .map((a: any) => ({
+          username: (a.username || "").replace(/^@/, "").trim(),
+          why: a.why || "",
+          patterns: a.patterns || [],
+        }));
+      setSuggestedAccounts(accounts);
+
+      // Reload saved accounts since discover-niche-accounts auto-saves to competitor_accounts
+      const { data: competitors } = await supabase
+        .from("competitor_accounts")
+        .select("threads_username")
+        .eq("user_id", user.id);
+      if (competitors) {
+        setSavedUsernames(new Set(competitors.map((c: any) => c.threads_username).filter(Boolean)));
+      }
+
+      toast({ title: "Accounts suggested!", description: `Found ${accounts.length} accounts to study.` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to suggest accounts", variant: "destructive" });
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const handleToggleAccount = async (username: string) => {
+    if (!user) return;
+    if (savedUsernames.has(username)) {
+      // Remove
+      await supabase
+        .from("competitor_accounts")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("threads_username", username);
+      setSavedUsernames((prev) => { const next = new Set(prev); next.delete(username); return next; });
+    } else {
+      // Add
+      await supabase
+        .from("competitor_accounts")
+        .upsert({ user_id: user.id, threads_username: username }, { onConflict: "user_id,threads_username" });
+      setSavedUsernames((prev) => new Set(prev).add(username));
+    }
+  };
+
+  const handleFetchCompetitorPosts = async () => {
+    if (!user || savedUsernames.size === 0) return;
+    setFetchingPosts(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not logged in");
+      const usernames = Array.from(savedUsernames).slice(0, 5);
+      const { data, error } = await supabase.functions.invoke("fetch-competitor-posts", {
+        body: { usernames },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) throw error;
+      toast({ title: "Posts fetched!", description: `Pulled ${data?.total_posts || 0} posts from ${usernames.length} accounts.` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message || "Failed to fetch posts", variant: "destructive" });
+    } finally {
+      setFetchingPosts(false);
+    }
+  };
 
   const handleBuildStrategy = async () => {
     if (!user) return;
@@ -305,7 +429,7 @@ const Analyze = () => {
 
         {isEstablished && <Separator />}
 
-        {/* Accounts to Emulate — input only, no fake suggestions */}
+        {/* Accounts to Learn From */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -313,20 +437,97 @@ const Analyze = () => {
               Accounts to Learn From
             </CardTitle>
             <CardDescription>
-              Add Threads accounts in your {niche || "niche"} that you'd like to learn from
+              Study top creators in your {niche || "niche"} — we'll analyze their patterns for your strategy.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={additionalUsernames}
-              onChange={(e) => setAdditionalUsernames(e.target.value)}
-              placeholder={"Enter usernames, one per line\ne.g. @creator_name"}
-              rows={4}
-              className="resize-none font-mono text-sm"
-            />
-            <p className="text-xs text-muted-foreground">
-              Think of creators whose style, audience, or growth you admire — we'll study their patterns for your strategy.
-            </p>
+          <CardContent className="space-y-5">
+            {/* AI-Suggested Accounts */}
+            {suggestedAccounts.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">AI-Suggested Accounts</p>
+                  <Button variant="ghost" size="sm" onClick={handleSuggestAccounts} disabled={suggesting} className="text-xs gap-1">
+                    {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    Refresh
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {suggestedAccounts.map((account) => {
+                    const isSaved = savedUsernames.has(account.username);
+                    return (
+                      <div key={account.username} className={`rounded-lg border p-3 space-y-1.5 transition-colors ${isSaved ? "border-primary/40 bg-primary/5" : "border-border"}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-foreground">@{account.username}</span>
+                          <Button
+                            variant={isSaved ? "outline" : "secondary"}
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => handleToggleAccount(account.username)}
+                          >
+                            {isSaved ? <><X className="h-3 w-3" /> Remove</> : <><Plus className="h-3 w-3" /> Add</>}
+                          </Button>
+                        </div>
+                        {account.why && (
+                          <p className="text-xs text-muted-foreground">{account.why}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border p-6 text-center space-y-3">
+                <Sparkles className="h-8 w-8 mx-auto text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Get AI-Suggested Accounts</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    We'll find top creators in your niche worth studying.
+                  </p>
+                </div>
+                <Button onClick={handleSuggestAccounts} disabled={suggesting} className="gap-2">
+                  {suggesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {suggesting ? "Finding accounts..." : "Suggest Accounts"}
+                </Button>
+              </div>
+            )}
+
+            {/* Saved accounts summary + Fetch button */}
+            {savedUsernames.size > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-foreground">
+                    {savedUsernames.size} account{savedUsernames.size !== 1 ? "s" : ""} saved
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFetchCompetitorPosts}
+                    disabled={fetchingPosts}
+                    className="text-xs gap-1.5"
+                  >
+                    {fetchingPosts ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                    {fetchingPosts ? "Fetching..." : "Fetch Their Posts"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Fetch their posts so the AI can study their hook patterns and content structures for your strategy.
+                </p>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Manual input */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Add accounts manually</p>
+              <Textarea
+                value={additionalUsernames}
+                onChange={(e) => setAdditionalUsernames(e.target.value)}
+                placeholder={"Enter usernames, one per line\ne.g. @creator_name"}
+                rows={3}
+                className="resize-none font-mono text-sm"
+              />
+            </div>
           </CardContent>
         </Card>
 
