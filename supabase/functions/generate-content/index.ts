@@ -498,6 +498,11 @@ VARIETY CHECKLIST — before returning your posts, verify ALL of these:
 □ At least 3 different emotional tones are used (serious, humorous, vulnerable, provocative, inspirational)
 □ TOF posts don't mention offers or CTAs
 □ BOF posts have a clear CTA
+□ No two posts lead with the same story, number, or data point
+□ Posts spread across different aspects of identity: client results, personal stories, tactical insights, predictions, knowledge base references
+□ If you've used a specific dollar amount in one post, use a different metric in the next
+□ If you've used the origin story, use a different personal story next
+□ Mine the FULL vault: stories, numbers, offers, knowledge base, audience insights — not just the most dramatic data points
 If any check fails, rewrite the offending posts before returning.
 
 WHAT PERFORMS BEST (from data analysis):
