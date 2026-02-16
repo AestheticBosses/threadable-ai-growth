@@ -25,7 +25,8 @@ interface PipelineStepDef {
 
 const SEASONED_STEPS: PipelineStepDef[] = [
   { id: "fetch", label: "Fetching your Threads posts", status: "waiting" },
-  { id: "analysis", label: "Running regression analysis", status: "waiting" },
+  { id: "analysis", label: "Analyzing your content patterns", status: "waiting" },
+  { id: "regression", label: "Running regression analysis", status: "waiting" },
   { id: "archetypes", label: "Discovering your content archetypes", status: "waiting" },
   { id: "identity", label: "Extracting your identity", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice", status: "waiting" },
@@ -199,26 +200,38 @@ const Onboarding = () => {
   const runSeasonedPipelineAfterFetch = async () => {
     if (!user) return;
 
-    // 2. Run analysis
-    await invokeStep("analysis", "run-analysis", { user_id: user.id });
+    // 2. Analyze content patterns
+    const analysisOk = await invokeStep("analysis", "run-analysis", { user_id: user.id });
 
-    // 3. Discover archetypes
-    await invokeStep("archetypes", "discover-archetypes", {
-      user_id: user.id,
-      niche: niche.trim(),
-      goals: endGoal.trim(),
-    });
+    // 3. Run regression analysis
+    const regressionOk = await invokeStep("regression", "run-regression", { user_id: user.id });
 
-    // 4. Extract identity
+    // 4. Discover archetypes (requires analysis + regression)
+    let archetypesOk = false;
+    if (analysisOk && regressionOk) {
+      archetypesOk = await invokeStep("archetypes", "discover-archetypes", {
+        user_id: user.id,
+        niche: niche.trim(),
+        goals: endGoal.trim(),
+      });
+    } else {
+      updateStep("archetypes", "error");
+    }
+
+    // 5. Extract identity (independent — runs regardless)
     await invokeStep("identity", "extract-identity", { user_id: user.id });
 
-    // 5. Analyze voice
+    // 6. Analyze voice (independent — runs regardless)
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
 
-    // 6. Generate playbook
-    await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+    // 7. Generate playbook (requires archetypes)
+    if (archetypesOk) {
+      await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+    } else {
+      updateStep("playbook", "error");
+    }
 
-    // 7. Generate all 3 plans
+    // 8. Generate all 3 plans (independent — uses whatever context is available)
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
@@ -240,31 +253,35 @@ const Onboarding = () => {
       updateStep("plans", "error");
     }
 
-    // 8. Generate templates from archetypes
-    updateStep("templates", "active");
-    try {
-      const { data: strategies } = await supabase
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "archetype_discovery")
-        .single();
+    // 9. Generate templates from archetypes (requires archetypes)
+    if (archetypesOk) {
+      updateStep("templates", "active");
+      try {
+        const { data: strategies } = await supabase
+          .from("content_strategies")
+          .select("strategy_data")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "archetype_discovery")
+          .single();
 
-      const archetypes = (strategies?.strategy_data as any)?.archetypes;
-      if (archetypes && Array.isArray(archetypes)) {
-        for (const archetype of archetypes) {
-          await supabase.from("content_templates").insert({
-            user_id: user.id,
-            archetype: archetype.name || "General",
-            template_text: archetype.template || "",
-            example_text: archetype.example_posts?.[0] || null,
-            is_default: true,
-          });
+        const archetypes = (strategies?.strategy_data as any)?.archetypes;
+        if (archetypes && Array.isArray(archetypes)) {
+          for (const archetype of archetypes) {
+            await supabase.from("content_templates").insert({
+              user_id: user.id,
+              archetype: archetype.name || "General",
+              template_text: archetype.template || "",
+              example_text: archetype.example_posts?.[0] || null,
+              is_default: true,
+            });
+          }
         }
+        updateStep("templates", "done");
+      } catch (err) {
+        console.error("Templates step threw:", err);
+        updateStep("templates", "error");
       }
-      updateStep("templates", "done");
-    } catch (err) {
-      console.error("Templates step threw:", err);
+    } else {
       updateStep("templates", "error");
     }
   };
@@ -365,7 +382,6 @@ const Onboarding = () => {
           niche: niche.trim(),
           dream_client: dreamClient.trim(),
           end_goal: endGoal.trim(),
-          onboarding_complete: true,
         })
         .eq("id", user.id);
 
@@ -443,6 +459,12 @@ const Onboarding = () => {
         setPipelineHasErrors(hasErrors);
         return prev;
       });
+
+      // Mark onboarding complete now that pipeline has finished
+      await supabase
+        .from("profiles")
+        .update({ onboarding_complete: true })
+        .eq("id", user.id);
 
       await refreshProfile();
       setPipelineComplete(true);
