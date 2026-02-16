@@ -21,6 +21,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     profileRes,
     salesFunnelRes,
     templatesRes,
+    competitorAccountsRes,
+    competitorPostsRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId),
@@ -42,6 +44,10 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
     supabase.from("content_templates").select("archetype, template_text").eq("user_id", userId).order("archetype").order("sort_order"),
+    // Competitor accounts the user is studying
+    supabase.from("competitor_accounts").select("threads_username").eq("user_id", userId),
+    // Top competitor posts by engagement for pattern learning
+    supabase.from("posts_analyzed").select("text_content, views, likes, replies, reposts, engagement_rate, source_username").eq("user_id", userId).eq("source", "competitor").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(25),
   ]);
 
   // === IDENTITY ===
@@ -182,6 +188,24 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     templatesSection += "\n\nUse these templates as structural guides when drafting posts — fill in the brackets with real user data, don't copy verbatim.";
   }
 
+  // === COMPETITOR INSIGHTS ===
+  const competitorAccounts = competitorAccountsRes.data || [];
+  const competitorPosts = competitorPostsRes.data || [];
+  let competitorSection = "No competitor accounts saved.";
+  if (competitorAccounts.length > 0 || competitorPosts.length > 0) {
+    const parts: string[] = [];
+    if (competitorAccounts.length > 0) {
+      parts.push("Accounts being studied: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
+    }
+    if (competitorPosts.length > 0) {
+      parts.push("Top competitor posts (study their patterns, hooks, and structures — then apply to user's own stories and data):");
+      competitorPosts.forEach((p: any, i: number) => {
+        parts.push(`${i + 1}. [@${p.source_username || "unknown"}] "${(p.text_content || "").slice(0, 250)}" — ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}`);
+      });
+    }
+    competitorSection = parts.join("\n");
+  }
+
   let postsBlock = "=== TOP PERFORMING POSTS BY VIEWS ===\n" + viewsSection;
   if (engagementSection) {
     postsBlock += "\n\n=== TOP PERFORMING POSTS BY ENGAGEMENT RATE ===\n" + engagementSection;
@@ -217,6 +241,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "=== KEY INSIGHTS FROM DATA ===\n" +
     insightsSection + "\n\n" +
     postsBlock + "\n\n" +
+    "=== COMPETITOR INSIGHTS (learn from their patterns, not their content) ===\n" +
+    competitorSection + "\n\n" +
     "=== PLANS ===\n" +
     plansSection;
 }

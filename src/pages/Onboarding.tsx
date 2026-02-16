@@ -218,6 +218,14 @@ const Onboarding = () => {
       updateStep("archetypes", "error");
     }
 
+    // 4b. Categorize posts with discovered archetypes (background, non-blocking)
+    if (archetypesOk) {
+      getAuthHeaders().then((headers) =>
+        supabase.functions.invoke("categorize-posts", { headers })
+          .catch((err: any) => console.error("categorize-posts error:", err))
+      );
+    }
+
     // 5. Extract identity (independent — runs regardless)
     await invokeStep("identity", "extract-identity", { user_id: user.id });
 
@@ -284,6 +292,12 @@ const Onboarding = () => {
       niche: niche.trim(),
       goals: endGoal.trim(),
     });
+
+    // 3b. Categorize any existing posts with discovered archetypes (background)
+    getAuthHeaders().then((headers) =>
+      supabase.functions.invoke("categorize-posts", { headers })
+        .catch((err: any) => console.error("categorize-posts error:", err))
+    );
 
     // 4. Build starter identity
     updateStep("identity", "active");
