@@ -257,8 +257,7 @@ const Onboarding = () => {
     if (archetypesOk) {
       updateStep("templates", "active");
       try {
-        const { error: tplErr } = await invokeStep("generate-templates", {});
-        if (tplErr) throw tplErr;
+        await invokeStep("templates", "generate-templates", {});
         updateStep("templates", "done");
       } catch (err) {
         console.error("Templates step threw:", err);
@@ -329,8 +328,7 @@ const Onboarding = () => {
     // 7. Generate starter templates via AI (5 per archetype)
     updateStep("templates", "active");
     try {
-      const { error: tplErr } = await invokeStep("generate-templates", {});
-      if (tplErr) throw tplErr;
+      await invokeStep("templates", "generate-templates", {});
       updateStep("templates", "done");
     } catch (err) {
       console.error("Templates step threw:", err);

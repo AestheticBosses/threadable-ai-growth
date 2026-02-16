@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
         }
       }
     } catch (e) {
-      console.error("Profile fetch error (non-fatal):", e.message)
+      console.error("Profile fetch error (non-fatal):", (e as Error).message)
     }
 
     // Paginate through ALL posts
@@ -144,8 +144,8 @@ Deno.serve(async (req) => {
     let nextUrl: string | null = `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads?fields=id,text,timestamp,media_type&access_token=${profile.threads_access_token}&limit=100`
 
     while (nextUrl) {
-      const threadsRes = await fetch(nextUrl)
-      const threadsJson = await threadsRes.json()
+      const threadsRes: Response = await fetch(nextUrl)
+      const threadsJson: any = await threadsRes.json()
 
       if (threadsJson.error) {
         console.error("Threads error:", JSON.stringify(threadsJson.error))
@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
         if (upsertErr) console.error("Upsert err:", post.id, upsertErr.message)
         else saved++
       } catch (e) {
-        console.error("Post error:", post.id, e.message)
+        console.error("Post error:", post.id, (e as Error).message)
       }
     }
 
@@ -245,8 +245,8 @@ Deno.serve(async (req) => {
     })
 
   } catch (err) {
-    console.error("Fatal:", err.message)
-    return new Response(JSON.stringify({ error: err.message }), {
+    console.error("Fatal:", (err as Error).message)
+    return new Response(JSON.stringify({ error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
