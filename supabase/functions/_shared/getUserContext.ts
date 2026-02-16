@@ -12,7 +12,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     writingStyleRes,
     contentPrefsRes,
     knowledgeRes,
-    topPostsRes,
+    topPostsByViewsRes,
+    topPostsByEngagementRes,
+    recentPostsRes,
     plansRes,
     archetypesRes,
     regressionRes,
@@ -27,8 +29,13 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("user_personal_info").select("content").eq("user_id", userId),
     supabase.from("user_writing_style").select("selected_style, custom_style_description").eq("user_id", userId).maybeSingle(),
     supabase.from("content_preferences").select("content").eq("user_id", userId).order("sort_order"),
-    supabase.from("knowledge_base").select("title, type, content, summary").eq("user_id", userId).eq("processed", true).limit(30),
+    supabase.from("knowledge_base").select("title, type, content, summary").eq("user_id", userId).eq("processed", true).limit(50),
+    // Top 10 by views (existing)
     supabase.from("posts_analyzed").select("text_content, likes, views, replies, reposts, engagement_rate, archetype, posted_at").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("views", { ascending: false }).limit(10),
+    // Top 10 by engagement rate (NEW — may surface different posts)
+    supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(10),
+    // 30 recent posts to pick 10 random for variety
+    supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("posted_at", { ascending: false }).limit(30),
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -96,17 +103,36 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const knowledgeSection = knowledge.length > 0
     ? knowledge.map((k: any) => {
         const content = k.summary || k.content || "";
-        return `- [${k.type}] ${k.title}: ${content.slice(0, 300)}`;
+        return `- [${k.type}] ${k.title}: ${content.slice(0, 500)}`;
       }).join("\n")
     : "No knowledge base items.";
 
-  // === TOP POSTS ===
-  const topPosts = topPostsRes.data || [];
-  const postsSection = topPosts.length > 0
-    ? topPosts.map((p: any, i: number) =>
+  // === TOP POSTS BY VIEWS ===
+  const topByViews = topPostsByViewsRes.data || [];
+  const viewsSection = topByViews.length > 0
+    ? topByViews.map((p: any, i: number) =>
         `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}" — ${p.views || 0} views, ${p.likes || 0} likes, ${p.replies || 0} replies, ${p.reposts || 0} reposts, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}`
       ).join("\n")
     : "No posts analyzed yet.";
+
+  // === TOP POSTS BY ENGAGEMENT RATE ===
+  const topByEngagement = topPostsByEngagementRes.data || [];
+  const engagementSection = topByEngagement.length > 0
+    ? topByEngagement.map((p: any, i: number) =>
+        `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}" — ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}, ${p.views || 0} views`
+      ).join("\n")
+    : "";
+
+  // === RECENT POSTS (random 10 from last 30 for variety) ===
+  const recentPosts = recentPostsRes.data || [];
+  const randomRecent = recentPosts
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 10);
+  const recentSection = randomRecent.length > 0
+    ? randomRecent.map((p: any, i: number) =>
+        `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}"`
+      ).join("\n")
+    : "";
 
   // === REGRESSION INSIGHTS ===
   const regressionData = regressionRes.data?.regression_insights as any;
@@ -156,6 +182,14 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     templatesSection += "\n\nUse these templates as structural guides when drafting posts — fill in the brackets with real user data, don't copy verbatim.";
   }
 
+  let postsBlock = "=== TOP PERFORMING POSTS BY VIEWS ===\n" + viewsSection;
+  if (engagementSection) {
+    postsBlock += "\n\n=== TOP PERFORMING POSTS BY ENGAGEMENT RATE ===\n" + engagementSection;
+  }
+  if (recentSection) {
+    postsBlock += "\n\n=== RECENT POSTS (for variety reference) ===\n" + recentSection;
+  }
+
   return "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
     "=== CREATOR PROFILE ===\n" +
@@ -182,8 +216,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     knowledgeSection + "\n\n" +
     "=== KEY INSIGHTS FROM DATA ===\n" +
     insightsSection + "\n\n" +
-    "=== TOP PERFORMING POSTS (for style reference) ===\n" +
-    postsSection + "\n\n" +
+    postsBlock + "\n\n" +
     "=== PLANS ===\n" +
     plansSection;
 }
