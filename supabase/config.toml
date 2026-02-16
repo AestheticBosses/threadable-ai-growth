@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.discover-niche-accounts]
 verify_jwt = false
+
+[functions.categorize-posts]
+verify_jwt = false
