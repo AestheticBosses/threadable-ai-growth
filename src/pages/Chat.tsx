@@ -447,7 +447,22 @@ const Chat = () => {
 
     // Short visible label for user bubble; full context goes to AI only
     const userLabel = `Post ideas from: ${item.label}`;
-    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n${item.type.toUpperCase()}: ${item.label}\n${item.content}\n\nEach post MUST use a completely different angle:\n1. A specific client result or case study (not just "I built an agency")\n2. A contrarian take on an industry practice, backed by real experience\n3. A personal or vulnerable moment that ISN'T my most-told origin story\n4. A specific tactic or strategy from my expertise or knowledge base\n5. A prediction or observation about where my industry is heading\n\nStudy my top-performing posts for emotional triggers and hook patterns, but use FRESH content — do NOT recycle the same 3-4 stories.\n\nCRITICAL: Every post must be 100% finished — real stories, real numbers, real examples from my data. Do NOT use square brackets or placeholders anywhere.\n\nFor each post:\n- Use a proven hook pattern from my top posts (provocative statement, specific number, confession, vulnerability)\n- Hit an emotional trigger that's worked before (vulnerability, authority, contrarian shock, relatability)\n- Start with **1. Archetype Name** as the header\n- Then write the complete post text underneath\n- Each post should use a different archetype\n- Use my real stories, real dollar amounts, and real experiences\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow my writing style and content preferences\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like me, not like AI`;
+
+    // Detect context type and add intent guidance
+    let intentGuidance = '';
+    if (item.type === 'personal_info' || item.type === 'story') {
+      intentGuidance = `\nThis is a PERSONAL topic. Write posts that are authentic, vulnerable, and human.\nDo NOT force business metrics, client results, or revenue numbers into every post.\nSome posts can connect personal experience to professional lessons, but at least 3 out of 5 should focus on the emotional resonance, identity, values, memories, growth moments, family, culture, or lessons from life.\nPersonal posts that resonate emotionally often outperform business posts.`;
+    } else if (item.type === 'offer' || item.type === 'sales_funnel') {
+      intentGuidance = `\nThis is a BUSINESS topic. Use specific metrics, client results, revenue numbers, and tactical insights.\nInclude CTAs when appropriate. Be strategic and data-driven.`;
+    } else if (item.type === 'knowledge') {
+      intentGuidance = `\nThis is based on external knowledge/research. Use the information to create insightful, educational content.\nReference the source material to add depth and credibility.`;
+    } else if (item.type === 'post') {
+      intentGuidance = `\nThis is based on an existing post that performed well. Create new posts that explore different angles of the same theme.\nStudy what made the original post work and replicate those patterns with fresh content.`;
+    } else {
+      intentGuidance = `\nWrite posts that naturally fit this topic. If it's personal, keep it personal. If it's business, use business data.`;
+    }
+
+    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n${item.type.toUpperCase()}: ${item.label}\n${item.content}\n${intentGuidance}\n\nEach post MUST use a completely different angle — matched to the topic above.\n\nStudy my top-performing posts for emotional triggers and hook patterns, but use FRESH content — do NOT recycle the same 3-4 stories.\n\nCRITICAL: Every post must be 100% finished — real stories, real numbers, real examples from my data. Do NOT use square brackets or placeholders anywhere.\n\nFor each post:\n- Use a proven hook pattern from my top posts (provocative statement, specific number, confession, vulnerability)\n- Hit an emotional trigger that's worked before (vulnerability, authority, contrarian shock, relatability)\n- Start with **1. Archetype Name** as the header\n- Then write the complete post text underneath\n- Each post should use a different archetype\n- Use my real stories, real dollar amounts, and real experiences\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow my writing style and content preferences\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like me, not like AI`;
 
     await sendMessage({ content: userLabel, role: "user" });
 
