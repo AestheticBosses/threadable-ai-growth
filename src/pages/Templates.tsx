@@ -128,7 +128,7 @@ const Templates = () => {
   };
 
   const handleDraft = (t: Template) => {
-    navigate(`/chat?prefill=${encodeURIComponent(`Write a post using this template:\n\n${t.template_text}`)}`);
+    navigate(`/chat?prefill=${encodeURIComponent(`Write a complete Threads post using this archetype template as a structural guide:\n\n${t.template_text}\n\nUse the emotional triggers and hook patterns from my top-performing posts. Fill in ALL content with my real stories, numbers, and experiences — no brackets or placeholders. The post should feel as emotionally compelling as my best-performing posts.`)}`);
   };
 
   const canDelete = (t: Template) => {
