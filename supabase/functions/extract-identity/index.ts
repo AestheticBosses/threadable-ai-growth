@@ -158,13 +158,38 @@ Rules:
 
     // Persist extracted identity to DB so onboarding pipeline doesn't discard it
     try {
-      // 1. Upsert user_identity
-      await adminClient.from("user_identity").upsert({
-        user_id: userId,
-        about_you: parsed.about_you || null,
-        desired_perception: parsed.desired_perception || null,
-        main_goal: parsed.main_goal || null,
-      }, { onConflict: "user_id" });
+      // 1. Save user_identity (check-then-insert/update to avoid onConflict constraint issues)
+      console.log("Saving identity for user:", userId, "about_you length:", (parsed.about_you || "").length);
+
+      const { data: existingIdentity } = await adminClient
+        .from("user_identity")
+        .select("id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existingIdentity?.id) {
+        const { error: updateErr } = await adminClient
+          .from("user_identity")
+          .update({
+            about_you: parsed.about_you || null,
+            desired_perception: parsed.desired_perception || null,
+            main_goal: parsed.main_goal || null,
+          })
+          .eq("id", existingIdentity.id);
+        if (updateErr) console.error("user_identity UPDATE failed:", updateErr);
+        else console.log("user_identity updated for existing row:", existingIdentity.id);
+      } else {
+        const { error: insertErr } = await adminClient
+          .from("user_identity")
+          .insert({
+            user_id: userId,
+            about_you: parsed.about_you || null,
+            desired_perception: parsed.desired_perception || null,
+            main_goal: parsed.main_goal || null,
+          });
+        if (insertErr) console.error("user_identity INSERT failed:", insertErr);
+        else console.log("user_identity inserted new row for user:", userId);
+      }
 
       // 2. Clear existing data to prevent duplicates on re-runs
       await Promise.all([

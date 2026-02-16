@@ -455,7 +455,7 @@ const Onboarding = () => {
   };
 
   const handleGoToDashboard = () => {
-    navigate("/dashboard", { replace: true });
+    navigate("/my-story", { replace: true });
   };
 
   const isStepValid = () => {
@@ -533,7 +533,7 @@ const Onboarding = () => {
                     : "Your account is ready! 🎉"}
                 </p>
                 <Button onClick={handleGoToDashboard} size="lg" className="px-8">
-                  Go to Dashboard →
+                  Review Your Identity →
                 </Button>
               </div>
             )}
