@@ -6,11 +6,10 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ArrowLeft, ArrowRight, AtSign, Sparkles, TrendingUp, Loader2 } from "lucide-react";
+import { Check, ArrowLeft, ArrowRight, AtSign, Loader2 } from "lucide-react";
 
 const STEPS = [
   "Connect Threads",
-  "Experience",
   "Your Niche",
   "Dream Client",
   "End Goal",
@@ -91,7 +90,6 @@ const Onboarding = () => {
 
   const [threadsConnected, setThreadsConnected] = useState(false);
   const [threadsUsername, setThreadsUsername] = useState("");
-  const [isEstablished, setIsEstablished] = useState<boolean | null>(null);
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
@@ -198,39 +196,8 @@ const Onboarding = () => {
     }
   };
 
-  const runSeasonedPipeline = async () => {
+  const runSeasonedPipelineAfterFetch = async () => {
     if (!user) return;
-
-    // 1. Fetch posts (skip if already have some)
-    const { count } = await supabase
-      .from("posts_analyzed")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("source", "own");
-
-    if ((count ?? 0) === 0) {
-      await invokeStep("fetch", "fetch-user-posts", { user_id: user.id });
-    } else {
-      updateStep("fetch", "done");
-    }
-
-    // After fetching, check actual account maturity
-    const { data: posts } = await supabase
-      .from("posts_analyzed")
-      .select("views")
-      .eq("user_id", user.id)
-      .eq("source", "own")
-      .order("views", { ascending: false });
-
-    const totalPosts = posts?.length || 0;
-    const hasViralPosts = posts?.some((p) => (p.views ?? 0) >= 5000);
-    const actualSeasoned = totalPosts >= 20 && hasViralPosts;
-
-    if (!actualSeasoned && totalPosts < 20) {
-      // They said seasoned but they're actually new — switch to new pipeline
-      console.log("User said seasoned but only has", totalPosts, "posts. Switching to new path.");
-      // Continue with reduced pipeline but still use whatever posts they have
-    }
 
     // 2. Run analysis
     await invokeStep("analysis", "run-analysis", { user_id: user.id });
@@ -302,21 +269,8 @@ const Onboarding = () => {
     }
   };
 
-  const runNewAccountPipeline = async () => {
+  const runNewAccountPipelineAfterFetch = async () => {
     if (!user) return;
-
-    // 1. Fetch whatever posts they have
-    updateStep("fetch", "active");
-    try {
-      const headers = await getAuthHeaders();
-      await supabase.functions.invoke("fetch-user-posts", {
-        body: { user_id: user.id },
-        headers,
-      });
-    } catch {
-      // OK if fails — they might have 0 posts
-    }
-    updateStep("fetch", "done");
 
     // 2. Find aspirational accounts
     await invokeStep("competitors", "discover-niche-accounts", {
@@ -411,7 +365,6 @@ const Onboarding = () => {
           niche: niche.trim(),
           dream_client: dreamClient.trim(),
           end_goal: endGoal.trim(),
-          is_established: isEstablished,
           onboarding_complete: true,
         })
         .eq("id", user.id);
@@ -419,20 +372,69 @@ const Onboarding = () => {
       if (error) throw error;
       await refreshProfile();
 
-      // Determine account type and start pipeline
-      const type: AccountType = isEstablished ? "seasoned" : "new";
-      setAccountType(type);
-      const steps = type === "seasoned" ? SEASONED_STEPS : NEW_STEPS;
-      setPipelineSteps(steps.map((s) => ({ ...s, status: "waiting" as const })));
+      // First, always fetch posts to determine account maturity
       setPipelineRunning(true);
       setPipelineComplete(false);
       setPipelineHasErrors(false);
 
-      // Run the appropriate pipeline
-      if (type === "seasoned") {
-        await runSeasonedPipeline();
+      // Start with seasoned steps (fetch will determine actual path)
+      setPipelineSteps(SEASONED_STEPS.map((s) => ({ ...s, status: "waiting" as const })));
+      setAccountType("seasoned");
+
+      // Fetch posts first
+      const { count } = await supabase
+        .from("posts_analyzed")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("source", "own");
+
+      if ((count ?? 0) === 0) {
+        updateStep("fetch", "active");
+        try {
+          const headers = await getAuthHeaders();
+          await supabase.functions.invoke("fetch-user-posts", {
+            body: { user_id: user.id },
+            headers,
+          });
+        } catch {
+          // OK if fails
+        }
+        updateStep("fetch", "done");
+      }
+
+      // Now check actual account maturity from post data
+      const { data: posts } = await supabase
+        .from("posts_analyzed")
+        .select("views")
+        .eq("user_id", user.id)
+        .eq("source", "own")
+        .order("views", { ascending: false });
+
+      const totalPosts = posts?.length || 0;
+      const hasViralPosts = posts?.some((p) => (p.views ?? 0) >= 5000);
+      const isSeasoned = totalPosts >= 20 && hasViralPosts;
+
+      // Update profile with detected maturity
+      await supabase.from("profiles").update({
+        is_established: isSeasoned,
+      }).eq("id", user.id);
+
+      if (isSeasoned) {
+        setAccountType("seasoned");
+        setPipelineSteps(SEASONED_STEPS.map((s) => ({
+          ...s,
+          status: s.id === "fetch" ? "done" as const : "waiting" as const,
+        })));
+        // Run remaining seasoned steps (fetch already done)
+        await runSeasonedPipelineAfterFetch();
       } else {
-        await runNewAccountPipeline();
+        setAccountType("new");
+        setPipelineSteps(NEW_STEPS.map((s) => ({
+          ...s,
+          status: s.id === "fetch" ? "done" as const : "waiting" as const,
+        })));
+        // Run new account pipeline (fetch already done)
+        await runNewAccountPipelineAfterFetch();
       }
 
       // Check for errors
@@ -461,12 +463,10 @@ const Onboarding = () => {
       case 0:
         return true;
       case 1:
-        return isEstablished !== null;
-      case 2:
         return niche.trim().length > 0;
-      case 3:
+      case 2:
         return dreamClient.trim().length > 0;
-      case 4:
+      case 3:
         return endGoal.trim().length > 0;
       default:
         return false;
@@ -474,7 +474,7 @@ const Onboarding = () => {
   };
 
   const handleNext = () => {
-    if (step === 4) {
+    if (step === 3) {
       handleComplete();
     } else {
       setStep((s) => s + 1);
@@ -617,57 +617,6 @@ const Onboarding = () => {
         )}
 
         {step === 1 && (
-          <div className="space-y-6 text-center">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              How long have you been posting on Threads?
-            </h1>
-            <p className="text-muted-foreground">
-              This helps us personalize your strategy.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <button
-                onClick={() => setIsEstablished(false)}
-                className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
-                  isEstablished === false
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border hover:border-primary/40"
-                }`}
-              >
-                <Sparkles className={`h-8 w-8 ${isEstablished === false ? "text-primary" : "text-muted-foreground"}`} />
-                <div>
-                  <p className="text-base font-semibold text-foreground">I'm brand new</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Less than 2 weeks on Threads</p>
-                </div>
-              </button>
-              <button
-                onClick={() => setIsEstablished(true)}
-                className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
-                  isEstablished === true
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-border hover:border-primary/40"
-                }`}
-              >
-                <TrendingUp className={`h-8 w-8 ${isEstablished === true ? "text-primary" : "text-muted-foreground"}`} />
-                <div>
-                  <p className="text-base font-semibold text-foreground">I've been posting for a while</p>
-                  <p className="mt-1 text-sm text-muted-foreground">I have existing posts to analyze</p>
-                </div>
-              </button>
-            </div>
-            {isEstablished === true && (
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
-                Great! We'll analyze <strong>YOUR</strong> posts and auto-generate your entire strategy — playbook, plans, templates, and more.
-              </div>
-            )}
-            {isEstablished === false && (
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
-                No worries! We'll study top accounts in your niche and build your starter strategy automatically.
-              </div>
-            )}
-          </div>
-        )}
-
-        {step === 2 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               What's Your Niche?
@@ -690,7 +639,7 @@ const Onboarding = () => {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Who's Your Dream Client?
@@ -714,7 +663,7 @@ const Onboarding = () => {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 3 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               What's Your End Goal?
@@ -757,7 +706,7 @@ const Onboarding = () => {
               disabled={!isStepValid() || saving}
               className="gap-2 px-6"
             >
-              {step === 4 ? (
+              {step === 3 ? (
                 saving ? "Saving…" : "Launch My Growth Engine →"
               ) : (
                 <>
