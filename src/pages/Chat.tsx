@@ -54,6 +54,49 @@ const MORE_ACTIONS = [
   { icon: "🎯", label: "Write a BOF post", message: "Write a bottom-of-funnel conversion post that drives toward my main goal. Make it feel natural, not salesy." },
   { icon: "✏️", label: "Improve a draft", message: "I have a draft post I want to improve. I'll paste it and you score it against my content preferences and suggest improvements." },
   { icon: "📅", label: "Plan tomorrow's content", message: "Based on my content plan and funnel strategy, what should I post tomorrow? Give me 2-3 options with hooks." },
+  { icon: "🔄", label: "Rewrite a post", message: `I want to rewrite someone else's viral post in my own voice.
+
+Here's what I need you to do when I paste the post:
+
+1. ANALYZE the source post:
+   - What hook type does it use? (provocative statement, specific number, confession, question, "Nobody tells you", list, contrarian take)
+   - What emotional trigger drives it? (fear of missing out, vulnerability, authority flex, contrarian shock, relatability, aspiration)
+   - What structure does it follow? (hook → story → lesson, hook → proof → CTA, hook → list → punchline, hook → contrast → insight)
+   - Why would someone stop scrolling for this?
+
+2. MAP to my content world:
+   - Which of my archetypes fits this angle best?
+   - What stories, numbers, or experiences from my Identity match this theme?
+   - What funnel stage would this serve for my audience?
+
+3. REWRITE as 3 variations:
+   - Each variation should use a DIFFERENT archetype from my discovered archetypes
+   - Each should use DIFFERENT stories and data points from my Identity
+   - Keep the same emotional intensity and hook pattern from the original, but make it 100% mine
+   - Use my real voice, real numbers, real experiences — no brackets, no placeholders
+   - Stay under 500 characters unless the content demands more
+
+Format EXACTLY like this for each variation:
+
+**1. Archetype Name**
+Complete post text using my voice, stories, and data
+
+Archetype: archetype name
+Funnel Stage: TOF/MOF/BOF
+
+**2. Archetype Name**
+Complete post text using my voice, stories, and data
+
+Archetype: archetype name
+Funnel Stage: TOF/MOF/BOF
+
+**3. Archetype Name**
+Complete post text using my voice, stories, and data
+
+Archetype: archetype name
+Funnel Stage: TOF/MOF/BOF
+
+Now please ask me to paste the post I want to rewrite.` },
 ];
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-threadable`;
@@ -814,7 +857,14 @@ const Chat = () => {
           removeItem(streamingId);
           if (fullResponse.trim()) {
             await sendMessage({ content: fullResponse, role: "assistant" });
-            addItem({ type: "ai", content: fullResponse });
+            const ideas = parsePostIdeas(fullResponse);
+            if (ideas && ideas.length >= 2) {
+              setPostIdeas(ideas);
+              addItem({ type: "ai", content: `Here are ${ideas.length} variations for you:` });
+              addItem({ type: "idea-cards", ideas });
+            } else {
+              addItem({ type: "ai", content: fullResponse });
+            }
           }
           setIsBusy(false);
         },
