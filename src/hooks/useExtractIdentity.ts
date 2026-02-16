@@ -97,7 +97,14 @@ export function useExtractIdentity() {
         }
       }
 
-      // 3. Insert offers into user_offers
+      // 3. Delete existing data to prevent duplicates on re-runs
+      await Promise.all([
+        supabase.from("user_offers").delete().eq("user_id", user.id),
+        supabase.from("user_audiences").delete().eq("user_id", user.id),
+        supabase.from("user_personal_info").delete().eq("user_id", user.id),
+      ]);
+
+      // 4. Insert offers into user_offers
       if (data.offers.length > 0) {
         const offerInserts = data.offers.map((o) => ({
           user_id: user.id,
@@ -107,7 +114,7 @@ export function useExtractIdentity() {
         await supabase.from("user_offers").insert(offerInserts);
       }
 
-      // 4. Insert audiences into user_audiences
+      // 5. Insert audiences into user_audiences
       if (data.target_audiences.length > 0) {
         const audienceInserts = data.target_audiences.map((name) => ({
           user_id: user.id,
@@ -116,7 +123,7 @@ export function useExtractIdentity() {
         await supabase.from("user_audiences").insert(audienceInserts);
       }
 
-      // 5. Insert personal info into user_personal_info
+      // 6. Insert personal info into user_personal_info
       if (data.personal_info.length > 0) {
         const infoInserts = data.personal_info.map((content) => ({
           user_id: user.id,

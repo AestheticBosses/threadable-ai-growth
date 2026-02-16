@@ -156,6 +156,76 @@ Rules:
       });
     }
 
+    // Persist extracted identity to DB so onboarding pipeline doesn't discard it
+    try {
+      // 1. Upsert user_identity
+      await adminClient.from("user_identity").upsert({
+        user_id: userId,
+        about_you: parsed.about_you || null,
+        desired_perception: parsed.desired_perception || null,
+        main_goal: parsed.main_goal || null,
+      }, { onConflict: "user_id" });
+
+      // 2. Clear existing data to prevent duplicates on re-runs
+      await Promise.all([
+        adminClient.from("user_offers").delete().eq("user_id", userId),
+        adminClient.from("user_audiences").delete().eq("user_id", userId),
+        adminClient.from("user_personal_info").delete().eq("user_id", userId),
+        adminClient.from("user_story_vault").delete().eq("user_id", userId).eq("section", "stories"),
+      ]);
+
+      // 3. Insert stories into user_story_vault
+      if (parsed.stories?.length > 0) {
+        const storyEntries = parsed.stories.map((s: any) => ({
+          title: s.title,
+          story: s.body,
+          lesson: s.key_lesson,
+          tags: [],
+        }));
+        await adminClient.from("user_story_vault").insert({
+          user_id: userId,
+          section: "stories",
+          data: storyEntries,
+        });
+      }
+
+      // 4. Insert offers
+      if (parsed.offers?.length > 0) {
+        await adminClient.from("user_offers").insert(
+          parsed.offers.map((o: any) => ({
+            user_id: userId,
+            name: o.name,
+            description: o.description || null,
+          }))
+        );
+      }
+
+      // 5. Insert audiences
+      if (parsed.target_audiences?.length > 0) {
+        await adminClient.from("user_audiences").insert(
+          parsed.target_audiences.map((name: string) => ({
+            user_id: userId,
+            name,
+          }))
+        );
+      }
+
+      // 6. Insert personal info
+      if (parsed.personal_info?.length > 0) {
+        await adminClient.from("user_personal_info").insert(
+          parsed.personal_info.map((content: string) => ({
+            user_id: userId,
+            content,
+          }))
+        );
+      }
+
+      console.log("Identity data persisted for user:", userId);
+    } catch (saveErr) {
+      // Log but don't fail the request — data is still returned for review modal
+      console.error("Failed to persist identity data:", saveErr);
+    }
+
     return new Response(JSON.stringify({ data: parsed, post_count: posts.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
