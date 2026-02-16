@@ -14,7 +14,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Loader2, Sparkles, RefreshCw, Check, ArrowRight } from "lucide-react";
-import { usePlaybookData } from "@/hooks/useStrategyData";
+import { usePlaybookData, useArchetypeDiscovery } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
 import { useHasIdentity } from "@/hooks/usePlansData";
 
@@ -47,7 +47,8 @@ const Playbook = () => {
   const [generatingContent, setGeneratingContent] = useState(false);
   const [postsPerDay, setPostsPerDay] = useState(5);
   const { data: playbook, isLoading } = usePlaybookData();
-  
+  const { data: archetypeDiscovery } = useArchetypeDiscovery();
+
   const { data: hasIdentity } = useHasIdentity();
 
   // Generate All Plans state
@@ -316,30 +317,80 @@ const Playbook = () => {
                 </Button>
               </div>
 
-              {/* SECTION: Templates */}
-              {playbook.templates && (
+              {/* SECTION: Archetype Strategy Overview */}
+              {archetypeDiscovery?.archetypes && archetypeDiscovery.archetypes.length > 0 && (
                 <section className="space-y-4">
-                  <h2 className="text-lg font-semibold text-foreground">Templates by Archetype</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {playbook.templates.map((t, i) => (
-                      <Card key={t.archetype} className={`border-2 ${ARCHETYPE_BORDER_COLORS[i % ARCHETYPE_BORDER_COLORS.length]}`}>
-                        <CardContent className="p-5 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg">{t.emoji}</span>
-                            <Badge className={`text-xs ${ARCHETYPE_BADGE_COLORS[i % ARCHETYPE_BADGE_COLORS.length]}`}>{t.archetype}</Badge>
-                          </div>
-                          <pre className="text-sm text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed rounded-lg p-4 border border-border" style={{ background: "rgba(0,0,0,0.3)" }}>
-                            {t.template}
-                          </pre>
-                          {t.example && (
-                            <div className="text-xs text-muted-foreground">
-                              <span className="font-bold text-emerald-400">Example: </span>
-                              <span className="text-foreground/70">{t.example}</span>
+                  <h2 className="text-lg font-semibold text-foreground">Your Content Archetypes</h2>
+                  <p className="text-sm text-muted-foreground">Each archetype is a proven content pattern discovered from your top-performing posts.</p>
+                  <div className="grid grid-cols-1 gap-4">
+                    {archetypeDiscovery.archetypes.map((a, i) => {
+                      const scheduleDays = archetypeDiscovery.weekly_schedule
+                        ?.filter((s) => s.archetype === a.name)
+                        .map((s) => s.day) || [];
+                      return (
+                        <Card key={a.name} className={`border-2 ${ARCHETYPE_BORDER_COLORS[i % ARCHETYPE_BORDER_COLORS.length]}`}>
+                          <CardContent className="p-5 space-y-4">
+                            {/* Header */}
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl">{a.emoji}</span>
+                                <h3 className="text-base font-bold text-foreground">{a.name}</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className={`text-xs ${ARCHETYPE_BADGE_COLORS[i % ARCHETYPE_BADGE_COLORS.length]}`}>
+                                  {a.recommended_percentage}% of content
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  Drives {a.drives}
+                                </Badge>
+                              </div>
                             </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
+
+                            {/* Description */}
+                            <p className="text-sm text-foreground/80">{a.description}</p>
+
+                            {/* Key Ingredients */}
+                            {a.key_ingredients?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Key Ingredients</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {a.key_ingredients.map((ing) => (
+                                    <Badge key={ing} variant="outline" className="text-xs">{ing}</Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* When to Use */}
+                            {scheduleDays.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">When to Use</p>
+                                <p className="text-sm text-foreground/70">
+                                  Scheduled for: {scheduleDays.join(", ")}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Example Hooks */}
+                            {a.example_posts?.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Example Hooks</p>
+                                <div className="space-y-1.5">
+                                  {a.example_posts.slice(0, 3).map((ex, j) => {
+                                    const hook = ex.length > 120 ? ex.substring(0, 120) + "…" : ex;
+                                    return (
+                                      <p key={j} className="text-xs text-foreground/60 italic pl-3 border-l-2 border-border">
+                                        "{hook}"
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </section>
               )}

@@ -253,29 +253,12 @@ const Onboarding = () => {
       updateStep("plans", "error");
     }
 
-    // 9. Generate templates from archetypes (requires archetypes)
+    // 9. Generate templates via AI (5 per archetype, requires archetypes)
     if (archetypesOk) {
       updateStep("templates", "active");
       try {
-        const { data: strategies } = await supabase
-          .from("content_strategies")
-          .select("strategy_data")
-          .eq("user_id", user.id)
-          .eq("strategy_type", "archetype_discovery")
-          .single();
-
-        const archetypes = (strategies?.strategy_data as any)?.archetypes;
-        if (archetypes && Array.isArray(archetypes)) {
-          for (const archetype of archetypes) {
-            await supabase.from("content_templates").insert({
-              user_id: user.id,
-              archetype: archetype.name || "General",
-              template_text: archetype.template || "",
-              example_text: archetype.example_posts?.[0] || null,
-              is_default: true,
-            });
-          }
-        }
+        const { error: tplErr } = await invokeStep("generate-templates", {});
+        if (tplErr) throw tplErr;
         updateStep("templates", "done");
       } catch (err) {
         console.error("Templates step threw:", err);
@@ -343,28 +326,11 @@ const Onboarding = () => {
       updateStep("plans", "error");
     }
 
-    // 7. Generate starter templates
+    // 7. Generate starter templates via AI (5 per archetype)
     updateStep("templates", "active");
     try {
-      const { data: strategies } = await supabase
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "archetype_discovery")
-        .single();
-
-      const archetypes = (strategies?.strategy_data as any)?.archetypes;
-      if (archetypes && Array.isArray(archetypes)) {
-        for (const archetype of archetypes) {
-          await supabase.from("content_templates").insert({
-            user_id: user.id,
-            archetype: archetype.name || "General",
-            template_text: archetype.template || "",
-            example_text: archetype.example_posts?.[0] || null,
-            is_default: true,
-          });
-        }
-      }
+      const { error: tplErr } = await invokeStep("generate-templates", {});
+      if (tplErr) throw tplErr;
       updateStep("templates", "done");
     } catch (err) {
       console.error("Templates step threw:", err);
