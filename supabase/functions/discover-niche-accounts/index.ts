@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY")!;
+    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     const authHeader = req.headers.get("Authorization");
@@ -42,25 +42,24 @@ Deno.serve(async (req) => {
 
     const userMessage = "My niche: " + niche + "\nMy dream client: " + dreamClient + "\n\nSuggest aspirational Threads accounts and niche patterns for me to study.";
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + lovableKey,
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 3000,
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
       }),
     });
 
     if (!aiRes.ok) {
       const errText = await aiRes.text();
-      console.error("AI error:", aiRes.status, errText);
+      console.error("Anthropic error:", aiRes.status, errText);
       return new Response(JSON.stringify({ error: "AI generation failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -68,7 +67,7 @@ Deno.serve(async (req) => {
     }
 
     const aiData = await aiRes.json();
-    const rawText = aiData.choices?.[0]?.message?.content || "";
+    const rawText = aiData.content?.[0]?.text || "";
     console.log("AI response length:", rawText.length);
 
     let parsed: any;
