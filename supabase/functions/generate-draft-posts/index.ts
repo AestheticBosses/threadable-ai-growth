@@ -91,6 +91,18 @@ POST SPECIFICATIONS:
 - Topic: ${post.topic || ""}
 - Hook idea: ${post.hook_idea || ""}
 
+=== HOW YOU WRITE HIGH-PERFORMING POSTS ===
+
+BEFORE writing, study the user's top-performing posts in the context below. Identify the emotional triggers, hook patterns, and structures that drove their highest engagement. Then replicate those patterns with fresh content from the user's vault.
+
+The goal: this post should feel as emotionally compelling as their best-performing posts, but with completely new content.
+
+For every post you write:
+1. Pick one of the user's top-performing posts and use its emotional trigger + structure as a blueprint
+2. Replace the content with a different story, number, or angle from the user's data
+3. Keep the same emotional intensity — don't water it down
+4. Make the hook just as scroll-stopping as the original
+
 === RULES ===
 - NEVER use placeholder brackets. Use the user's real data from their Identity, Stories, and Numbers.
 - Write as this person — their words, their rhythm, their personality. Not AI voice.

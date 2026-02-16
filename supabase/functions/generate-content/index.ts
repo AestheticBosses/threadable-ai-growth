@@ -511,6 +511,15 @@ ${funnelContext}
 STYLE REFERENCE (their actual top posts):
 ${topPostsRef || "No posts available"}
 
+PATTERN REPLICATION RULES:
+- For each post you generate, pick one of the user's top-performing posts above and use its emotional trigger + structure as a blueprint.
+- If the top post used vulnerability → pivot → strength, use that same structure with a different story.
+- If the top post used a specific dollar amount hook, use a different specific dollar amount from the vault.
+- If the top post used profanity for emphasis, maintain that same intensity level.
+- The STRUCTURE and EMOTIONAL TRIGGERS come from what's proven to work (the top posts above).
+- The CONTENT (stories, numbers, facts) comes fresh from the user's Identity, Stories, and Knowledge Base.
+- Never repeat a top post's content — only replicate its underlying pattern.
+
 RULES:
 1. Match this person's EXACT voice. Read the style reference carefully.
 2. HARD LIMIT: Every post MUST be under 500 characters including spaces and emojis. Count carefully. Posts over 500 characters will be rejected by the Threads API.
