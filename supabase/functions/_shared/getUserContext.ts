@@ -1,4 +1,33 @@
 /**
+ * Classify hook type from the opening words of a post.
+ */
+function classifyHook(text: string): string {
+  const lower = text.toLowerCase().trim();
+  if (lower.startsWith("i ") || lower.startsWith("i'm ") || lower.startsWith("i've ") || lower.startsWith("i was ")) return "confession/story opener";
+  if (lower.match(/^\d/) || lower.match(/^\$\d/)) return "stat/number";
+  if (lower.endsWith("?") || lower.startsWith("what ") || lower.startsWith("why ") || lower.startsWith("how ") || lower.startsWith("have you ") || lower.startsWith("do you ")) return "question";
+  if (lower.startsWith("nobody ") || lower.startsWith("no one ") || lower.startsWith("stop ") || lower.startsWith("don't ") || lower.startsWith("the truth ") || lower.startsWith("hot take")) return "controversy/contrarian";
+  if (lower.startsWith("here's ") || lower.startsWith("here are ") || lower.match(/^\d+ (things|ways|tips|steps|reasons)/)) return "list/framework";
+  if (lower.startsWith("imagine ") || lower.startsWith("picture this") || lower.startsWith("last ") || lower.startsWith("yesterday ") || lower.startsWith("3 years ago")) return "story opener";
+  return "statement";
+}
+
+/**
+ * Classify emotional trigger from post text.
+ */
+function classifyEmotion(text: string): string {
+  const lower = text.toLowerCase();
+  if (lower.match(/confess|honest|truth is|admit|scared|afraid|failed|mistake|broke|struggle/)) return "vulnerability";
+  if (lower.match(/million|revenue|\$\d|results|clients|data|proven|study|research/)) return "authority";
+  if (lower.match(/wrong|myth|actually|stop|unpopular|nobody|overrated|underrated|hot take/)) return "contrarian";
+  if (lower.match(/me too|same|you're not alone|we all|everyone|relatable|feel this/)) return "relatability";
+  if (lower.match(/lol|funny|weird|crazy|hilarious|joke/)) return "humor";
+  if (lower.match(/now|today|limited|hurry|before|deadline|last chance|don't miss/)) return "urgency";
+  if (lower.match(/dream|imagine|freedom|lifestyle|goal|vision|one day/)) return "aspiration";
+  return "inspiration";
+}
+
+/**
  * Shared utility: fetches the COMPLETE user context for AI edge functions.
  * All AI-calling edge functions should use this to ensure consistent context.
  */
@@ -126,31 +155,42 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "No knowledge base items.";
 
-  // === TOP POSTS BY VIEWS ===
+  // === TOP POSTS BY VIEWS (patterns only — not full text) ===
   const topByViews = topPostsByViewsRes.data || [];
   const viewsSection = topByViews.length > 0
-    ? topByViews.map((p: any, i: number) =>
-        `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}" — ${p.views || 0} views, ${p.likes || 0} likes, ${p.replies || 0} replies, ${p.reposts || 0} reposts, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}`
-      ).join("\n")
+    ? topByViews.map((p: any, i: number) => {
+        const text = p.text_content || "";
+        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const hook = classifyHook(text);
+        const emotion = classifyEmotion(text);
+        return `${i + 1}. Hook: ${hook} | Trigger: ${emotion} | Archetype: ${p.archetype || "unknown"} | ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"} | Length: ${text.length} chars | Opens with: "${firstWords}…"`;
+      }).join("\n")
     : "No posts analyzed yet.";
 
-  // === TOP POSTS BY ENGAGEMENT RATE ===
+  // === TOP POSTS BY ENGAGEMENT RATE (patterns only) ===
   const topByEngagement = topPostsByEngagementRes.data || [];
   const engagementSection = topByEngagement.length > 0
-    ? topByEngagement.map((p: any, i: number) =>
-        `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}" — ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}, ${p.views || 0} views`
-      ).join("\n")
+    ? topByEngagement.map((p: any, i: number) => {
+        const text = p.text_content || "";
+        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const hook = classifyHook(text);
+        const emotion = classifyEmotion(text);
+        return `${i + 1}. Hook: ${hook} | Trigger: ${emotion} | Archetype: ${p.archetype || "unknown"} | ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}, ${p.views || 0} views | Length: ${text.length} chars | Opens with: "${firstWords}…"`;
+      }).join("\n")
     : "";
 
-  // === RECENT POSTS (random 10 from last 30 for variety) ===
+  // === RECENT POSTS (random 10 from last 30, patterns only) ===
   const recentPosts = recentPostsRes.data || [];
   const randomRecent = recentPosts
     .sort(() => Math.random() - 0.5)
     .slice(0, 10);
   const recentSection = randomRecent.length > 0
-    ? randomRecent.map((p: any, i: number) =>
-        `${i + 1}. [${p.archetype || "unknown"}] "${(p.text_content || "").slice(0, 200)}"`
-      ).join("\n")
+    ? randomRecent.map((p: any, i: number) => {
+        const text = p.text_content || "";
+        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const hook = classifyHook(text);
+        return `${i + 1}. Hook: ${hook} | Archetype: ${p.archetype || "unknown"} | Opens with: "${firstWords}…"`;
+      }).join("\n")
     : "";
 
   // === REGRESSION INSIGHTS ===
@@ -201,7 +241,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     templatesSection += "\n\nUse these templates as structural guides when drafting posts — fill in the brackets with real user data, don't copy verbatim.";
   }
 
-  // === COMPETITOR INSIGHTS ===
+  // === COMPETITOR INSIGHTS (patterns only — do NOT copy their content) ===
   const competitorAccounts = competitorAccountsRes.data || [];
   const competitorPosts = competitorPostsRes.data || [];
   let competitorSection = "No competitor accounts saved.";
@@ -211,9 +251,13 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       parts.push("Accounts being studied: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
     }
     if (competitorPosts.length > 0) {
-      parts.push("Top competitor posts (study their patterns, hooks, and structures — then apply to user's own stories and data):");
+      parts.push("Top competitor post patterns (learn the structure and triggers — apply to user's own stories):");
       competitorPosts.forEach((p: any, i: number) => {
-        parts.push(`${i + 1}. [@${p.source_username || "unknown"}] "${(p.text_content || "").slice(0, 250)}" — ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}`);
+        const text = p.text_content || "";
+        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const hook = classifyHook(text);
+        const emotion = classifyEmotion(text);
+        parts.push(`${i + 1}. [@${p.source_username || "unknown"}] Hook: ${hook} | Trigger: ${emotion} | ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"} | Length: ${text.length} chars | Opens with: "${firstWords}…"`);
       });
     }
     competitorSection = parts.join("\n");
@@ -264,12 +308,12 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "No content plan generated yet.";
 
-  let postsBlock = "=== TOP PERFORMING POSTS BY VIEWS ===\n" + viewsSection;
+  let postsBlock = "=== TOP PERFORMING POST PATTERNS BY VIEWS (do NOT copy these posts — learn the patterns) ===\n" + viewsSection;
   if (engagementSection) {
-    postsBlock += "\n\n=== TOP PERFORMING POSTS BY ENGAGEMENT RATE ===\n" + engagementSection;
+    postsBlock += "\n\n=== TOP PERFORMING POST PATTERNS BY ENGAGEMENT RATE ===\n" + engagementSection;
   }
   if (recentSection) {
-    postsBlock += "\n\n=== RECENT POSTS (for variety reference) ===\n" + recentSection;
+    postsBlock += "\n\n=== RECENT POST PATTERNS (for variety reference) ===\n" + recentSection;
   }
 
   return "=== USER IDENTITY ===\n" +
@@ -300,7 +344,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "=== KEY INSIGHTS FROM DATA ===\n" +
     insightsSection + "\n\n" +
     postsBlock + "\n\n" +
-    "=== COMPETITOR INSIGHTS (learn from their patterns, not their content) ===\n" +
+    "=== COMPETITOR POST PATTERNS (learn the structure and triggers — do NOT copy their words) ===\n" +
     competitorSection + "\n\n" +
     "=== CONTENT BUCKETS (audience segments) ===\n" +
     bucketsSection + "\n\n" +
