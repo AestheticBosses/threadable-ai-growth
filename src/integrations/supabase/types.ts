@@ -120,6 +120,202 @@ export type Database = {
           },
         ]
       }
+      connected_topics: {
+        Row: {
+          created_at: string | null
+          hook_angle: string | null
+          id: string
+          is_active: boolean | null
+          last_used_at: string | null
+          name: string
+          pillar_id: string | null
+          used_count: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          hook_angle?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name: string
+          pillar_id?: string | null
+          used_count?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          hook_angle?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_used_at?: string | null
+          name?: string
+          pillar_id?: string | null
+          used_count?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connected_topics_pillar_id_fkey"
+            columns: ["pillar_id"]
+            isOneToOne: false
+            referencedRelation: "content_pillars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_buckets: {
+        Row: {
+          audience_persona: string | null
+          business_connection: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          priority: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          audience_persona?: string | null
+          business_connection?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          priority?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          audience_persona?: string | null
+          business_connection?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          priority?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      content_pillars: {
+        Row: {
+          bucket_id: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          percentage: number | null
+          purpose: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          bucket_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          percentage?: number | null
+          purpose?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          bucket_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          percentage?: number | null
+          purpose?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_pillars_bucket_id_fkey"
+            columns: ["bucket_id"]
+            isOneToOne: false
+            referencedRelation: "content_buckets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_plan_items: {
+        Row: {
+          archetype: string | null
+          created_at: string | null
+          funnel_stage: string | null
+          id: string
+          is_test_slot: boolean | null
+          pillar_id: string | null
+          plan_day: number
+          plan_week: number
+          post_id: string | null
+          scheduled_date: string | null
+          status: string | null
+          topic_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          archetype?: string | null
+          created_at?: string | null
+          funnel_stage?: string | null
+          id?: string
+          is_test_slot?: boolean | null
+          pillar_id?: string | null
+          plan_day: number
+          plan_week: number
+          post_id?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          topic_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          archetype?: string | null
+          created_at?: string | null
+          funnel_stage?: string | null
+          id?: string
+          is_test_slot?: boolean | null
+          pillar_id?: string | null
+          plan_day?: number
+          plan_week?: number
+          post_id?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          topic_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_plan_items_pillar_id_fkey"
+            columns: ["pillar_id"]
+            isOneToOne: false
+            referencedRelation: "content_pillars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_plan_items_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "connected_topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       content_preferences: {
         Row: {
           content: string
@@ -473,13 +669,16 @@ export type Database = {
           include_credibility_markers: boolean
           is_established: boolean | null
           max_posts_per_day: number
+          mission: string | null
           niche: string | null
           onboarding_complete: boolean | null
+          posting_cadence: string | null
           threads_access_token: string | null
           threads_profile_picture_url: string | null
           threads_token_expires_at: string | null
           threads_user_id: string | null
           threads_username: string | null
+          traffic_url: string | null
           updated_at: string
           voice_profile: Json | null
         }
@@ -501,13 +700,16 @@ export type Database = {
           include_credibility_markers?: boolean
           is_established?: boolean | null
           max_posts_per_day?: number
+          mission?: string | null
           niche?: string | null
           onboarding_complete?: boolean | null
+          posting_cadence?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
+          traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
         }
@@ -529,13 +731,16 @@ export type Database = {
           include_credibility_markers?: boolean
           is_established?: boolean | null
           max_posts_per_day?: number
+          mission?: string | null
           niche?: string | null
           onboarding_complete?: boolean | null
+          posting_cadence?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
+          traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
         }
@@ -974,6 +1179,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weekly_reviews: {
+        Row: {
+          archetype_performance: Json | null
+          created_at: string | null
+          id: string
+          pillar_performance: Json | null
+          recommendations: Json | null
+          review_date: string | null
+          top_combos: Json | null
+          topic_performance: Json | null
+          user_id: string
+          week_number: number
+        }
+        Insert: {
+          archetype_performance?: Json | null
+          created_at?: string | null
+          id?: string
+          pillar_performance?: Json | null
+          recommendations?: Json | null
+          review_date?: string | null
+          top_combos?: Json | null
+          topic_performance?: Json | null
+          user_id: string
+          week_number: number
+        }
+        Update: {
+          archetype_performance?: Json | null
+          created_at?: string | null
+          id?: string
+          pillar_performance?: Json | null
+          recommendations?: Json | null
+          review_date?: string | null
+          top_combos?: Json | null
+          topic_performance?: Json | null
+          user_id?: string
+          week_number?: number
+        }
+        Relationships: []
       }
     }
     Views: {
