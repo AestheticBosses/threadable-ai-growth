@@ -225,7 +225,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "=== TARGET AUDIENCES ===\n" +
     audiencesSection + "\n\n" +
     "=== PERSONAL INFORMATION ===\n" +
-    personalSection + "\n\n" +
+    personalSection + "\n" +
+    "NOTE: Prioritize professional facts (role, company, credentials, key achievements) over lifestyle details (hobbies, locations, preferences). Only use lifestyle details when they directly support the post's point or add authentic texture — never as the main content angle.\n\n" +
     "=== VOICE & STYLE ===\n" +
     styleSection + "\n" +
     "Content Preferences:\n" +
