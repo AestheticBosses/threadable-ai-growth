@@ -128,7 +128,6 @@ export function PostPreviewSplit({
   onStatusChange,
 }: PostPreviewSplitProps) {
   const { user } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
   const [editableContent, setEditableContent] = useState(postContent);
   const [isEditing, setIsEditing] = useState(false);
   // Sync prop changes into editable state (e.g. during streaming)
