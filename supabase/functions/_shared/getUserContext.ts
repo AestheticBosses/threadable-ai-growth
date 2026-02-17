@@ -88,11 +88,16 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(7),
   ]);
 
-  // === IDENTITY ===
+  // === IDENTITY (condensed — strip anecdotes the AI would copy) ===
   const identity = identityRes.data;
-  const identitySection = identity?.about_you
-    ? `About: ${identity.about_you}\nDesired Perception: ${identity.desired_perception || "Not set"}\nMain Goal: ${identity.main_goal || "Not set"}`
+  let aboutYou = identity?.about_you || "";
+  // Keep only first 300 chars to limit story seeding into every generation
+  aboutYou = aboutYou.substring(0, 300);
+  if (aboutYou.length === 300) aboutYou += "…";
+  const identitySection = aboutYou
+    ? `About: ${aboutYou}\nDesired Perception: ${identity.desired_perception || "Not set"}\nMain Goal: ${identity.main_goal || "Not set"}`
     : "No identity data provided yet.";
+  console.log("[getUserContext] Identity section preview:", identitySection.substring(0, 300));
 
   // === STORIES (titles + lessons only — keeps AI from retelling stories verbatim) ===
   const stories = storiesRes.data || [];
