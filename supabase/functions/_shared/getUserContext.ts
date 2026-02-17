@@ -56,12 +56,16 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     ? `About: ${identity.about_you}\nDesired Perception: ${identity.desired_perception || "Not set"}\nMain Goal: ${identity.main_goal || "Not set"}`
     : "No identity data provided yet.";
 
-  // === STORIES ===
+  // === STORIES (titles + lessons only — keeps AI from retelling stories verbatim) ===
   const stories = storiesRes.data || [];
   const storiesSection = stories.length > 0
     ? stories.map((s: any) => {
         const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
-        return items.map((item: any) => `- ${item.title || item.name || ""}: ${item.body || item.story || item.description || JSON.stringify(item)}`).join("\n");
+        return items.map((item: any) => {
+          const title = item.title || item.name || "Untitled";
+          const lesson = item.lesson || item.key_lesson || "";
+          return lesson ? `- Story: ${title} — Lesson: ${lesson}` : `- Story: ${title}`;
+        }).join("\n");
       }).filter(Boolean).join("\n")
     : "No stories added yet.";
 
