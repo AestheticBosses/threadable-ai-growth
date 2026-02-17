@@ -29,6 +29,38 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
   // Minimum body length for a parsed idea to count as a real post (not instructional text)
   const MIN_POST_BODY_LENGTH = 50;
 
+  // Primary format: 📌 Pillar × Archetype (plan-driven format)
+  const pinSections = text.split(/📌\s*/);
+  if (pinSections.length >= 3) {
+    const ideas: PostIdea[] = [];
+    for (let i = 1; i < pinSections.length; i++) {
+      const section = pinSections[i];
+      const firstNewline = section.indexOf("\n");
+      if (firstNewline === -1) continue;
+
+      const title = section.substring(0, firstNewline).trim();
+      let body = section.substring(firstNewline + 1).trim();
+
+      const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
+      const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
+      body = body
+        .replace(/Pillar:\s*.+/gi, "")
+        .replace(/Archetype:\s*.+/gi, "")
+        .replace(/Funnel\s*Stage:\s*.+/gi, "")
+        .trim();
+
+      if (title && body && body.length >= MIN_POST_BODY_LENGTH) {
+        ideas.push({
+          title,
+          body,
+          archetype: archetypeMatch?.[1]?.trim(),
+          funnelStage: funnelMatch?.[1]?.trim(),
+        });
+      }
+    }
+    if (ideas.length >= 2) return ideas;
+  }
+
   // Split by **NUMBER. TITLE** pattern — handles **1. Title**, **Idea 1: Title**, etc.
   const parts = text.split(/\*\*(?:Idea\s*)?\d+[\.\):\s]\s*/);
 
