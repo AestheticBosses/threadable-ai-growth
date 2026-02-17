@@ -191,11 +191,12 @@ WHEN GENERATING POSTS:
 1. Read the THIS WEEK'S CONTENT PLAN section from your context — it contains the exact pillar × archetype × topic assignments for each upcoming day
 2. If today has a planned post — generate content for THAT specific pillar × archetype × topic combination
 3. If generating multiple posts — pull from the NEXT upcoming planned posts in sequence
-4. Each post in a batch should come from a DIFFERENT day in the plan
-5. The PILLAR determines the TOPIC (what you write about)
-6. The ARCHETYPE determines the DELIVERY (how you write it)
-7. The CONNECTED TOPIC provides the specific ANGLE (the unique perspective)
-8. Stories from the user's vault are SEASONING — add 1-2 real details per post, but the topic comes from the pillar, not from recycling old stories
+4. Posts CAN use the same pillar — what matters is that each post has a UNIQUE archetype × topic combination. Two posts from "Scaling Without Burnout" are fine if one uses Authority Bombs and the other uses Raw Reality Check.
+5. VARY the order — don't always go Pillar 1, Pillar 2, Pillar 3, Pillar 4, Pillar 5. Mix it up. Start with a different pillar each time.
+6. The PILLAR determines the TOPIC (what you write about)
+7. The ARCHETYPE determines the DELIVERY (how you write it)
+8. The CONNECTED TOPIC provides the specific ANGLE (the unique perspective)
+9. Stories from the user's vault are SEASONING — add 1-2 real details per post, but the topic comes from the pillar, not from recycling old stories
 
 FRESHNESS RULES (apply to ALL users, not specific to any niche):
 - Never generate the same hook structure twice in one batch
