@@ -216,7 +216,7 @@ serve(async (req) => {
     }
 
     // Build plan items
-    const planItems = [];
+    const planItems: any[] = [];
     for (let i = 0; i < totalPosts; i++) {
       const pillar = pillarSchedule[i];
       const date = postingDates[i];
