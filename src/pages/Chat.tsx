@@ -603,12 +603,12 @@ const Chat = () => {
     });
   }, [isBusy, activeSessionId, addItem, removeItem, updateItem, createSession, sendMessage, updateTitle]);
 
-  /* ─── Flow: Draft a post idea (post text already written — only run analysis) ─── */
+  /* ─── Flow: Draft a post idea (AI generates full post from idea, then analyzes it) ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
     if (isBusy) return;
     setIsBusy(true);
     setDraftingIdea(idea);
-    setDraftedPost(idea.body); // Post is already written
+    setDraftedPost("");
     setPostAnalysis("");
     setParsedAnalysisData(null);
     setHistoryPreviewData(null);
@@ -619,63 +619,107 @@ const Chat = () => {
 
     await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
-    // Go directly to preview with the already-written post
     setFlowMode("preview");
 
-    // Only AI call needed: analysis of the existing post
-    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${idea.body}`;
-
     const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      let analysisText = "";
-      const resp = await fetch(CHAT_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ message: analysisPrompt, message_history: getMessageHistory() }),
-      });
-      if (resp.ok && resp.body) {
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          let idx: number;
-          while ((idx = buf.indexOf("\n")) !== -1) {
-            let line = buf.slice(0, idx);
-            buf = buf.slice(idx + 1);
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (!line.startsWith("data: ")) continue;
-            const j = line.slice(6).trim();
-            if (j === "[DONE]") break;
-            try {
-              const p = JSON.parse(j);
-              const c = p.choices?.[0]?.delta?.content;
-              if (c) { analysisText += c; setPostAnalysis(analysisText); }
-            } catch {}
-          }
+    if (!session) { setIsBusy(false); return; }
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    };
+
+    // Step 1: AI generates the full post from the idea
+    const draftPrompt = `Write a complete, ready-to-publish Threads post based on this idea:\n\nTitle: ${idea.title}\nDescription: ${idea.body}\n\nWrite ONLY the post text — no labels, no quotes, no explanation, no "Option 1" headers. Just the single best version of this post, ready to copy-paste to Threads. Use my voice, stories, and real data. Keep it under 500 characters. Start with a scroll-stopping hook.`;
+
+    let fullText = "";
+    const genResp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message: draftPrompt, message_history: getMessageHistory() }),
+    });
+
+    if (genResp.ok && genResp.body) {
+      const reader = genResp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          let line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const j = line.slice(6).trim();
+          if (j === "[DONE]") break;
+          try {
+            const p = JSON.parse(j);
+            const c = p.choices?.[0]?.delta?.content;
+            if (c) { fullText += c; setDraftedPost(fullText); }
+          } catch {}
         }
-
-        const parsed = tryParseAnalysisJSON(analysisText);
-        setParsedAnalysisData(parsed);
-
-        const metadata: ChatMessageMetadata = {
-          type: "drafted_post",
-          post_text: idea.body,
-          analysis: parsed,
-          status: "draft",
-          queue_id: null,
-          published_at: null,
-        };
-        const savedMsg = await sendMessage({ content: analysisText || idea.body, role: "assistant", metadata });
-        setDraftMessageId(savedMsg.id);
       }
     }
+
+    // Fallback: if generation failed, use the idea body as-is
+    if (!fullText.trim()) {
+      fullText = idea.body;
+      setDraftedPost(fullText);
+    }
+
+    // Step 2: Analyze the generated post
+    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
+
+    let analysisText = "";
+    const analysisResp = await fetch(CHAT_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message: analysisPrompt, message_history: [] }),
+    });
+
+    if (analysisResp.ok && analysisResp.body) {
+      const reader = analysisResp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx: number;
+        while ((idx = buf.indexOf("\n")) !== -1) {
+          let line = buf.slice(0, idx);
+          buf = buf.slice(idx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (!line.startsWith("data: ")) continue;
+          const j = line.slice(6).trim();
+          if (j === "[DONE]") break;
+          try {
+            const p = JSON.parse(j);
+            const c = p.choices?.[0]?.delta?.content;
+            if (c) { analysisText += c; setPostAnalysis(analysisText); }
+          } catch {}
+        }
+      }
+    }
+
+    const parsed = tryParseAnalysisJSON(analysisText);
+    setParsedAnalysisData(parsed);
+
+    const metadata: ChatMessageMetadata = {
+      type: "drafted_post",
+      post_text: fullText,
+      analysis: parsed,
+      status: "draft",
+      queue_id: null,
+      published_at: null,
+    };
+    const savedMsg = await sendMessage({ content: analysisText || fullText, role: "assistant", metadata });
+    setDraftMessageId(savedMsg.id);
+
     setIsBusy(false);
   }, [isBusy, addItem, sendMessage]);
 
