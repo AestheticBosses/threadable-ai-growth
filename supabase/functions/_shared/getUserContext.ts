@@ -316,7 +316,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     postsBlock += "\n\n=== RECENT POST PATTERNS (for variety reference) ===\n" + recentSection;
   }
 
-  return "=== USER IDENTITY ===\n" +
+  const result = "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +
@@ -354,4 +354,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     weekPlanSection + "\n\n" +
     "=== PLANS ===\n" +
     plansSection;
+
+  // Debug: log context size to help diagnose content quality issues
+  console.log(`[getUserContext] Total context: ${result.length} chars | Sections: identity=${identitySection.length}, stories=${storiesSection.length}, posts=${viewsSection.length}, competitors=${competitorSection.length}, pillars=${pillarsSection.length}, plan=${weekPlanSection.length}`);
+
+  return result;
 }
