@@ -31,9 +31,9 @@ function cleanPostBody(body: string): string {
     .replace(/Funnel\s*Stage:\s*.+/gi, "")
     .replace(/.*Option \d.*engagement.*$/gim, "")
     .replace(/.*engagement.*Option \d.*$/gim, "")
-    .replace(/Based on your.*$/gis, "")
+    .replace(/Based on your[\s\S]*$/gi, "")
     .replace(/^---\s*$/gm, "")
-    .replace(/Recommendation:.*$/gis, "")
+    .replace(/Recommendation:[\s\S]*$/gi, "")
     .trim();
 }
 
