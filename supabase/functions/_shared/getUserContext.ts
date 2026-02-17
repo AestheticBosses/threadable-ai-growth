@@ -146,9 +146,23 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const archetypeData = archetypesRes.data?.strategy_data as any;
   let archetypesSection = "No archetypes data available.";
   if (archetypeData?.archetypes && Array.isArray(archetypeData.archetypes)) {
-    archetypesSection = archetypeData.archetypes.map((a: any) =>
-      `- ${a.emoji || ""} ${a.name}: ${a.description || ""} (${a.recommended_percentage || 0}% of content, drives: ${a.drives || "N/A"})\n  Key ingredients: ${(a.key_ingredients || []).join(", ")}\n  Template: ${a.template || "N/A"}`
-    ).join("\n\n");
+    archetypesSection = archetypeData.archetypes.map((a: any) => {
+      // Derive emotional register from drives/name — don't send copyable description text
+      const drives = a.drives || "engagement";
+      const pct = a.recommended_percentage || 0;
+      // Derive hook style from archetype name pattern
+      const hookStyle = drives.match(/trust|authority/i) ? "Bold claim backed by specific result"
+        : drives.match(/engage|relat/i) ? "Vulnerable opener or shared experience"
+        : drives.match(/reach|aware/i) ? "Contrarian take or surprising observation"
+        : drives.match(/convert|sale/i) ? "Problem → solution with proof"
+        : "Pattern-breaking statement";
+      const emotionalRegister = drives.match(/trust|authority/i) ? "Confident, data-driven"
+        : drives.match(/engage|relat/i) ? "Vulnerable, authentic"
+        : drives.match(/reach|aware/i) ? "Bold, contrarian"
+        : drives.match(/convert|sale/i) ? "Urgent, proof-driven"
+        : "Varied";
+      return `${a.emoji || ""} ${a.name} (${pct}% of content)\n  - Purpose: ${drives}\n  - Emotional register: ${emotionalRegister}\n  - Hook style: ${hookStyle}\n  - Drives: ${drives}`;
+    }).join("\n\n");
   }
 
   // === KNOWLEDGE BASE ===
@@ -232,18 +246,17 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     funnelSection += `\n\nIMPORTANT: When writing TOF posts, the goal is Step 1 (awareness). When writing MOF posts, reference lead magnets or low-ticket offers from the funnel. When writing BOF posts, drive toward paid offers. Always use the REAL offer names, prices, and URLs from the funnel.`;
   }
 
-  // === CONTENT TEMPLATES ===
+  // === CONTENT TEMPLATES (count only — don't send template text to avoid verbatim copying) ===
   const templates = templatesRes.data || [];
   let templatesSection = "No content templates defined.";
   if (templates.length > 0) {
-    const grouped: Record<string, string[]> = {};
+    const grouped: Record<string, number> = {};
     for (const t of templates as any[]) {
-      (grouped[t.archetype] = grouped[t.archetype] || []).push(t.template_text);
+      grouped[t.archetype] = (grouped[t.archetype] || 0) + 1;
     }
-    templatesSection = Object.entries(grouped).map(([arch, texts]) =>
-      arch + ":\n" + texts.map((t, i) => "  Template " + (i + 1) + ": \"" + t.slice(0, 200) + "\"").join("\n")
+    templatesSection = Object.entries(grouped).map(([arch, count]) =>
+      `${arch}: ${count} template${count > 1 ? "s" : ""} available`
     ).join("\n");
-    templatesSection += "\n\nUse these templates as structural guides when drafting posts — fill in the brackets with real user data, don't copy verbatim.";
   }
 
   // === COMPETITOR INSIGHTS (patterns only — do NOT copy their content) ===
