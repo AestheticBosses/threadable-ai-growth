@@ -47,6 +47,7 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
       const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
       const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
       body = body
+        .replace(/Pillar:\s*.+/gi, "")
         .replace(/Archetype:\s*.+/gi, "")
         .replace(/Funnel\s*Stage:\s*.+/gi, "")
         .trim();
