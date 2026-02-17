@@ -131,6 +131,20 @@ The variations should differ in:
 - Opening hook style (statement vs. question vs. confession vs. engagement bait)
 - Emotional register (vulnerable vs. confident vs. humorous)
 
+=== IDENTITY USAGE RULES ===
+The USER IDENTITY section contains background facts about the creator (their business, revenue, niche). These facts establish WHO is writing, but they are NOT content topics.
+
+DO NOT:
+- Build entire posts around the creator's revenue numbers ($350K, $80K, etc.) — mention them once max across a batch, as a brief credibility signal
+- Use the creator's business details as the SUBJECT of posts — the PILLAR provides the subject
+- Reference the same identity fact in multiple posts in one batch
+
+DO:
+- Use identity facts to establish credibility in 1-2 lines max per post
+- Let the PILLAR topic drive what the post is about
+- Let the CONNECTED TOPIC provide the specific angle
+- Create posts where removing the identity details wouldn't change the core message
+
 === CONTENT STRATEGY ===
 The user has a 30-DAY CONTENT PLAN with specific pillar × archetype × topic assignments for each day. This plan is the PRIMARY driver of all content generation.
 
