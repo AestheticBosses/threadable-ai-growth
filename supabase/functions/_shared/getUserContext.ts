@@ -84,7 +84,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     // Content strategy v2
     supabase.from("content_buckets").select("name, description, audience_persona, priority").eq("user_id", userId).eq("is_active", true).order("priority"),
     supabase.from("content_pillars").select("id, name, description, purpose, percentage, bucket_id").eq("user_id", userId).eq("is_active", true),
-    supabase.from("connected_topics").select("pillar_id, name").eq("user_id", userId).eq("is_active", true),
+    supabase.from("connected_topics").select("id, pillar_id, name").eq("user_id", userId).eq("is_active", true),
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(7),
   ]);
 
@@ -293,23 +293,25 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
 
   // === THIS WEEK'S CONTENT PLAN ===
   const planItems = planItemsRes.data || [];
-  // Build pillar/topic lookup maps
+  // Build pillar name lookup
   const pillarNameMap: Record<string, string> = {};
   for (const p of pillarsList) pillarNameMap[p.id] = p.name;
-  const topicNameMap: Record<string, string> = {};
-  for (const t of allTopics) topicNameMap[t.pillar_id + "_" + t.name] = t.name;
-  // For topic lookup by id, we need the full topics — re-query not needed, use allTopics
+  // Build topic ID → name lookup (connected_topics now includes id)
   const topicIdMap: Record<string, string> = {};
-  // We don't have topic id in allTopics select — build from connected_topics
-  // Actually planItems have topic_id, but our topics query doesn't include id. Let's handle gracefully.
+  for (const t of allTopics) topicIdMap[t.id] = t.name;
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const weekPlanSection = planItems.length > 0
     ? planItems.map((item: any, i: number) => {
-        const dayLabel = i === 0 ? "Today" : i === 1 ? "Tomorrow" : item.scheduled_date;
-        const pillarName = pillarNameMap[item.pillar_id] || "—";
+        const date = new Date(item.scheduled_date + "T12:00:00");
+        const dayName = dayNames[date.getDay()];
+        const dayLabel = i === 0 ? `Today (${dayName})` : i === 1 ? `Tomorrow (${dayName})` : `${dayName} ${item.scheduled_date}`;
+        const pillarName = pillarNameMap[item.pillar_id] || "Unknown Pillar";
+        const topicName = item.topic_id ? topicIdMap[item.topic_id] : null;
         const archetype = item.archetype || "—";
         const funnel = item.funnel_stage || "—";
         const test = item.is_test_slot ? " [TEST]" : "";
-        return `${dayLabel}: ${pillarName} × ${archetype} (Funnel: ${funnel})${test}`;
+        const topicPart = topicName ? ` — "${topicName}"` : "";
+        return `${dayLabel}: ${pillarName} × ${archetype}${topicPart} (${funnel})${test}`;
       }).join("\n")
     : "No content plan generated yet.";
 
