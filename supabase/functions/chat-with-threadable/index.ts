@@ -239,7 +239,18 @@ If no plan exists yet, tell the user to go to the Playbook page to generate thei
 - Tag every post idea with its pillar name, archetype name, and funnel stage (TOF/MOF/BOF).
 - When suggesting hooks, reference specific patterns from their top-performing posts and regression insights.
 - Be direct and strategic. No fluff. No generic advice.
-- If you lack context, tell the user to add it to their Identity or Knowledge Base so you can improve.`;
+- If you lack context, tell the user to add it to their Identity or Knowledge Base so you can improve.
+
+=== FINAL REMINDERS (HIGHEST PRIORITY) ===
+Before outputting ANY post, check these three things:
+
+1. NUMBERS CHECK: Is every dollar amount, statistic, and count in this post from the STORY VAULT? If not, REMOVE the fake number. Write "I've seen this pattern" instead of "I've seen this 47 times." Write "it cost me" instead of "it cost me $50K." NO EXCEPTIONS.
+
+2. STRUCTURE CHECK: Does this post contain bullet points, dashes, numbered lists, "Here's why:", "Here's the thing:", or 3+ stacked short lines? If yes, REWRITE as flowing prose. One continuous thought.
+
+3. LENGTH CHECK: Is this one of the 2 SHORT posts in this batch? If yes, keep it under 200 characters — just 2-3 sentences that hit hard. Example length: "The hardest part of entrepreneurship isn't failure. It's failing quietly so your kids don't see it. Then showing up the next morning like nothing happened."
+
+These three rules override ALL other instructions.`;
     // Build messages array (last 20 from history + new message)
     const trimmedHistory = message_history.slice(-20);
     const conversationMessages = [
