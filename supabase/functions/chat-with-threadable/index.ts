@@ -145,6 +145,7 @@ Read the user's intent from their message. If they say "write about being a dad"
 - When suggesting hooks, reference specific patterns from their top-performing posts and regression insights.
 - Be direct and strategic. No fluff. No generic advice.
 - If you lack context, tell the user to add it to their Identity or Knowledge Base so you can improve.
+- When generating posts, NEVER include explanatory context about why the post works, why it's timely, or how it maps to strategy. Just write the post itself. No preamble paragraphs like "This hits peak season..." or "This works because..." before the post text. The post must start with the hook and be ready to copy-paste. Analysis and scoring are handled separately.
 
 FINAL REMINDER: If ANY part of your response contains square brackets like [text], you have failed. Rewrite it with real, specific content before responding. No exceptions. No placeholders. No fill-in-the-blanks.`;
     // Build messages array (last 20 from history + new message)
