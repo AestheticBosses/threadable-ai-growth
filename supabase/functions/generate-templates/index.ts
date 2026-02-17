@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,7 +112,11 @@ serve(async (req) => {
       ? `\nPERSONAL FACTS (reference in examples):\n${personalFacts.slice(0, 10).map((f: string) => `- ${f}`).join("\n")}\n`
       : "";
 
-    const systemPrompt = `You are a content strategist creating fill-in-the-blank post templates for a Threads creator.
+    const systemPrompt = `${CONTENT_GENERATION_RULES}
+
+EXCEPTION FOR THIS TASK: Brackets ARE allowed in template_text fields since these are fill-in-the-blank templates. But example_text fields must have NO brackets — fill everything in with real data.
+
+You are a content strategist creating fill-in-the-blank post templates for a Threads creator.
 
 ${profileContext}
 ${identityContext}

@@ -280,6 +280,18 @@ Located at `supabase/functions/_shared/getUserContext.ts`. Fires **19 parallel q
 
 **NOT used by:** `generate-playbook`, `generate-templates`, `run-analysis`, `discover-archetypes`, `discover-niche-accounts`, `extract-identity`, `analyze-voice`
 
+### Shared Utility: `contentRules.ts`
+
+Located at `supabase/functions/_shared/contentRules.ts`. Exports `CONTENT_GENERATION_RULES` — a single source of truth for copywriting standards injected into every content-generating function's system prompt.
+
+**Covers:** Hook requirements, emotional triggers, post structure, story rotation, anti-patterns (no explanatory preamble, no bracket placeholders, no generic language), voice matching rules.
+
+**Used by:** `chat-with-threadable`, `generate-content`, `generate-draft-posts`, `fix-post`, `generate-templates`
+
+**NOT used by:** Analysis/extraction functions (`analyze-voice`, `score-post`, `extract-identity`, `categorize-posts`), strategy functions (`generate-strategy`, `generate-playbook`, `generate-plans`), data functions (`fetch-user-posts`, `process-knowledge`, etc.)
+
+**Note:** `generate-templates` has a bracket exception — `template_text` fields allow brackets for fill-in-the-blank placeholders, but `example_text` fields must be fully filled in.
+
 ---
 
 ## 2. Onboarding Pipeline Sequence

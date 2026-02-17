@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -463,7 +464,9 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
       actualCount, tofCount, mofCount, bofCount, playbookSchedule,
     );
 
-    const systemPrompt = `CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
+    const systemPrompt = `${CONTENT_GENERATION_RULES}
+
+CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
 1. NEVER use placeholder brackets like [Name], [Number], [Topic], [Year], [Strategy], etc. ALWAYS fill in with the user's REAL data from the context below.
 2. NEVER return fill-in-the-blank templates. Every post must be complete and ready to publish.
 3. Write as if you ARE this person — use their specific stories, dollar amounts, client names, and experiences.

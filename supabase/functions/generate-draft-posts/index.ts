@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
+import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,7 +71,9 @@ serve(async (req) => {
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
         chunk.map(async (post: any) => {
-          const systemPrompt = `You are Threadable — a data-driven Threads content writer. You write posts that are backed by regression analysis of this user's actual performance data.
+          const systemPrompt = `${CONTENT_GENERATION_RULES}
+
+You are Threadable — a data-driven Threads content writer. You write posts that are backed by regression analysis of this user's actual performance data.
 
 Here is everything you know about this user:
 

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
+import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +68,9 @@ Deno.serve(async (req) => {
     // Get full user context via shared utility
     const userContext = await getUserContext(adminClient, userId);
 
-    const systemPrompt = `You are Threadable — a data-driven content editor. You improve posts using regression-backed insights about what performs best for this user.
+    const systemPrompt = `${CONTENT_GENERATION_RULES}
+
+You are Threadable — a data-driven content editor. You improve posts using regression-backed insights about what performs best for this user.
 
 Here is everything you know about this user:
 
