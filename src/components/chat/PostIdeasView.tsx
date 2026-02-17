@@ -25,6 +25,7 @@ interface PostIdeasViewProps {
  */
 /** Strip metadata and recommendation lines from parsed post body */
 function cleanPostBody(body: string): string {
+  console.log("[cleanPostBody] input length:", body.length, "contains 'Based on':", body.includes("Based on"));
   return body
     .replace(/Pillar:\s*.+/gi, "")
     .replace(/Archetype:\s*.+/gi, "")
