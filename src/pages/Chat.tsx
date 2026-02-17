@@ -45,7 +45,7 @@ type FlowItem =
 const QUICK_ACTIONS = [
   { icon: "💡", label: "Give post ideas", action: "ideas" as const },
   { icon: "📈", label: "What's trending", action: "trending" as const, message: "Look at the COMPETITOR INSIGHTS section of my context.\n\nIF competitor posts exist: Show me the top 3 competitor posts by engagement rate. For each one, show the original post text and who wrote it. Format as:\n\n**1. @username — Short description of the post angle**\nOriginal post: \"[paste the full competitor post text]\"\nViews: X | Engagement: X%\nArchetype: [which of MY archetypes could rewrite this]\nFunnel Stage: TOF\n\nThen ask: \"Which one do you want me to rewrite in your voice?\"\n\nIF NO competitor posts exist: Respond conversationally (do NOT use numbered bold titles or the **1. Title** format). Tell the user you don't have trending data from their niche yet and suggest they either paste a viral post from their niche for you to rewrite, or go to the Analyze page to add accounts to study. Keep it to 2-3 sentences.\n\nDo NOT generate new post ideas from my own data — that's what 'Give post ideas' is for. This action is specifically about surfacing other people's top content for me to rewrite." },
-  { icon: "📋", label: "Give a template", action: "template" as const, message: "Write posts following my 30-day content plan. Pull from the next 5 upcoming planned posts. For each one, use the assigned pillar × archetype × connected topic combination.\n\nStart each with 📌 Pillar × Archetype as the header. Make every hook structure different — no two posts should open the same way (vary between: question, stat, confession, observation, metaphor, prediction, controversy, micro-story, comparison, lesson).\n\nUse my real stories as seasoning, not as the main topic. The pillar provides the topic, the archetype provides the delivery format, and stories add 1-2 authentic details.\n\nFor each post:\n- Fill in ALL content with my real stories, numbers, and experiences — no brackets\n- Format for mobile: short paragraphs, line breaks\n- Stay under 500 characters unless the content requires more\n\nFormat:\n📌 Pillar Name × Archetype Name\nthen the full post text\n\nPillar: pillar name\nArchetype: archetype name\nFunnel Stage: TOF/MOF/BOF" },
+  { icon: "📋", label: "Give a template", action: "template" as const, message: "Write posts following my 30-day content plan. Pull from the next 5 upcoming planned posts. For each one, use the assigned pillar × archetype × connected topic combination.\n\nStart each with 📌 Pillar × Archetype as the header. Make every hook structure different — no two posts should open the same way (vary between: question, stat, confession, observation, metaphor, prediction, controversy, micro-story, comparison, lesson).\n\nUse my real stories as seasoning, not as the main topic. The pillar provides the topic, the archetype provides the delivery format, and stories add 1-2 authentic details.\n\nFor each post:\n- Fill in ALL content with my real stories, numbers, and experiences — no brackets\n- Format for mobile: short paragraphs, line breaks\n- MUST be under 500 characters — this is a hard Threads limit\n\nFormat:\n📌 Pillar Name × Archetype Name\nthen the full post text\n\nPillar: pillar name\nArchetype: archetype name\nFunnel Stage: TOF/MOF/BOF" },
 ];
 
 const MORE_ACTIONS = [
@@ -505,7 +505,7 @@ const Chat = () => {
       intentGuidance = `\nWrite posts that naturally fit this topic. If it's personal, keep it personal. If it's business, use business data.`;
     }
 
-    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n${item.type.toUpperCase()}: ${item.label}\n${item.content}\n${intentGuidance}\n\nFollow my 30-day content plan. Pull from the next upcoming planned posts and use the assigned pillar × archetype × connected topic combinations. Filter for posts that relate to the context above.\n\nStudy my top-performing posts for emotional triggers and hook patterns, but use FRESH content — do NOT recycle the same 3-4 stories.\n\nCRITICAL: Every post must be 100% finished — real stories, real numbers, real examples from my data. Do NOT use square brackets or placeholders anywhere.\n\nFor each post:\n- Use the planned pillar × archetype × topic combination from my content plan\n- Make every hook structure different — no two posts should open the same way (vary between: question, stat, confession, observation, metaphor, prediction, controversy, micro-story, comparison, lesson)\n- Start with 📌 Pillar Name × Archetype Name as the header\n- Then write the complete post text underneath\n- Use my real stories as seasoning (1-2 authentic details per post), but the PILLAR provides the topic\n- Stay under 500 characters unless the content requires more (max 2200)\n- Follow my writing style and content preferences\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like me, not like AI\n- End each post with metadata lines: Pillar: name, Archetype: name, Funnel Stage: TOF/MOF/BOF`;
+    const prompt = `Write 5 complete, ready-to-publish Threads posts based on this context:\n\n${item.type.toUpperCase()}: ${item.label}\n${item.content}\n${intentGuidance}\n\nFollow my 30-day content plan. Pull from the next upcoming planned posts and use the assigned pillar × archetype × connected topic combinations. Filter for posts that relate to the context above.\n\nStudy my top-performing posts for emotional triggers and hook patterns, but use FRESH content — do NOT recycle the same 3-4 stories.\n\nCRITICAL: Every post must be 100% finished — real stories, real numbers, real examples from my data. Do NOT use square brackets or placeholders anywhere.\n\nFor each post:\n- Use the planned pillar × archetype × topic combination from my content plan\n- Make every hook structure different — no two posts should open the same way (vary between: question, stat, confession, observation, metaphor, prediction, controversy, micro-story, comparison, lesson)\n- Start with 📌 Pillar Name × Archetype Name as the header\n- Then write the complete post text underneath\n- Use my real stories as seasoning (1-2 authentic details per post), but the PILLAR provides the topic\n- MUST be under 500 characters — this is a hard Threads limit\n- Follow my writing style and content preferences\n- Format for mobile: short paragraphs, line breaks between thoughts\n- No hashtags unless content preferences say to use them\n- Sound like me, not like AI\n- End each post with metadata lines: Pillar: name, Archetype: name, Funnel Stage: TOF/MOF/BOF`;
 
     await sendMessage({ content: userLabel, role: "user" });
 
@@ -614,6 +614,8 @@ const Chat = () => {
     setHistoryPreviewData(null);
     setDraftMessageId(null);
 
+    console.log("[handleDraftIdea] Starting draft for:", idea.title, "| Body length:", idea.body.length);
+
     addItem({ type: "user", content: `Draft: ${idea.title}` });
     addItem({ type: "drafting" });
 
@@ -665,8 +667,11 @@ const Chat = () => {
       }
     }
 
+    console.log("[handleDraftIdea] Generation complete. Text length:", fullText.length, "| First 100:", fullText.substring(0, 100));
+
     // Fallback: if generation failed, use the idea body as-is
     if (!fullText.trim()) {
+      console.log("[handleDraftIdea] Generation empty, falling back to idea body");
       fullText = idea.body;
       setDraftedPost(fullText);
     }

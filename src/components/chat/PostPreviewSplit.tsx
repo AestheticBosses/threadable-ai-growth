@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, CalendarDays, Send, Pencil, RefreshCw, Loader2, Upload, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadsPreview } from "./ThreadsPreview";
@@ -129,6 +129,10 @@ export function PostPreviewSplit({
 }: PostPreviewSplitProps) {
   const { user } = useAuth();
   const [editableContent, setEditableContent] = useState(postContent);
+  // Sync prop changes into editable state (e.g. during streaming)
+  useEffect(() => {
+    if (!isEditing && postContent) setEditableContent(postContent);
+  }, [postContent, isEditing]);
   const [isEditing, setIsEditing] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>();
   const [isSaving, setIsSaving] = useState(false);
