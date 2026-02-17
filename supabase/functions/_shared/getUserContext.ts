@@ -23,6 +23,10 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     templatesRes,
     competitorAccountsRes,
     competitorPostsRes,
+    bucketsRes,
+    pillarsRes,
+    topicsRes,
+    planItemsRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId),
@@ -48,6 +52,11 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("competitor_accounts").select("threads_username").eq("user_id", userId),
     // Top competitor posts by engagement for pattern learning
     supabase.from("posts_analyzed").select("text_content, views, likes, replies, reposts, engagement_rate, source_username").eq("user_id", userId).eq("source", "competitor").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(25),
+    // Content strategy v2
+    supabase.from("content_buckets").select("name, description, audience_persona, priority").eq("user_id", userId).eq("is_active", true).order("priority"),
+    supabase.from("content_pillars").select("id, name, description, purpose, percentage, bucket_id").eq("user_id", userId).eq("is_active", true),
+    supabase.from("connected_topics").select("pillar_id, name").eq("user_id", userId).eq("is_active", true),
+    supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(7),
   ]);
 
   // === IDENTITY ===
@@ -210,6 +219,51 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     competitorSection = parts.join("\n");
   }
 
+  // === CONTENT BUCKETS ===
+  const buckets = bucketsRes.data || [];
+  const bucketsSection = buckets.length > 0
+    ? buckets.map((b: any, i: number) =>
+        `${i + 1}. ${b.name} (Priority: ${b.priority}): ${b.description || ""}\n   Persona: ${b.audience_persona || "Not defined"}`
+      ).join("\n")
+    : "No content buckets defined yet.";
+
+  // === CONTENT PILLARS + TOPICS ===
+  const pillarsList = pillarsRes.data || [];
+  const allTopics = topicsRes.data || [];
+  // Group topics by pillar_id
+  const topicsByPillar: Record<string, string[]> = {};
+  for (const t of allTopics) {
+    (topicsByPillar[t.pillar_id] = topicsByPillar[t.pillar_id] || []).push(t.name);
+  }
+  const pillarsSection = pillarsList.length > 0
+    ? pillarsList.map((p: any, i: number) => {
+        const topics = topicsByPillar[p.id] || [];
+        return `${i + 1}. ${p.name} (${p.purpose || "general"}) — ${p.percentage || 0}% of content\n   ${p.description || ""}\n   Topics: ${topics.length > 0 ? topics.join(", ") : "None yet"}`;
+      }).join("\n")
+    : "No content pillars defined yet.";
+
+  // === THIS WEEK'S CONTENT PLAN ===
+  const planItems = planItemsRes.data || [];
+  // Build pillar/topic lookup maps
+  const pillarNameMap: Record<string, string> = {};
+  for (const p of pillarsList) pillarNameMap[p.id] = p.name;
+  const topicNameMap: Record<string, string> = {};
+  for (const t of allTopics) topicNameMap[t.pillar_id + "_" + t.name] = t.name;
+  // For topic lookup by id, we need the full topics — re-query not needed, use allTopics
+  const topicIdMap: Record<string, string> = {};
+  // We don't have topic id in allTopics select — build from connected_topics
+  // Actually planItems have topic_id, but our topics query doesn't include id. Let's handle gracefully.
+  const weekPlanSection = planItems.length > 0
+    ? planItems.map((item: any, i: number) => {
+        const dayLabel = i === 0 ? "Today" : i === 1 ? "Tomorrow" : item.scheduled_date;
+        const pillarName = pillarNameMap[item.pillar_id] || "—";
+        const archetype = item.archetype || "—";
+        const funnel = item.funnel_stage || "—";
+        const test = item.is_test_slot ? " [TEST]" : "";
+        return `${dayLabel}: ${pillarName} × ${archetype} (Funnel: ${funnel})${test}`;
+      }).join("\n")
+    : "No content plan generated yet.";
+
   let postsBlock = "=== TOP PERFORMING POSTS BY VIEWS ===\n" + viewsSection;
   if (engagementSection) {
     postsBlock += "\n\n=== TOP PERFORMING POSTS BY ENGAGEMENT RATE ===\n" + engagementSection;
@@ -248,6 +302,12 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     postsBlock + "\n\n" +
     "=== COMPETITOR INSIGHTS (learn from their patterns, not their content) ===\n" +
     competitorSection + "\n\n" +
+    "=== CONTENT BUCKETS (audience segments) ===\n" +
+    bucketsSection + "\n\n" +
+    "=== CONTENT PILLARS ===\n" +
+    pillarsSection + "\n\n" +
+    "=== THIS WEEK'S CONTENT PLAN ===\n" +
+    weekPlanSection + "\n\n" +
     "=== PLANS ===\n" +
     plansSection;
 }

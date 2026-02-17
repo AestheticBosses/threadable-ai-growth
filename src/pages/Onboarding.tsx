@@ -41,6 +41,9 @@ const SEASONED_STEPS: PipelineStepDef[] = [
   { id: "playbook", label: "Generating your playbook", status: "waiting" },
   { id: "plans", label: "Creating content, branding & funnel plans", status: "waiting" },
   { id: "templates", label: "Building content templates", status: "waiting" },
+  { id: "buckets", label: "Creating content buckets", status: "waiting" },
+  { id: "pillars", label: "Building content pillars", status: "waiting" },
+  { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
 ];
 
 const NEW_STEPS: PipelineStepDef[] = [
@@ -51,6 +54,9 @@ const NEW_STEPS: PipelineStepDef[] = [
   { id: "playbook", label: "Generating your playbook", status: "waiting" },
   { id: "plans", label: "Creating your content strategy", status: "waiting" },
   { id: "templates", label: "Building starter templates", status: "waiting" },
+  { id: "buckets", label: "Creating content buckets", status: "waiting" },
+  { id: "pillars", label: "Building content pillars", status: "waiting" },
+  { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
 ];
 
 function PipelineProgressStep({ label, status }: { label: string; status: string }) {
@@ -285,6 +291,24 @@ const Onboarding = () => {
     } else {
       updateStep("templates", "error");
     }
+
+    // 10. Generate content buckets (audience segments)
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+
+    // 11. Generate content pillars + connected topics (requires buckets)
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    // 12. Generate 30-day plan (requires pillars)
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
+    }
   };
 
   const runNewAccountPipelineAfterFetch = async () => {
@@ -346,6 +370,24 @@ const Onboarding = () => {
     } catch (err) {
       console.error("Templates step threw:", err);
       updateStep("templates", "error");
+    }
+
+    // 8. Generate content buckets (audience segments)
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+
+    // 9. Generate content pillars + connected topics (requires buckets)
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    // 10. Generate 30-day plan (requires pillars)
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
     }
   };
 
