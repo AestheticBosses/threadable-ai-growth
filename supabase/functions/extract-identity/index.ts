@@ -50,6 +50,14 @@ serve(async (req) => {
 
     if (postsError) throw postsError;
 
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!ANTHROPIC_API_KEY) {
+      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (!posts || posts.length === 0) {
       // No posts — generate a starter identity from profile data if available
       if (!profile?.niche) {
@@ -224,13 +232,7 @@ Rules:
 - If something is unclear, skip it rather than guess
 - Respond with ONLY the JSON, no markdown fences or extra text`;
 
-    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    // ANTHROPIC_API_KEY already validated above
 
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
