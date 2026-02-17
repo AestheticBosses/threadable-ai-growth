@@ -26,6 +26,9 @@ interface PostIdeasViewProps {
 export function parsePostIdeas(text: string): PostIdea[] | null {
   if (!text) return null;
 
+  // Minimum body length for a parsed idea to count as a real post (not instructional text)
+  const MIN_POST_BODY_LENGTH = 50;
+
   // Split by **NUMBER. TITLE** pattern — handles **1. Title**, **Idea 1: Title**, etc.
   const parts = text.split(/\*\*(?:Idea\s*)?\d+[\.\):\s]\s*/);
 
@@ -57,7 +60,9 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
         });
       }
     }
-    if (ideas.length >= 2) return ideas;
+    // Only return as idea cards if we have 2+ ideas with substantive post bodies
+    const substantiveIdeas = ideas.filter(i => i.body.length >= MIN_POST_BODY_LENGTH);
+    if (substantiveIdeas.length >= 2) return substantiveIdeas;
   }
 
   // Fallback: 1. **Title** (number outside bold)
@@ -69,7 +74,8 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
     const body = match[2].trim();
     if (title && body) altIdeas.push({ title, body });
   }
-  if (altIdeas.length >= 2) return altIdeas;
+  const substantiveAltIdeas = altIdeas.filter(i => i.body.length >= MIN_POST_BODY_LENGTH);
+  if (substantiveAltIdeas.length >= 2) return substantiveAltIdeas;
 
   // Fallback: ### 1. Title (headers)
   const headerPattern = /(?:^|\n)\s*#{1,4}\s*\d+[\.\)]\s*(.+?)\s*\n([\s\S]*?)(?=(?:\n\s*#{1,4}\s*\d+[\.\)])|$)/g;
@@ -79,7 +85,8 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
     const body = match[2].trim();
     if (title && body) headerIdeas.push({ title, body });
   }
-  if (headerIdeas.length >= 2) return headerIdeas;
+  const substantiveHeaderIdeas = headerIdeas.filter(i => i.body.length >= MIN_POST_BODY_LENGTH);
+  if (substantiveHeaderIdeas.length >= 2) return substantiveHeaderIdeas;
 
   // Fallback: Non-numbered **Title** appearing multiple times
   if (text.includes("**")) {
