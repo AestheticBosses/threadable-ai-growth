@@ -23,6 +23,18 @@ interface PostIdeasViewProps {
  *   ### 1. Title ... body
  *   **Title 1:** ... body
  */
+/** Strip metadata and recommendation lines from parsed post body */
+function cleanPostBody(body: string): string {
+  return body
+    .replace(/Pillar:\s*.+/gi, "")
+    .replace(/Archetype:\s*.+/gi, "")
+    .replace(/Funnel\s*Stage:\s*.+/gi, "")
+    .replace(/.*Option \d.*engagement.*$/gim, "")
+    .replace(/.*engagement.*Option \d.*$/gim, "")
+    .replace(/Based on your.*$/gis, "")
+    .trim();
+}
+
 export function parsePostIdeas(text: string): PostIdea[] | null {
   if (!text) return null;
 
@@ -43,11 +55,7 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
 
       const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
       const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
-      body = body
-        .replace(/Pillar:\s*.+/gi, "")
-        .replace(/Archetype:\s*.+/gi, "")
-        .replace(/Funnel\s*Stage:\s*.+/gi, "")
-        .trim();
+      body = cleanPostBody(body);
 
       if (title && body && body.length >= MIN_POST_BODY_LENGTH) {
         ideas.push({
@@ -78,11 +86,7 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
       // Extract archetype and funnel stage if present
       const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
       const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
-      body = body
-        .replace(/Pillar:\s*.+/gi, "")
-        .replace(/Archetype:\s*.+/gi, "")
-        .replace(/Funnel\s*Stage:\s*.+/gi, "")
-        .trim();
+      body = cleanPostBody(body);
 
       if (title && body) {
         ideas.push({
@@ -139,10 +143,7 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
         // Extract archetype and funnel stage if present
         const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
         const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
-        body = body
-          .replace(/Archetype:\s*.+/gi, "")
-          .replace(/Funnel\s*Stage:\s*.+/gi, "")
-          .trim();
+        body = cleanPostBody(body);
 
         // Only count as an idea if the content is substantial
         if (title && body && body.length > 50) {
