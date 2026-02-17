@@ -24,13 +24,13 @@ Reference document for the entire Threadable pipeline — every edge function, h
 #### `analyze-voice`
 | | Details |
 |---|---|
-| **Reads** | `posts_analyzed` (top 20 by engagement_rate, source="own"), `voice_samples` |
+| **Reads** | `profiles` (niche, dream_client, end_goal), `posts_analyzed` (top 20 by engagement_rate, source="own"), `voice_samples` |
 | **Writes** | `profiles.voice_profile` (JSON blob) |
 | **Caller params** | None (auth only) |
-| **AI context** | Top 20 post texts + voice samples |
+| **AI context** | Creator context (niche/dream_client/end_goal) + top 20 post texts + voice samples. Niche context helps identify industry-specific language patterns. |
 | **AI model** | claude-sonnet-4-20250514 (tool_use pattern) |
 | **Returns** | `{ success, voice_profile }` |
-| **Notes** | Uses tool_use API pattern with structured output schema. Voice profile includes tone, vocabulary, sentence_patterns, personality_traits, etc. |
+| **Notes** | Uses tool_use API pattern with structured output schema. Voice profile includes tone, vocabulary, sentence_patterns, personality_traits, etc. Profile, posts, and samples fetched in parallel. |
 
 #### `discover-archetypes`
 | | Details |
@@ -90,10 +90,10 @@ Reference document for the entire Threadable pipeline — every edge function, h
 #### `generate-templates`
 | | Details |
 |---|---|
-| **Reads** | `content_strategies` (archetype_discovery), `profiles` (niche, end_goal, dream_client), `user_identity` (about_you) |
+| **Reads** | `content_strategies` (archetype_discovery), `profiles` (niche, end_goal, dream_client, voice_profile), `user_identity` (about_you), `user_story_vault` (stories), `user_personal_info` |
 | **Writes** | `content_templates` |
 | **Caller params** | None (auth only) |
-| **AI context** | Archetype names/descriptions + niche + dream_client + end_goal + about_you |
+| **AI context** | Archetype names/descriptions + niche + dream_client + end_goal + about_you + voice profile (tone, sentence style, vocabulary, common phrases, quirks) + stories (title, body, lesson) + personal facts |
 | **AI model** | claude-sonnet-4-20250514 |
 | **Returns** | `{ success, templates }` |
 | **Notes** | Generates 5 fill-in-the-blank templates per archetype. Deletes existing templates before inserting. |
@@ -132,13 +132,13 @@ Reference document for the entire Threadable pipeline — every edge function, h
 #### `generate-draft-posts`
 | | Details |
 |---|---|
-| **Reads** | `profiles` (niche, dream_client, end_goal, voice_profile, funnel_*), `content_strategies` (weekly, playbook), `posts_analyzed` (top 5), `user_story_vault`, `user_sales_funnel` |
+| **Reads** | via `getUserContext()` (everything) |
 | **Writes** | `scheduled_posts` |
-| **Caller params** | `count` (default 7), `archetypes`, `funnel_stages` |
-| **AI context** | Profile context + archetypes + playbook rules + hook assignments + top posts + stories + sales funnel |
+| **Caller params** | `posts[]` array (each with archetype, funnel_stage, topic, hook_idea) |
+| **AI context** | Full getUserContext output + per-post archetype/topic/hook instructions |
 | **AI model** | claude-sonnet-4-20250514 |
-| **Returns** | `{ success, posts, stats }` |
-| **Notes** | Complex multi-pass pipeline: (1) generate with HOOK_STYLES assignments, (2) deduplicate via AI, (3) score each post via score-post, (4) retry posts scoring below threshold. Does NOT use getUserContext — reads everything directly. ~650 lines. |
+| **Returns** | `{ total, failed, posts, errors }` |
+| **Notes** | Generates posts concurrently (3 at a time via Promise batching). Uses getUserContext for full identity/voice/stories/archetypes context. |
 
 #### `chat-with-threadable`
 | | Details |
@@ -278,7 +278,7 @@ Located at `supabase/functions/_shared/getUserContext.ts`. Fires **19 parallel q
 
 **Used by:** `chat-with-threadable`, `generate-content`, `generate-plans`, `generate-strategy`, `fix-post`, `weekly-assessment`
 
-**NOT used by:** `generate-draft-posts` (reads everything directly), `generate-playbook`, `generate-templates`, `run-analysis`, `discover-archetypes`, `discover-niche-accounts`, `extract-identity`, `analyze-voice`
+**NOT used by:** `generate-playbook`, `generate-templates`, `run-analysis`, `discover-archetypes`, `discover-niche-accounts`, `extract-identity`, `analyze-voice`
 
 ---
 
@@ -443,7 +443,7 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 | Gap | Severity | Details |
 |---|---|---|
 | **New accounts have no identity data** | Medium | Path B skips extract-identity, analyze-voice, run-analysis. User must manually fill identity on /my-story. Content generation works but lacks personal stories, voice profile, and regression insights. |
-| **generate-draft-posts doesn't use getUserContext** | Low | Reads everything directly (~650 lines). This means it may drift from getUserContext's data assembly if new data sources are added to getUserContext but not to generate-draft-posts. |
+| ~~**generate-draft-posts doesn't use getUserContext**~~ | ~~Low~~ | **RESOLVED** — generate-draft-posts already uses `getUserContext()` which provides full identity context including about_you, personal_info, and audiences. |
 | **Dual offer systems** | Medium | `user_offers` (from extract-identity / Identity UI) and `user_story_vault` section="offers" (from Story Vault UI) both store offers. getUserContext reads both. Could cause duplicates or confusion. |
 | **run-analysis overwrites archetype_discovery** | Medium | Both `discover-archetypes` and `run-analysis` write to `content_strategies` with strategy_type="archetype_discovery". Running run-analysis after discover-archetypes silently replaces archetypes. Onboarding runs both in sequence. |
 | **score-post uses regex, not AI** | Low | Checklist criteria are matched via simple regex patterns. Complex criteria (e.g., "Does the hook create curiosity?") can't be reliably evaluated this way. |
@@ -460,10 +460,10 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 
 | Function | Missing | Impact |
 |---|---|---|
-| **generate-draft-posts** | Does not include `user_identity.about_you`, `user_personal_info`, `user_audiences` | Posts may not reference personal identity details or audience insights that getUserContext would provide. |
-| **generate-templates** | Does not include `voice_profile`, `stories`, `personal_info` | Templates may not match user's voice or reference their stories. |
+| ~~**generate-draft-posts**~~ | ~~Does not include `user_identity.about_you`, `user_personal_info`, `user_audiences`~~ | **RESOLVED** — already uses `getUserContext()` which provides all identity data. |
+| ~~**generate-templates**~~ | ~~Does not include `voice_profile`, `stories`, `personal_info`~~ | **RESOLVED** — now reads `voice_profile` from profiles, stories from `user_story_vault`, and facts from `user_personal_info`. All injected into the AI prompt. |
 | **categorize-posts** | Does not include any profile context | Classification is purely based on archetype names + post text. Niche context might improve accuracy. |
-| **analyze-voice** | Does not include niche/dream_client/end_goal | Voice profile extraction is context-free. Knowing the niche might help identify industry-specific language patterns. |
+| ~~**analyze-voice**~~ | ~~Does not include niche/dream_client/end_goal~~ | **RESOLVED** — now reads `profiles.niche/dream_client/end_goal` and injects creator context into the system prompt for niche-aware voice analysis. |
 
 ### Token / Auth Risks
 

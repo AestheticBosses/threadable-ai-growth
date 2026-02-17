@@ -43,17 +43,24 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    const { data: posts } = await adminClient
-      .from("posts_analyzed")
-      .select("text_content")
-      .eq("user_id", userId)
-      .order("engagement_rate", { ascending: false })
-      .limit(20);
-
-    const { data: samples } = await adminClient
-      .from("voice_samples")
-      .select("sample_text")
-      .eq("user_id", userId);
+    // Fetch profile for niche context alongside posts and samples
+    const [{ data: profile }, { data: posts }, { data: samples }] = await Promise.all([
+      adminClient
+        .from("profiles")
+        .select("niche, dream_client, end_goal")
+        .eq("id", userId)
+        .single(),
+      adminClient
+        .from("posts_analyzed")
+        .select("text_content")
+        .eq("user_id", userId)
+        .order("engagement_rate", { ascending: false })
+        .limit(20),
+      adminClient
+        .from("voice_samples")
+        .select("sample_text")
+        .eq("user_id", userId),
+    ]);
 
     const allSamples: string[] = [];
     for (const p of posts || []) {
@@ -82,7 +89,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        system: "You are an expert writing style analyst. Analyze the writing samples provided and extract a detailed voice profile.",
+        system: `You are an expert writing style analyst. Analyze the writing samples provided and extract a detailed voice profile.${profile?.niche ? `\n\nCREATOR CONTEXT:\n- Niche: ${profile.niche}\n- Dream Client: ${profile.dream_client || "Not specified"}\n- End Goal: ${profile.end_goal || "Not specified"}\n\nUse this context to identify niche-specific language patterns, industry terminology, and how the creator's voice is tailored to resonate with their target audience.` : ""}`,
         messages: [
           {
             role: "user",

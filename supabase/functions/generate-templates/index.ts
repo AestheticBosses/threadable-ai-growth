@@ -52,7 +52,7 @@ serve(async (req) => {
     // Fetch user profile for niche context
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("niche, end_goal, dream_client")
+      .select("niche, end_goal, dream_client, voice_profile")
       .eq("id", user.id)
       .single();
 
@@ -62,6 +62,20 @@ serve(async (req) => {
       .select("about_you")
       .eq("user_id", user.id)
       .maybeSingle();
+
+    // Fetch stories and personal info so templates reference real experiences
+    const [{ data: storyVault }, { data: personalInfo }] = await Promise.all([
+      adminClient
+        .from("user_story_vault")
+        .select("data")
+        .eq("user_id", user.id)
+        .eq("section", "stories")
+        .maybeSingle(),
+      adminClient
+        .from("user_personal_info")
+        .select("content")
+        .eq("user_id", user.id),
+    ]);
 
     // Build the archetype descriptions for the prompt
     const archetypeDescriptions = archetypes
@@ -80,11 +94,28 @@ serve(async (req) => {
       ? `About the creator: ${identity.about_you}`
       : "";
 
+    // Build voice context from profile
+    const voiceContext = profile?.voice_profile
+      ? `\nVOICE PROFILE:\n- Tone: ${(profile.voice_profile as any).tone?.join(", ") || "N/A"}\n- Sentence style: ${(profile.voice_profile as any).sentence_style || "N/A"}\n- Vocabulary: ${(profile.voice_profile as any).vocabulary_level || "N/A"}\n- Common phrases: ${(profile.voice_profile as any).common_phrases?.join(", ") || "N/A"}\n- Opening style: ${(profile.voice_profile as any).opening_style || "N/A"}\n- Unique quirks: ${(profile.voice_profile as any).unique_quirks?.join(", ") || "N/A"}\n`
+      : "";
+
+    // Build stories context
+    const stories = (storyVault?.data as any[]) || [];
+    const storiesContext = stories.length > 0
+      ? `\nSTORIES & EXPERIENCES (use these in example fills):\n${stories.slice(0, 5).map((s: any) => `- ${s.title}: ${s.story?.slice(0, 150) || ""}${s.lesson ? ` (Lesson: ${s.lesson})` : ""}`).join("\n")}\n`
+      : "";
+
+    // Build personal info context
+    const personalFacts = (personalInfo || []).map((p: any) => p.content).filter(Boolean);
+    const personalContext = personalFacts.length > 0
+      ? `\nPERSONAL FACTS (reference in examples):\n${personalFacts.slice(0, 10).map((f: string) => `- ${f}`).join("\n")}\n`
+      : "";
+
     const systemPrompt = `You are a content strategist creating fill-in-the-blank post templates for a Threads creator.
 
 ${profileContext}
 ${identityContext}
-
+${voiceContext}${storiesContext}${personalContext}
 Here are their discovered content archetypes:
 
 ${archetypeDescriptions}
@@ -112,7 +143,8 @@ Rules:
 - Each template should use a different hook style (question, bold claim, story opener, number lead, confession, contrarian take)
 - Templates should vary in structure (hook→story→lesson, hook→list→CTA, hook→proof→insight, etc.)
 - Keep templates under 500 characters
-- Make examples specific and compelling, not generic
+- Make examples specific and compelling — use the creator's real stories, personal facts, and numbers where possible
+- Match the creator's voice profile: their tone, vocabulary, sentence style, and quirks
 - Respond with ONLY the JSON, no markdown fences`;
 
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
