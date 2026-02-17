@@ -85,7 +85,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_buckets").select("name, description, audience_persona, priority").eq("user_id", userId).eq("is_active", true).order("priority"),
     supabase.from("content_pillars").select("id, name, description, purpose, percentage, bucket_id").eq("user_id", userId).eq("is_active", true),
     supabase.from("connected_topics").select("id, pillar_id, name").eq("user_id", userId).eq("is_active", true),
-    supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(7),
+    supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(14),
   ]);
 
   // === IDENTITY (condensed — strip anecdotes the AI would copy) ===
@@ -328,7 +328,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   for (const t of allTopics) topicIdMap[t.id] = t.name;
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const weekPlanSection = planItems.length > 0
-    ? planItems.map((item: any, i: number) => {
+    ? "IMPORTANT: Do NOT always start from the top of this list. Pick different plan items each time. If the user asks for 5 posts, select 5 items spread across different days — not just the first 5.\n\n" +
+      planItems.map((item: any, i: number) => {
         const date = new Date(item.scheduled_date + "T12:00:00");
         const dayName = dayNames[date.getDay()];
         const dayLabel = i === 0 ? `Today (${dayName})` : i === 1 ? `Tomorrow (${dayName})` : `${dayName} ${item.scheduled_date}`;
