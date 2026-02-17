@@ -13,6 +13,14 @@ const STEPS = [
   "Your Niche",
   "Dream Client",
   "End Goal",
+  "Your Strategy",
+];
+
+const CADENCE_OPTIONS = [
+  { value: "7x_week", label: "Daily (7x/week)" },
+  { value: "5x_week", label: "Weekdays (5x/week)" },
+  { value: "3x_week", label: "3x per week" },
+  { value: "2x_week", label: "2x per week" },
 ];
 
 type AccountType = "seasoned" | "new";
@@ -94,6 +102,9 @@ const Onboarding = () => {
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
+  const [mission, setMission] = useState("");
+  const [postingCadence, setPostingCadence] = useState("7x_week");
+  const [trafficUrl, setTrafficUrl] = useState("");
 
   // Pipeline state
   const [pipelineRunning, setPipelineRunning] = useState(false);
@@ -348,6 +359,9 @@ const Onboarding = () => {
           niche: niche.trim(),
           dream_client: dreamClient.trim(),
           end_goal: endGoal.trim(),
+          mission: mission.trim() || null,
+          posting_cadence: postingCadence,
+          traffic_url: trafficUrl.trim() || null,
         })
         .eq("id", user.id);
 
@@ -456,13 +470,15 @@ const Onboarding = () => {
         return dreamClient.trim().length > 0;
       case 3:
         return endGoal.trim().length > 0;
+      case 4:
+        return mission.trim().length > 0;
       default:
         return false;
     }
   };
 
   const handleNext = () => {
-    if (step === 3) {
+    if (step === 4) {
       handleComplete();
     } else {
       setStep((s) => s + 1);
@@ -674,6 +690,65 @@ const Onboarding = () => {
             </div>
           </div>
         )}
+
+        {step === 4 && (
+          <div className="space-y-5">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Your Content Strategy
+            </h1>
+            <div className="space-y-2">
+              <label htmlFor="mission" className="text-sm font-medium text-foreground">
+                What is the ONE thing you want to be known for?
+              </label>
+              <Input
+                id="mission"
+                value={mission}
+                onChange={(e) => setMission(e.target.value)}
+                placeholder="e.g., Helping everyday people achieve extraordinary results"
+                className="h-12 text-base"
+              />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Your north star. Every piece of content should ladder up to this.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                How often do you want to post?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {CADENCE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setPostingCadence(opt.value)}
+                    className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                      postingCadence === opt.value
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-card text-muted-foreground hover:border-foreground/20"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="traffic-url" className="text-sm font-medium text-foreground">
+                Where do you want to drive traffic?
+              </label>
+              <Input
+                id="traffic-url"
+                value={trafficUrl}
+                onChange={(e) => setTrafficUrl(e.target.value)}
+                placeholder="e.g., yoursite.com/book, newsletter link, course URL (optional)"
+                className="h-12 text-base"
+              />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Optional. Your main CTA link for bottom-of-funnel posts.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom nav */}
@@ -694,7 +769,7 @@ const Onboarding = () => {
               disabled={!isStepValid() || saving}
               className="gap-2 px-6"
             >
-              {step === 3 ? (
+              {step === 4 ? (
                 saving ? "Saving…" : "Launch My Growth Engine →"
               ) : (
                 <>
