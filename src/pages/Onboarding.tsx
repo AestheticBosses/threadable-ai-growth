@@ -299,20 +299,8 @@ const Onboarding = () => {
         .catch((err: any) => console.error("categorize-posts error:", err))
     );
 
-    // 4. Build starter identity
-    updateStep("identity", "active");
-    try {
-      await supabase.from("user_identity").upsert({
-        user_id: user.id,
-        about_you: niche.trim() + " professional helping " + dreamClient.trim(),
-        desired_perception: "The go-to expert in " + niche.trim(),
-        main_goal: endGoal.trim(),
-      }, { onConflict: "user_id" });
-      updateStep("identity", "done");
-    } catch (err) {
-      console.error("Identity step threw:", err);
-      updateStep("identity", "error");
-    }
+    // 4. Generate starter identity via AI (uses niche/dream_client/end_goal from profile)
+    await invokeStep("identity", "extract-identity", {});
 
     // 5. Generate playbook
     await invokeStep("playbook", "generate-playbook", { user_id: user.id });

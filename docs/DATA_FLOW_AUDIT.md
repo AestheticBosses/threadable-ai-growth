@@ -16,10 +16,10 @@ Reference document for the entire Threadable pipeline — every edge function, h
 | **Reads** | `profiles` (threads_username, niche, display_name, full_name, end_goal, dream_client), `posts_analyzed` (top 75 by views, source="own") |
 | **Writes** | `user_identity` (about_you, desired_perception, main_goal), `user_story_vault` (section="stories"), `user_offers`, `user_audiences`, `user_personal_info` |
 | **Caller params** | None (auth only) |
-| **AI context** | Profile bio + niche + goal + dream client + top 75 posts with engagement data |
+| **AI context** | **With posts:** Profile bio + niche + goal + dream client + top 75 posts with engagement data. **Without posts (starter):** Niche + dream client + end goal only. |
 | **AI model** | claude-sonnet-4-20250514 |
-| **Returns** | `{ data: parsed, post_count }` |
-| **Notes** | Uses check-then-insert/update pattern for user_identity. Clears existing offers/audiences/personal_info/stories before re-inserting. Auth uses `getClaims()` instead of `getUser()`. |
+| **Returns** | `{ data: parsed, post_count }` (with posts) or `{ data: parsed, post_count: 0, is_starter: true }` (starter) |
+| **Notes** | Two paths: (1) With posts — full extraction of stories, offers, audiences, personal_info from post analysis. (2) Without posts (starter) — generates about_you, audiences, personal_info from profile niche/dream_client/end_goal; stories and offers are empty. Uses check-then-insert/update pattern. Auth uses `getClaims()`. |
 
 #### `analyze-voice`
 | | Details |
@@ -335,18 +335,26 @@ Step 2: fetch-user-posts
 Step 3: Set Niche / Dream Client / End Goal
   └─► profiles.niche, profiles.dream_client, profiles.end_goal
 
-Step 4: discover-archetypes (new_account=true)
-  └─► content_strategies (archetype_discovery) — niche-based, no posts needed
-
-Step 5: discover-niche-accounts
+Step 4: discover-niche-accounts
   └─► competitor_accounts
   └─► content_strategies (niche_discovery)
 
-Step 6: Redirect to /my-story (Identity page)
+Step 5: discover-archetypes (new_account=true)
+  └─► content_strategies (archetype_discovery) — niche-based, no posts needed
 
-Note: extract-identity and analyze-voice are SKIPPED (require posts).
-      run-analysis is SKIPPED (requires posts).
-      User builds identity manually on /my-story page.
+Step 6: extract-identity (starter mode — no posts)
+  └─► user_identity (about_you, desired_perception, main_goal) — AI-generated from niche/dream_client/end_goal
+  └─► user_audiences — AI-generated from dream_client
+  └─► user_personal_info — AI-generated from niche
+
+Step 7: generate-playbook
+Step 8: generate-plans (content, branding, funnel)
+Step 9: generate-templates
+
+Step 10: Redirect to /my-story (Identity page with "Starter Identity" banner)
+
+Note: analyze-voice and run-analysis are SKIPPED (require posts).
+      Identity page prompts user to run Auto-Fill once they have posts.
 ```
 
 ### Post-Onboarding Functions (triggered by user actions)
@@ -442,7 +450,7 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 
 | Gap | Severity | Details |
 |---|---|---|
-| **New accounts have no identity data** | Medium | Path B skips extract-identity, analyze-voice, run-analysis. User must manually fill identity on /my-story. Content generation works but lacks personal stories, voice profile, and regression insights. |
+| ~~**New accounts have no identity data**~~ | ~~Medium~~ | **RESOLVED** — extract-identity now has a "starter" path: when no posts exist, it generates about_you, audiences, personal_info, desired_perception, and main_goal from the user's niche/dream_client/end_goal via AI. New account onboarding calls extract-identity instead of inline placeholders. Identity page shows a "Starter Identity" banner prompting users to re-run Auto-Fill once they have posts. Voice profile and regression insights still require posts. |
 | ~~**generate-draft-posts doesn't use getUserContext**~~ | ~~Low~~ | **RESOLVED** — generate-draft-posts already uses `getUserContext()` which provides full identity context including about_you, personal_info, and audiences. |
 | **Dual offer systems** | Medium | `user_offers` (from extract-identity / Identity UI) and `user_story_vault` section="offers" (from Story Vault UI) both store offers. getUserContext reads both. Could cause duplicates or confusion. |
 | ~~**run-analysis overwrites archetype_discovery**~~ | ~~Medium~~ | **RESOLVED** — run-analysis no longer writes to archetype_discovery. It stores its regression-informed archetypes in the playbook data as `analysis_archetypes`. archetype_discovery is exclusively owned by discover-archetypes. |

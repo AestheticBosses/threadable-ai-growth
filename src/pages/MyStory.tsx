@@ -141,6 +141,15 @@ const MyStory = () => {
           )}
         </div>
 
+        {!hasPosts && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm font-medium text-foreground">Starter Identity</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your identity was generated from your onboarding inputs. Start posting on Threads, then come back and click <strong>Auto-Fill Identity</strong> to extract your real voice, stories, and experiences from your content.
+            </p>
+          </div>
+        )}
+
         <IdentityCompleteness />
 
         <div id="about-you"><AboutYouSection /></div>

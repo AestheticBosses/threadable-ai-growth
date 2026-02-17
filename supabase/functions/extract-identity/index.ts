@@ -51,9 +51,125 @@ serve(async (req) => {
     if (postsError) throw postsError;
 
     if (!posts || posts.length === 0) {
+      // No posts — generate a starter identity from profile data if available
+      if (!profile?.niche) {
+        return new Response(
+          JSON.stringify({ error: "no_posts", message: "No posts found and no niche set. Complete onboarding first." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log("No posts found — generating starter identity from profile for user:", userId);
+
+      const starterPrompt = `You are an AI that creates a starter professional identity for a new content creator. They haven't posted yet, so create a strong starting identity based on their inputs that they can refine later.
+
+Creator inputs:
+- Niche: ${profile.niche}
+- Dream Client: ${profile.dream_client || "Not specified"}
+- End Goal: ${profile.end_goal || "Not specified"}
+- Name: ${profile.display_name || profile.full_name || "Not specified"}
+
+Generate a professional identity in this exact JSON format:
+{
+  "about_you": "A 2-4 sentence professional summary written in first person (I am...). Position them as an emerging authority in their niche. Make it specific to their niche, not generic.",
+  "stories": [],
+  "offers": [],
+  "target_audiences": ["Audience segment 1", "Audience segment 2", "Audience segment 3"],
+  "personal_info": ["Their primary role/expertise area", "Their target market focus"],
+  "desired_perception": "How this person should be perceived online to attract their dream client — be specific to their niche",
+  "main_goal": "Their end goal restated clearly and specifically"
+}
+
+Rules:
+- Write about_you in first person as if the creator wrote it themselves
+- Make everything specific to their niche — no generic "passionate professional" language
+- target_audiences: 2-3 specific segments derived from their dream client description
+- personal_info: 2-3 facts about their professional focus (inferred from niche + dream client)
+- stories and offers are empty arrays (no posts to extract from)
+- Respond with ONLY the JSON, no markdown fences or extra text`;
+
+      const starterRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: starterPrompt }],
+        }),
+      });
+
+      if (!starterRes.ok) {
+        console.error("Starter identity AI error:", starterRes.status);
+        return new Response(JSON.stringify({ error: "AI analysis failed" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const starterData = await starterRes.json();
+      const starterText = starterData.content?.[0]?.text || "";
+
+      let starterParsed;
+      try {
+        const cleanJson = starterText.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
+        starterParsed = JSON.parse(cleanJson);
+      } catch {
+        console.error("Starter identity JSON parse failed:", starterText);
+        return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Save starter identity to DB
+      try {
+        const { data: existingIdentity } = await adminClient
+          .from("user_identity")
+          .select("id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (existingIdentity?.id) {
+          await adminClient.from("user_identity").update({
+            about_you: starterParsed.about_you || null,
+            desired_perception: starterParsed.desired_perception || null,
+            main_goal: starterParsed.main_goal || null,
+          }).eq("id", existingIdentity.id);
+        } else {
+          await adminClient.from("user_identity").insert({
+            user_id: userId,
+            about_you: starterParsed.about_you || null,
+            desired_perception: starterParsed.desired_perception || null,
+            main_goal: starterParsed.main_goal || null,
+          });
+        }
+
+        // Clear and insert audiences
+        await adminClient.from("user_audiences").delete().eq("user_id", userId);
+        if (starterParsed.target_audiences?.length > 0) {
+          await adminClient.from("user_audiences").insert(
+            starterParsed.target_audiences.map((name: string) => ({ user_id: userId, name }))
+          );
+        }
+
+        // Clear and insert personal info
+        await adminClient.from("user_personal_info").delete().eq("user_id", userId);
+        if (starterParsed.personal_info?.length > 0) {
+          await adminClient.from("user_personal_info").insert(
+            starterParsed.personal_info.map((content: string) => ({ user_id: userId, content }))
+          );
+        }
+
+        console.log("Starter identity saved for user:", userId);
+      } catch (saveErr) {
+        console.error("Failed to save starter identity:", saveErr);
+      }
+
       return new Response(
-        JSON.stringify({ error: "no_posts", message: "No posts found. Fetch your posts first." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ data: starterParsed, post_count: 0, is_starter: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
