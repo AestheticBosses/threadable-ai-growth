@@ -32,6 +32,8 @@ function cleanPostBody(body: string): string {
     .replace(/.*Option \d.*engagement.*$/gim, "")
     .replace(/.*engagement.*Option \d.*$/gim, "")
     .replace(/Based on your.*$/gis, "")
+    .replace(/^---\s*$/gm, "")
+    .replace(/Recommendation:.*$/gis, "")
     .trim();
 }
 

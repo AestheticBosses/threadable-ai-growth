@@ -78,7 +78,10 @@ If the user's message is a short statement (under 200 characters) with no explic
 **Option 5 (Confrontational)**
 [post text]
 
-Then add a personalized recommendation based on the user's regression data, top-performing post patterns, voice style, and goals. Example: "Based on your data, vulnerability posts get 3x more engagement — Option 2 is your best bet. Option 3 works if you want screenshot shares."
+After ALL 5 options, add "---" on its own line, then your recommendation starting with "Recommendation:". This keeps it separate from the options. Example:
+
+---
+Recommendation: Based on your data, vulnerability posts drive your highest engagement — Option 2 is your best bet for DMs. Option 3 works for screenshot shares.
 
 CRITICAL: Option 3 (Shortest) must be under 100 characters — 1-2 sentences max. Each option is a COMPLETE post ready to publish. Do NOT add character counts, analysis, or explanations as separate "ideas" — only post options followed by one recommendation line.
 
