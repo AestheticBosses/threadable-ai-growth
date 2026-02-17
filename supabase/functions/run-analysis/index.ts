@@ -25,6 +25,13 @@ serve(async (req) => {
 
     console.log("User:", user.id)
 
+    // Get user profile for niche/goal context
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("niche, dream_client, end_goal")
+      .eq("id", user.id)
+      .single()
+
     // Get ALL posts sorted by views
     const { data: posts, error: postsError } = await adminClient
       .from('posts_analyzed')
@@ -68,6 +75,13 @@ serve(async (req) => {
         messages: [{
           role: 'user',
           content: `You are an expert Threads growth strategist doing a deep analysis of a creator's content performance to help them grow faster.
+
+CREATOR CONTEXT:
+- Niche: ${profile?.niche || "Not specified"}
+- Dream Client: ${profile?.dream_client || "Not specified"}
+- End Goal: ${profile?.end_goal || "Not specified"}
+
+Keep this context in mind throughout your analysis. Weight content patterns that would resonate with their dream client and serve their end goal, not just what got the most raw views. A post that drives high engagement from their target audience is more valuable than one that went viral with a general audience.
 
 ACCOUNT SUMMARY:
 ${summary}

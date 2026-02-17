@@ -27,8 +27,17 @@ serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const isNewAccount = body.new_account === true
-    const nicheHint = body.niche || ""
-    const goalsHint = body.goals || ""
+
+    // Read profile from DB so context is always available regardless of caller
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("niche, dream_client, end_goal")
+      .eq("id", user.id)
+      .single()
+
+    const nicheHint = body.niche || profile?.niche || ""
+    const goalsHint = body.goals || profile?.end_goal || ""
+    const dreamClientHint = profile?.dream_client || ""
 
     let postsForAnalysis = ""
     let promptContent = ""
@@ -99,6 +108,13 @@ ${p.text_content}`
       ).join('\n\n---\n\n')
 
       promptContent = `You are a viral content strategist analyzing a creator's Threads posts to discover their unique content archetypes.
+
+CREATOR CONTEXT:
+- Niche: ${nicheHint || "Not specified"}
+- Dream Client: ${dreamClientHint || "Not specified"}
+- End Goal: ${goalsHint || "Not specified"}
+
+Use this context to shape the archetypes. The archetypes should not just reflect past posting patterns — they should reflect what this creator needs to build toward their goal and resonate with their dream client. If their posts show patterns that serve their dream client well, weight those higher.
 
 Here are their top ${posts.length} posts ranked by views with engagement data:
 

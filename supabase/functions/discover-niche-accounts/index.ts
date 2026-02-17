@@ -33,14 +33,59 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const niche = body.niche || "";
-    const dreamClient = body.dream_client || "";
+
+    // Read profile from DB so context is always available regardless of caller
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("niche, dream_client, end_goal")
+      .eq("id", user.id)
+      .single();
+
+    const niche = body.niche || profile?.niche || "";
+    const dreamClient = body.dream_client || profile?.dream_client || "";
+    const endGoal = profile?.end_goal || "";
 
     console.log("discover-niche-accounts for user:", user.id, "niche:", niche);
 
-    const systemPrompt = "You are a Threads growth strategist. Based on the user's niche and dream client, suggest 5-10 Threads accounts they should study and emulate. For each account, provide:\n- Username (if you know specific accounts)\n- Why they're worth studying\n- What content patterns make them successful\n- What the user can learn from their style\n\nIf you don't know specific Threads accounts in this niche, suggest the TYPE of accounts to look for and what patterns to emulate based on what works in this niche on short-form social media.\n\nRespond as JSON:\n{\n  \"accounts\": [\n    {\n      \"username\": \"@example or 'Look for accounts that...'\",\n      \"why\": \"...\",\n      \"patterns\": [\"pattern1\", \"pattern2\"],\n      \"lesson\": \"...\"\n    }\n  ],\n  \"niche_patterns\": {\n    \"top_hooks\": [\"hook pattern 1\", \"hook pattern 2\"],\n    \"best_archetypes\": [\"archetype1\", \"archetype2\"],\n    \"content_mix\": { \"tof\": 50, \"mof\": 30, \"bof\": 20 }\n  }\n}";
+    const systemPrompt = `You are a Threads growth strategist helping a creator find accounts to study and learn from.
 
-    const userMessage = "My niche: " + niche + "\nMy dream client: " + dreamClient + "\n\nSuggest aspirational Threads accounts and niche patterns for me to study.";
+Your goal: find content creators who are ACHIEVING what this user wants to achieve, in their niche, creating content that resonates with their target audience.
+
+PRIORITIZE:
+- Mid-tier creators (5K-100K followers) with high engagement rates over celebrities or mega-influencers
+- Creators who actively post content that attracts the user's dream client
+- Creators whose content strategy aligns with the user's end goal (e.g., if the goal is selling coaching, find creators who successfully convert followers into clients)
+- Creators with strong engagement (lots of replies and reposts, not just views)
+
+DO NOT suggest:
+- Celebrities, athletes, or entertainment accounts unless they're in the user's exact niche
+- Generic motivational accounts
+- Accounts with millions of followers but low engagement
+
+For each account, provide:
+- Username (real Threads usernames if you know them, otherwise describe the type of account to search for)
+- Why they're worth studying specifically for this user's goals
+- What content patterns make them successful with the target audience
+- What the user can learn from their style
+
+Respond as JSON:
+{
+  "accounts": [
+    {
+      "username": "@example or 'Look for accounts that...'",
+      "why": "...",
+      "patterns": ["pattern1", "pattern2"],
+      "lesson": "..."
+    }
+  ],
+  "niche_patterns": {
+    "top_hooks": ["hook pattern 1", "hook pattern 2"],
+    "best_archetypes": ["archetype1", "archetype2"],
+    "content_mix": { "tof": 50, "mof": 30, "bof": 20 }
+  }
+}`;
+
+    const userMessage = `My niche: ${niche}\nMy dream client: ${dreamClient}\nMy end goal: ${endGoal}\n\nFind Threads creators I should study — people who are creating content that attracts my dream client and achieving goals similar to mine.`;
 
     const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
