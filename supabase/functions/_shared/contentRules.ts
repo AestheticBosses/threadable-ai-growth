@@ -56,4 +56,14 @@ VOICE MATCHING:
 - If they're direct and data-driven, be direct and data-driven
 - Read their top-performing posts and mirror what made those work
 - The reader should not be able to tell AI helped write this
+
+CREATIVE TEXTURE:
+- Add small, vivid, human details that make the reader feel like they're there — not just summarizing events
+- Good: "After snack negotiations and one last monster check under the bed"
+- Bad: "After putting my kids to sleep"
+- Good: "Checking analytics at 2am while telling myself it's just curiosity"
+- Bad: "Being obsessed with my metrics"
+- Transform generic descriptions into specific, sensory moments
+- If the user's story mentions a milestone, don't just repeat the fact. Paint the moment: the nervousness, the unexpected detail, the thing nobody talks about
+- Replace abstract language with concrete images. Not "I worked hard" — show what hard looked like
 `;
