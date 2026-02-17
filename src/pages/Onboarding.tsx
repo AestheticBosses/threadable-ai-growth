@@ -39,11 +39,11 @@ const SEASONED_STEPS: PipelineStepDef[] = [
   { id: "identity", label: "Extracting your identity", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice", status: "waiting" },
   { id: "playbook", label: "Generating your playbook", status: "waiting" },
-  { id: "plans", label: "Creating content, branding & funnel plans", status: "waiting" },
-  { id: "templates", label: "Building content templates", status: "waiting" },
   { id: "buckets", label: "Creating content buckets", status: "waiting" },
   { id: "pillars", label: "Building content pillars", status: "waiting" },
   { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
+  { id: "plans", label: "Creating content, branding & funnel plans", status: "waiting" },
+  { id: "templates", label: "Building content templates", status: "waiting" },
 ];
 
 const NEW_STEPS: PipelineStepDef[] = [
@@ -52,11 +52,11 @@ const NEW_STEPS: PipelineStepDef[] = [
   { id: "archetypes", label: "Identifying winning content patterns", status: "waiting" },
   { id: "identity", label: "Building your starter identity", status: "waiting" },
   { id: "playbook", label: "Generating your playbook", status: "waiting" },
-  { id: "plans", label: "Creating your content strategy", status: "waiting" },
-  { id: "templates", label: "Building starter templates", status: "waiting" },
   { id: "buckets", label: "Creating content buckets", status: "waiting" },
   { id: "pillars", label: "Building content pillars", status: "waiting" },
   { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
+  { id: "plans", label: "Creating your content strategy", status: "waiting" },
+  { id: "templates", label: "Building starter templates", status: "waiting" },
 ];
 
 function PipelineProgressStep({ label, status }: { label: string; status: string }) {
@@ -256,7 +256,25 @@ const Onboarding = () => {
       updateStep("playbook", "error");
     }
 
-    // 8. Generate all 3 plans (independent — uses whatever context is available)
+    // 8. Generate content buckets (needs archetypes + identity)
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+
+    // 9. Generate content pillars + connected topics (needs buckets)
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    // 10. Generate 30-day plan (needs pillars)
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
+    }
+
+    // 11. Generate all 3 plans (uses whatever context is available)
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
@@ -278,36 +296,11 @@ const Onboarding = () => {
       updateStep("plans", "error");
     }
 
-    // 9. Generate templates via AI (5 per archetype, requires archetypes)
+    // 12. Generate templates (LAST — needs pillars + archetypes)
     if (archetypesOk) {
-      updateStep("templates", "active");
-      try {
-        await invokeStep("templates", "generate-templates", {});
-        updateStep("templates", "done");
-      } catch (err) {
-        console.error("Templates step threw:", err);
-        updateStep("templates", "error");
-      }
+      await invokeStep("templates", "generate-templates", {});
     } else {
       updateStep("templates", "error");
-    }
-
-    // 10. Generate content buckets (audience segments)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
-
-    // 11. Generate content pillars + connected topics (requires buckets)
-    let pillarsOk = false;
-    if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
-    } else {
-      updateStep("pillars", "error");
-    }
-
-    // 12. Generate 30-day plan (requires pillars)
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
     }
   };
 
@@ -340,7 +333,25 @@ const Onboarding = () => {
     // 5. Generate playbook
     await invokeStep("playbook", "generate-playbook", { user_id: user.id });
 
-    // 6. Generate plans
+    // 6. Generate content buckets (needs archetypes + identity)
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+
+    // 7. Generate content pillars + connected topics (needs buckets)
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    // 8. Generate 30-day plan (needs pillars)
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
+    }
+
+    // 9. Generate plans
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
@@ -362,33 +373,8 @@ const Onboarding = () => {
       updateStep("plans", "error");
     }
 
-    // 7. Generate starter templates via AI (5 per archetype)
-    updateStep("templates", "active");
-    try {
-      await invokeStep("templates", "generate-templates", {});
-      updateStep("templates", "done");
-    } catch (err) {
-      console.error("Templates step threw:", err);
-      updateStep("templates", "error");
-    }
-
-    // 8. Generate content buckets (audience segments)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
-
-    // 9. Generate content pillars + connected topics (requires buckets)
-    let pillarsOk = false;
-    if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
-    } else {
-      updateStep("pillars", "error");
-    }
-
-    // 10. Generate 30-day plan (requires pillars)
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
-    }
+    // 10. Generate starter templates (LAST — needs pillars + archetypes)
+    await invokeStep("templates", "generate-templates", {});
   };
 
   const handleComplete = async () => {
@@ -561,7 +547,7 @@ const Onboarding = () => {
                   : "We're building your starter strategy based on what works in your niche."}
               </p>
               <p className="text-gray-500 text-sm mt-1">
-                This takes about 60–90 seconds
+                This takes a few minutes — we're building your complete content strategy.
               </p>
             </div>
 
