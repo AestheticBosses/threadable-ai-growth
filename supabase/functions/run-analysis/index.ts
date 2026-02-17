@@ -194,18 +194,12 @@ Respond ONLY in this exact JSON format:
       return new Response(JSON.stringify({ error: 'Parse failed', raw: analysisText.substring(0, 1000) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Save all three sections in parallel
+    // Save regression insights and playbook (NOT archetype_discovery — that's owned by discover-archetypes)
     const saves = [
       adminClient.from('content_strategies').upsert({
         user_id: user.id,
         strategy_type: 'regression_insights',
         strategy_data: { insights: analysis.regression_insights },
-      }, { onConflict: 'user_id,strategy_type' }),
-
-      adminClient.from('content_strategies').upsert({
-        user_id: user.id,
-        strategy_type: 'archetype_discovery',
-        strategy_data: { archetypes: analysis.archetypes },
       }, { onConflict: 'user_id,strategy_type' }),
 
       adminClient.from('content_strategies').upsert({
@@ -216,13 +210,14 @@ Respond ONLY in this exact JSON format:
           checklist: analysis.checklist,
           rules: analysis.rules,
           templates: analysis.archetypes.map((a: any) => ({ archetype: a.name, emoji: a.emoji, template: a.template, example: a.example_posts?.[0] })),
-          generation_guidelines: analysis.generation_guidelines
+          generation_guidelines: analysis.generation_guidelines,
+          analysis_archetypes: analysis.archetypes,
         },
       }, { onConflict: 'user_id,strategy_type' })
     ]
 
     await Promise.all(saves)
-    console.log("=== ALL ANALYSIS SAVED ===")
+    console.log("=== ANALYSIS SAVED (regression_insights + playbook) ===")
 
     return new Response(JSON.stringify({ success: true, analysis }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

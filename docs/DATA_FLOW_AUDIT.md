@@ -47,12 +47,12 @@ Reference document for the entire Threadable pipeline — every edge function, h
 | | Details |
 |---|---|
 | **Reads** | `profiles` (niche, dream_client, end_goal), `posts_analyzed` (ALL posts, top 75 sent to AI) |
-| **Writes** | `content_strategies` × 3: regression_insights, archetype_discovery, playbook |
+| **Writes** | `content_strategies` × 2: regression_insights, playbook (includes analysis_archetypes for reference) |
 | **Caller params** | None (auth only) |
 | **AI context** | Creator context (niche/dream_client/end_goal) + account summary stats + top 75 posts with full text and engagement |
 | **AI model** | claude-sonnet-4-20250514 (max_tokens: 8000) |
 | **Returns** | `{ success, analysis }` |
-| **Notes** | Single comprehensive AI call that produces all three strategy types. Overwrites archetype_discovery from discover-archetypes. |
+| **Notes** | Single comprehensive AI call. Does NOT write archetype_discovery (owned exclusively by discover-archetypes). Regression-informed archetypes are stored in the playbook data as `analysis_archetypes`. |
 
 #### `run-regression`
 | | Details |
@@ -390,9 +390,9 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 | `user_writing_style` | UI (VoiceSettings) | getUserContext |
 | `content_preferences` | UI (auto-seeded on first read) | getUserContext |
 | `voice_samples` | UI | analyze-voice, getUserContext |
-| `content_strategies.archetype_discovery` | discover-archetypes, run-analysis | generate-playbook, generate-templates, generate-draft-posts, categorize-posts, getUserContext |
+| `content_strategies.archetype_discovery` | discover-archetypes | generate-playbook, generate-templates, categorize-posts, getUserContext |
 | `content_strategies.regression_insights` | run-regression, run-analysis | generate-playbook, generate-strategy, getUserContext |
-| `content_strategies.playbook` | generate-playbook, run-analysis | score-post, generate-draft-posts, getUserContext |
+| `content_strategies.playbook` | generate-playbook, run-analysis | score-post, getUserContext |
 | `content_strategies.niche_discovery` | discover-niche-accounts | getUserContext |
 | `content_templates` | generate-templates | getUserContext |
 | `competitor_accounts` | discover-niche-accounts | getUserContext |
@@ -445,7 +445,7 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 | **New accounts have no identity data** | Medium | Path B skips extract-identity, analyze-voice, run-analysis. User must manually fill identity on /my-story. Content generation works but lacks personal stories, voice profile, and regression insights. |
 | ~~**generate-draft-posts doesn't use getUserContext**~~ | ~~Low~~ | **RESOLVED** — generate-draft-posts already uses `getUserContext()` which provides full identity context including about_you, personal_info, and audiences. |
 | **Dual offer systems** | Medium | `user_offers` (from extract-identity / Identity UI) and `user_story_vault` section="offers" (from Story Vault UI) both store offers. getUserContext reads both. Could cause duplicates or confusion. |
-| **run-analysis overwrites archetype_discovery** | Medium | Both `discover-archetypes` and `run-analysis` write to `content_strategies` with strategy_type="archetype_discovery". Running run-analysis after discover-archetypes silently replaces archetypes. Onboarding runs both in sequence. |
+| ~~**run-analysis overwrites archetype_discovery**~~ | ~~Medium~~ | **RESOLVED** — run-analysis no longer writes to archetype_discovery. It stores its regression-informed archetypes in the playbook data as `analysis_archetypes`. archetype_discovery is exclusively owned by discover-archetypes. |
 | **score-post uses regex, not AI** | Low | Checklist criteria are matched via simple regex patterns. Complex criteria (e.g., "Does the hook create curiosity?") can't be reliably evaluated this way. |
 | **categorize-posts server-side vs usePostsAnalyzed client-side** | Low | `categorize-posts` writes `content_category` to DB via AI. `usePostsAnalyzed` has its own `classifyArchetype()` function that classifies client-side. These may disagree. |
 
@@ -453,7 +453,7 @@ Note: extract-identity and analyze-voice are SKIPPED (require posts).
 
 | Risk | Severity | Details |
 |---|---|---|
-| **Onboarding Step 4 parallelism** | Medium | extract-identity, analyze-voice, and run-analysis run in parallel. run-analysis writes archetype_discovery, which discover-archetypes also wrote in the new-account path. If run-analysis finishes after discover-archetypes, it overwrites. In seasoned path, both produce archetypes but from different data subsets (run-analysis uses top 75, discover-archetypes uses top 50). |
+| ~~**Onboarding Step 4 parallelism**~~ | ~~Medium~~ | **RESOLVED** — run-analysis no longer writes archetype_discovery. In the seasoned path, run-analysis runs first (writes regression_insights + playbook), then discover-archetypes runs and writes archetype_discovery without conflict. |
 | **extract-identity re-run clears data** | Low | Re-running extract-identity deletes all existing user_offers, user_audiences, user_personal_info, user_story_vault stories before re-inserting. Any manual edits are lost. |
 
 ### Missing Data in AI Prompts
