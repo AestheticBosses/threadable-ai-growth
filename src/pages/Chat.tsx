@@ -617,10 +617,19 @@ const Chat = () => {
     console.log("[handleDraftIdea] Starting draft for:", idea.title, "| Body length:", idea.body.length);
 
     addItem({ type: "user", content: `Draft: ${idea.title}` });
-    addItem({ type: "drafting" });
 
     await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
+    // If the post is already complete (under 500 chars, no brackets), skip AI generation
+    if (idea.body.length > 0 && idea.body.length <= 500 && !idea.body.includes('[') && !idea.body.includes(']')) {
+      console.log("[handleDraftIdea] Post already complete, skipping AI generation");
+      setDraftedPost(idea.body);
+      setFlowMode("preview");
+      setIsBusy(false);
+      return;
+    }
+
+    addItem({ type: "drafting" });
     setFlowMode("preview");
 
     const { data: { session } } = await supabase.auth.getSession();

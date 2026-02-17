@@ -369,7 +369,10 @@ export function PostPreviewSplit({
 
               {/* Row 2: Secondary actions */}
               <div className="grid grid-cols-3 gap-2">
-                <Button variant="ghost" size="sm" className="gap-2 text-xs" onClick={() => setIsEditing(!isEditing)}>
+                <Button variant="ghost" size="sm" className="gap-2 text-xs" onClick={() => {
+                  if (isEditing) console.log("[PostPreviewSplit] Saving edit, content:", editableContent.substring(0, 100));
+                  setIsEditing(!isEditing);
+                }}>
                   <Pencil className="h-3.5 w-3.5" /> {isEditing ? "Done" : "Edit"}
                 </Button>
 
