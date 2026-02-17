@@ -99,18 +99,32 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     : "No identity data provided yet.";
   console.log("[getUserContext] Identity section preview:", identitySection.substring(0, 300));
 
-  // === STORIES (titles + lessons only — keeps AI from retelling stories verbatim) ===
+  // === STORIES (real facts for grounding — framed to prevent fabrication) ===
   const stories = storiesRes.data || [];
-  const storiesSection = stories.length > 0
-    ? stories.map((s: any) => {
-        const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
-        return items.map((item: any) => {
-          const title = item.title || item.name || "Untitled";
-          const lesson = item.lesson || item.key_lesson || "";
-          return lesson ? `- Story: ${title} — Lesson: ${lesson}` : `- Story: ${title}`;
-        }).join("\n");
-      }).filter(Boolean).join("\n")
-    : "No stories added yet.";
+  let storiesSection = "No stories added yet.";
+  if (stories.length > 0) {
+    const storyLines: string[] = [];
+    for (const s of stories) {
+      const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
+      for (const item of items as any[]) {
+        const title = item.title || item.name || "Untitled";
+        const lesson = item.lesson || item.key_lesson || "";
+        const storyText = item.story || item.content || "";
+        // For "numbers" section entries, show label + value + context
+        if (item.label && item.value) {
+          storyLines.push(`- Number: ${item.label} = ${item.value}${item.context ? ` (${item.context})` : ""}`);
+        } else {
+          // Send first 300 chars of story text as factual reference
+          const factSnippet = storyText.length > 300 ? storyText.substring(0, 300) + "…" : storyText;
+          const parts = [`- Story: ${title}`];
+          if (factSnippet) parts.push(`  Facts: ${factSnippet}`);
+          if (lesson) parts.push(`  Lesson: ${lesson}`);
+          storyLines.push(parts.join("\n"));
+        }
+      }
+    }
+    storiesSection = storyLines.join("\n");
+  }
 
   // === OFFERS ===
   const offers = offersRes.data || [];
@@ -340,7 +354,12 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     identitySection + "\n\n" +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +
-    "=== STORIES ===\n" +
+    "=== STORY VAULT (REAL facts only — NEVER invent stories or numbers not listed here) ===\n" +
+    "CRITICAL: These are the user's REAL stories with REAL numbers. When writing posts:\n" +
+    "- ONLY reference events and numbers that appear in this vault\n" +
+    "- If a post needs a story you don't have, write the post WITHOUT a specific story — use general observations instead\n" +
+    "- NEVER fabricate dollar amounts, timelines, or events\n" +
+    "- It is BETTER to write a post with no specific story than to invent a fake one\n\n" +
     storiesSection + "\n\n" +
     "=== OFFERS ===\n" +
     offersSection + "\n\n" +
