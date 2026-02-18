@@ -524,7 +524,7 @@ const Onboarding = () => {
     const url = new URL("https://threads.net/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("scope", "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies,threads_manage_replies");
+    url.searchParams.set("scope", "threads_basic,threads_content_publish,threads_manage_insights,threads_keyword_search,threads_profile_discovery");
     url.searchParams.set("response_type", "code");
     url.searchParams.set("state", user.id);
     window.location.href = url.toString();
