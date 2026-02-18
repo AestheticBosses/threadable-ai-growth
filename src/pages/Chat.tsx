@@ -625,6 +625,19 @@ const Chat = () => {
       console.log("[handleDraftIdea] Post already complete, skipping AI generation");
       setDraftedPost(idea.body);
       setFlowMode("preview");
+
+      // Save to DB with metadata so publish/queue works
+      const metadata: ChatMessageMetadata = {
+        type: "drafted_post",
+        post_text: idea.body,
+        analysis: null,
+        status: "draft",
+        queue_id: null,
+        published_at: null,
+      };
+      const savedMsg = await sendMessage({ content: idea.body, role: "assistant", metadata });
+      setDraftMessageId(savedMsg.id);
+
       setIsBusy(false);
       return;
     }
