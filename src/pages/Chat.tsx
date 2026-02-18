@@ -255,7 +255,7 @@ function generateTitleFromMessage(msg: string): string {
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
   const { user } = useAuth();
-  const { canGenerate, isPaid } = useSubscription();
+  const { canGenerate, isPaid, isLoading: subLoading } = useSubscription();
   const [paywallOpen, setPaywallOpen] = useState(false);
   const { sessions, isLoading: sessionsLoading, createSession, updateTitle, togglePin, deleteSession } = useChatSessions();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -445,7 +445,7 @@ const Chat = () => {
 
   /* ─── Flow: "Give post ideas" ─── */
   const handlePostIdeasAction = useCallback(async () => {
-    if (isBusy) return;
+    if (isBusy || subLoading) return;
     if (!canGenerate) { setPaywallOpen(true); return; }
 
     // If no session, store pending action and create session — the useEffect will re-trigger this
@@ -554,7 +554,7 @@ const Chat = () => {
 
   /* ─── Flow: Quick actions (trending, template, etc.) ─── */
   const handleQuickAction = useCallback(async (label: string, message: string) => {
-    if (isBusy) return;
+    if (isBusy || subLoading) return;
     if (!canGenerate) { setPaywallOpen(true); return; }
 
     // If no session, store pending action and create session — the useEffect will re-trigger this
@@ -613,7 +613,7 @@ const Chat = () => {
 
   /* ─── Flow: Draft a post idea (AI generates full post from idea, then analyzes it) ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
-    if (isBusy) return;
+    if (isBusy || subLoading) return;
     if (!canGenerate) { setPaywallOpen(true); return; }
     setIsBusy(true);
     setDraftingIdea(idea);
@@ -886,7 +886,7 @@ const Chat = () => {
   /* ─── Free-form chat send ─── */
   const handleSend = useCallback(async (text?: string) => {
     const msg = (text || input).trim();
-    if (!msg || isBusy) return;
+    if (!msg || isBusy || subLoading) return;
     if (!canGenerate) { setPaywallOpen(true); return; }
     setInput("");
 

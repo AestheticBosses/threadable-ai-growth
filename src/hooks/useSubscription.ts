@@ -78,7 +78,14 @@ export function useSubscription(): SubscriptionData {
   }, [user]);
 
   const isPaid = plan !== "free" && status === "active";
-  const canGenerate = plan !== "free" && status === "active" && aiPostsUsed < aiPostsLimit;
+  // Unlimited plans use 999999 as the limit sentinel
+  const canGenerate =
+    !isLoading &&
+    plan !== "free" &&
+    status === "active" &&
+    (aiPostsLimit === 999999 || aiPostsUsed < aiPostsLimit);
+
+  console.log("[useSubscription]", { plan, status, aiPostsUsed, aiPostsLimit, isLoading, canGenerate, isPaid });
 
   return {
     plan,
