@@ -1,3 +1,4 @@
+// Build trigger - recommendation stripping + draft skip logic
 import { FileText, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
