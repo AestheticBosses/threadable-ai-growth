@@ -69,23 +69,24 @@ const SettingsPage = () => {
           <p className="mt-1 text-sm text-muted-foreground">Manage your account, integrations, and preferences.</p>
         </div>
 
+        {/* Subscription card renders independently — does not depend on profile */}
+        <SubscriptionCard
+          plan={plan}
+          status={status}
+          aiPostsUsed={aiPostsUsed}
+          aiPostsLimit={aiPostsLimit}
+          isPaid={isPaid}
+          onRefetch={refetchSubscription}
+        />
+
         {loading ? (
           <div className="space-y-6">
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-48 w-full rounded-lg" />
             ))}
           </div>
         ) : profile ? (
           <>
-            <SubscriptionCard
-              plan={plan}
-              status={status}
-              aiPostsUsed={aiPostsUsed}
-              aiPostsLimit={aiPostsLimit}
-              isPaid={isPaid}
-              onRefetch={refetchSubscription}
-            />
-
             <ThreadsConnectionCard
               threadsUsername={profile.threads_username}
               tokenExpiresAt={profile.threads_token_expires_at}
