@@ -1,4 +1,4 @@
-// Build trigger - draft skip DB save with metadata for preview/publish/queue
+// Build trigger - race condition fix: flowMode set before DB calls to prevent useEffect reset
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
