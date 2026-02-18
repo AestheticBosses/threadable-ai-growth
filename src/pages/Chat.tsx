@@ -617,15 +617,17 @@ const Chat = () => {
 
     console.log("[handleDraftIdea] Starting draft for:", idea.title, "| Body length:", idea.body.length);
 
-    addItem({ type: "user", content: `Draft: ${idea.title}` });
-
-    await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
-
     // If the post is already complete (under 500 chars, no brackets), skip AI generation
-    if (idea.body.length > 0 && idea.body.length <= 500 && !idea.body.includes('[') && !idea.body.includes(']')) {
+    const isCompletePost = idea.body.length > 0 && idea.body.length <= 500 && !idea.body.includes('[') && !idea.body.includes(']');
+
+    if (isCompletePost) {
       console.log("[handleDraftIdea] Post already complete, skipping AI generation");
+      // Set preview mode BEFORE any sendMessage to prevent useEffect from resetting state
       setDraftedPost(idea.body);
       setFlowMode("preview");
+
+      addItem({ type: "user", content: `Draft: ${idea.title}` });
+      await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
       // Save to DB with metadata so publish/queue works
       const metadata: ChatMessageMetadata = {
@@ -642,6 +644,9 @@ const Chat = () => {
       setIsBusy(false);
       return;
     }
+
+    addItem({ type: "user", content: `Draft: ${idea.title}` });
+    await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
     addItem({ type: "drafting" });
     setFlowMode("preview");
@@ -1136,6 +1141,7 @@ const Chat = () => {
 
   /* ─── Render main chat area ─── */
   const renderMainContent = () => {
+    console.log("[render] flowMode:", flowMode, "draftedPost length:", draftedPost?.length, "historyPreviewData:", !!historyPreviewData);
     // Preview from history
     if (flowMode === "preview" && historyPreviewData) {
       return (
