@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, CalendarDays, Send, Pencil, RefreshCw, Loader2, Upload, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CalendarDays, Send, Pencil, RefreshCw, Loader2, Upload, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadsPreview } from "./ThreadsPreview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PaywallModal } from "@/components/PaywallModal";
 
 export interface AnalysisData {
   angle: string;
@@ -41,6 +42,7 @@ interface PostPreviewSplitProps {
   readOnly?: boolean;
   initialStatus?: "draft" | "queued" | "scheduled" | "published";
   onStatusChange?: (status: string, queueId?: string) => void;
+  isPaid?: boolean;
 }
 
 export function tryParseAnalysisJSON(text: string): AnalysisData | null {
@@ -126,8 +128,10 @@ export function PostPreviewSplit({
   readOnly = false,
   initialStatus = "draft",
   onStatusChange,
+  isPaid = true,
 }: PostPreviewSplitProps) {
   const { user } = useAuth();
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editableContent, setEditableContent] = useState(postContent);
   // Sync prop changes into editable state (e.g. during streaming)
@@ -313,6 +317,16 @@ export function PostPreviewSplit({
           {/* Action buttons */}
           {!readOnly && (
             <div className="space-y-2">
+              {!isPaid && (
+                <div
+                  onClick={() => setPaywallOpen(true)}
+                  className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 cursor-pointer hover:bg-primary/10 transition-colors"
+                >
+                  <Lock className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="text-xs text-primary font-medium">Upgrade to publish & schedule posts</span>
+                </div>
+              )}
+
               {/* Row 1: Primary actions */}
               <div className="grid grid-cols-2 gap-2">
                 <TooltipProvider>
@@ -322,20 +336,22 @@ export function PostPreviewSplit({
                         <Button
                           size="sm"
                           className="gap-2 text-xs w-full bg-gradient-to-r from-purple-500 to-purple-700 hover:from-purple-600 hover:to-purple-800 text-white"
-                          onClick={() => setShowPublishConfirm(true)}
-                          disabled={!threadsConnected || isPublishing || published || isSaving}
+                          onClick={() => isPaid ? setShowPublishConfirm(true) : setPaywallOpen(true)}
+                          disabled={isPaid && (!threadsConnected || isPublishing || published || isSaving)}
                         >
                           {published ? (
                             <><CheckCircle2 className="h-3.5 w-3.5" /> Published</>
                           ) : isPublishing ? (
                             <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Publishing...</>
+                          ) : !isPaid ? (
+                            <><Lock className="h-3.5 w-3.5" /> Publish to Threads</>
                           ) : (
                             <><Upload className="h-3.5 w-3.5" /> Publish to Threads</>
                           )}
                         </Button>
                       </span>
                     </TooltipTrigger>
-                    {!threadsConnected && (
+                    {isPaid && !threadsConnected && (
                       <TooltipContent>
                         <p>Connect your Threads account in Settings to publish directly</p>
                       </TooltipContent>
@@ -343,28 +359,34 @@ export function PostPreviewSplit({
                   </Tooltip>
                 </TooltipProvider>
 
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2 text-xs" disabled={isSaving || isPublishing || queued}>
-                      {queued ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> In Queue</>
-                      ) : (
-                        <><CalendarDays className="h-3.5 w-3.5" /> Schedule</>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={scheduleDate}
-                      onSelect={(date) => {
-                        setScheduleDate(date);
-                        if (date) saveToQueue("scheduled", date);
-                      }}
-                      disabled={(date) => date < new Date()}
-                    />
-                  </PopoverContent>
-                </Popover>
+                {isPaid ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2 text-xs" disabled={isSaving || isPublishing || queued}>
+                        {queued ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> In Queue</>
+                        ) : (
+                          <><CalendarDays className="h-3.5 w-3.5" /> Schedule</>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={scheduleDate}
+                        onSelect={(date) => {
+                          setScheduleDate(date);
+                          if (date) saveToQueue("scheduled", date);
+                        }}
+                        disabled={(date) => date < new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                ) : (
+                  <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => setPaywallOpen(true)}>
+                    <Lock className="h-3.5 w-3.5" /> Schedule
+                  </Button>
+                )}
               </div>
 
               {/* Row 2: Secondary actions */}
@@ -387,10 +409,10 @@ export function PostPreviewSplit({
                   variant="ghost"
                   size="sm"
                   className="gap-2 text-xs"
-                  onClick={() => saveToQueue("draft")}
-                  disabled={isSaving || isPublishing || queued}
+                  onClick={() => isPaid ? saveToQueue("draft") : setPaywallOpen(true)}
+                  disabled={isPaid && (isSaving || isPublishing || queued)}
                 >
-                  <Send className="h-3.5 w-3.5" /> To Queue
+                  {!isPaid ? <Lock className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />} To Queue
                 </Button>
               </div>
             </div>
@@ -413,6 +435,9 @@ export function PostPreviewSplit({
           )}
         </div>
       </div>
+
+      {/* Paywall modal */}
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 
       {/* Publish confirmation dialog */}
       <AlertDialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>

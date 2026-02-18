@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { ThreadsConnectionCard } from "@/components/settings/ThreadsConnectionCard";
-
 import { ContentPreferencesCard } from "@/components/settings/ContentPreferencesCard";
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { DangerZoneCard } from "@/components/settings/DangerZoneCard";
+import { SubscriptionCard } from "@/components/settings/SubscriptionCard";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSubscription } from "@/hooks/useSubscription";
+import { toast } from "@/hooks/use-toast";
+import { useSearchParams } from "react-router-dom";
 
 interface ProfileData {
   threads_username: string | null;
@@ -27,6 +30,20 @@ const SettingsPage = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchParams] = useSearchParams();
+  const { plan, status, aiPostsUsed, aiPostsLimit, isPaid, refetch: refetchSubscription } = useSubscription();
+
+  // Handle Stripe redirect
+  useEffect(() => {
+    const subscriptionParam = searchParams.get("subscription");
+    if (subscriptionParam === "success") {
+      toast({
+        title: "Subscription activated! 🎉",
+        description: "You can now generate content with AI.",
+      });
+      refetchSubscription();
+    }
+  }, [searchParams]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -60,6 +77,15 @@ const SettingsPage = () => {
           </div>
         ) : profile ? (
           <>
+            <SubscriptionCard
+              plan={plan}
+              status={status}
+              aiPostsUsed={aiPostsUsed}
+              aiPostsLimit={aiPostsLimit}
+              isPaid={isPaid}
+              onRefetch={refetchSubscription}
+            />
+
             <ThreadsConnectionCard
               threadsUsername={profile.threads_username}
               tokenExpiresAt={profile.threads_token_expires_at}

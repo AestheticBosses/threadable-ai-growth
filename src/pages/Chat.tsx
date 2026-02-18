@@ -1,9 +1,12 @@
 // Build trigger - race condition fix: flowMode set before DB calls to prevent useEffect reset
+// Build trigger - race condition fix: flowMode set before DB calls to prevent useEffect reset
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Loader2, Plus, ArrowUp, MessageSquare, ChevronDown, ChevronUp, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { useSubscription } from "@/hooks/useSubscription";
+import { PaywallModal } from "@/components/PaywallModal";
 import { cn } from "@/lib/utils";
 import { useChatSessions, useChatMessages, type ChatSession, type ChatMessageMetadata } from "@/hooks/useChatData";
 import { useChatContextData } from "@/hooks/useChatContextData";
@@ -252,6 +255,8 @@ function generateTitleFromMessage(msg: string): string {
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
   const { user } = useAuth();
+  const { canGenerate, isPaid } = useSubscription();
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const { sessions, isLoading: sessionsLoading, createSession, updateTitle, togglePin, deleteSession } = useChatSessions();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const { messages, isLoading: messagesLoading, sendMessage, updateMessageMetadata, refetch } = useChatMessages(activeSessionId);
@@ -441,6 +446,7 @@ const Chat = () => {
   /* ─── Flow: "Give post ideas" ─── */
   const handlePostIdeasAction = useCallback(async () => {
     if (isBusy) return;
+    if (!canGenerate) { setPaywallOpen(true); return; }
 
     // If no session, store pending action and create session — the useEffect will re-trigger this
     if (!activeSessionId) {
@@ -549,6 +555,7 @@ const Chat = () => {
   /* ─── Flow: Quick actions (trending, template, etc.) ─── */
   const handleQuickAction = useCallback(async (label: string, message: string) => {
     if (isBusy) return;
+    if (!canGenerate) { setPaywallOpen(true); return; }
 
     // If no session, store pending action and create session — the useEffect will re-trigger this
     if (!activeSessionId) {
@@ -607,6 +614,7 @@ const Chat = () => {
   /* ─── Flow: Draft a post idea (AI generates full post from idea, then analyzes it) ─── */
   const handleDraftIdea = useCallback(async (idea: { title: string; body: string }) => {
     if (isBusy) return;
+    if (!canGenerate) { setPaywallOpen(true); return; }
     setIsBusy(true);
     setDraftingIdea(idea);
     setDraftedPost("");
@@ -879,6 +887,7 @@ const Chat = () => {
   const handleSend = useCallback(async (text?: string) => {
     const msg = (text || input).trim();
     if (!msg || isBusy) return;
+    if (!canGenerate) { setPaywallOpen(true); return; }
     setInput("");
 
     if (flowMode === "empty" || flowMode === "chat") {
@@ -1549,6 +1558,9 @@ const Chat = () => {
           )}
         </div>
       </div>
+
+      {/* Paywall modal */}
+      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
