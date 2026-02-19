@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Check, ArrowLeft, AtSign, Loader2 } from "lucide-react";
+import PlanPreview from "@/components/onboarding/PlanPreview";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type GoalType = "dm_leads" | "grow_audience" | "drive_traffic";
@@ -569,64 +570,12 @@ const Onboarding = () => {
   };
 
   if (showCompletion && completionStats) {
-    const funnel = STAGE_FUNNEL[completionStats.journeyStage] || STAGE_FUNNEL.getting_started;
     return (
-      <div className="fixed inset-0 bg-background flex flex-col items-center justify-center px-6">
-        <div className="max-w-lg w-full text-center space-y-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              Your system is built 🚀
-            </h1>
-            <p className="text-muted-foreground text-lg">
-              {completionStats.postsGenerated} posts generated · {completionStats.postsGenerated} awaiting approval · Optimized for {GOAL_LABELS[completionStats.goalType]}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card/50 p-6 text-left space-y-4">
-            <p className="text-sm font-semibold text-foreground">Here's how we'll hit your goal:</p>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <span className="text-primary text-lg">●</span>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Reach posts (TOF): bring new people in — {funnel.tof}%</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-accent-foreground text-lg">●</span>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Trust posts (MOF): make them believe — {funnel.mof}%</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-secondary-foreground text-lg">●</span>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Convert posts (BOF): give them a next step — {funnel.bof}%</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <Button
-              size="lg"
-              className="w-full h-14 text-base font-semibold"
-              onClick={() => handleCompletionNavigate("/queue")}
-            >
-              Review & Approve My Week →
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground/60">
-            <button onClick={() => handleCompletionNavigate("/playbook")} className="hover:text-foreground transition-colors">
-              View Playbook
-            </button>
-            <span>·</span>
-            <button onClick={() => handleCompletionNavigate("/dashboard")} className="hover:text-foreground transition-colors">
-              View Command Center
-            </button>
-          </div>
-        </div>
-      </div>
+      <PlanPreview
+        journeyStage={completionStats.journeyStage}
+        goalType={completionStats.goalType}
+        onNavigate={handleCompletionNavigate}
+      />
     );
   }
 
