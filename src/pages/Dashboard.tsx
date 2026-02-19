@@ -1,14 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { EmptyState } from "@/components/EmptyState";
+import { PlanHealthHero } from "@/components/dashboard/PlanHealthHero";
+import { WeeklyPipeline } from "@/components/dashboard/WeeklyPipeline";
+import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
-import { TopInsightCard } from "@/components/dashboard/TopInsightCard";
-import { RecentPostsCard } from "@/components/dashboard/RecentPostsCard";
-import { WeeklyStreakBar } from "@/components/dashboard/WeeklyStreakBar";
-import { TodayPlanCard } from "@/components/dashboard/TodayPlanCard";
-import { WeeklyPlanGrid } from "@/components/dashboard/WeeklyPlanGrid";
-import { WeeklyStatsSidebar } from "@/components/dashboard/WeeklyStatsSidebar";
-import { PlanAdherenceCard } from "@/components/dashboard/PlanAdherenceCard";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { BarChart3, RefreshCw, Brain, Loader2, User } from "lucide-react";
@@ -149,12 +145,12 @@ const Dashboard = () => {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-5">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p className="mt-1 text-muted-foreground text-sm">Your weekly accountability hub.</p>
+            <p className="mt-1 text-muted-foreground text-sm">Your weekly command center.</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button onClick={handleFetchPosts} disabled={fetching} className="bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -192,7 +188,7 @@ const Dashboard = () => {
             }
           />
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {/* Account strip */}
             <div className="rounded-xl border border-border bg-card/50 px-4 py-2.5 flex items-center gap-3">
               <Avatar className="h-9 w-9 border border-border">
@@ -217,33 +213,17 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* 1. Weekly Streak Bar */}
-            <WeeklyStreakBar />
+            {/* ── Section 1: Plan Health Hero ── */}
+            <PlanHealthHero />
 
-            {/* 2. Today's Plan (hero) + Weekly Stats sidebar */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2">
-                <TodayPlanCard />
-              </div>
-              <div className="lg:col-span-1">
-                <WeeklyStatsSidebar />
-              </div>
-            </div>
+            {/* ── Section 2: This Week's Pipeline ── */}
+            <WeeklyPipeline />
 
-            {/* 3. This Week's Plan grid */}
-            <WeeklyPlanGrid />
+            {/* ── Section 3: This Week's Performance ── */}
+            <WeeklyPerformance />
 
-            {/* 4. Plan Adherence */}
-            <PlanAdherenceCard />
-
-            {/* 5. Quick Actions */}
+            {/* Quick Actions */}
             <QuickActionsCard />
-
-            {/* 6. Top Insight */}
-            <TopInsightCard />
-
-            {/* 7. Recent Posts */}
-            <RecentPostsCard posts={allPosts ?? []} />
           </div>
         )}
       </div>
