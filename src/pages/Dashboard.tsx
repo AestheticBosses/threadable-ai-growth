@@ -1,9 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { DateRangeSelector } from "@/components/dashboard/DateRangeSelector";
-import { DashboardCharts } from "@/components/dashboard/DashboardCharts";
 import { EmptyState } from "@/components/EmptyState";
-import { ArchetypeCards } from "@/components/dashboard/ArchetypeCards";
 import { TodayStatusCard } from "@/components/dashboard/TodayStatusCard";
 import { PostingStreakCard } from "@/components/dashboard/PostingStreakCard";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
@@ -13,7 +11,6 @@ import { RecentPostsCard } from "@/components/dashboard/RecentPostsCard";
 import { type DateRange } from "@/hooks/useDashboardData";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useArchetypeDiscovery, usePlaybookData } from "@/hooks/useStrategyData";
 import { BarChart3, RefreshCw, ArrowUp, ArrowDown, User, Eye, Heart, MessageCircle, Repeat2, Quote, FileText, Brain, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -23,6 +20,7 @@ import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { subDays, startOfDay, differenceInCalendarDays } from "date-fns";
+
 
 function PctChange({ value, hide }: { value: number; hide?: boolean }) {
   if (hide) return null;
@@ -72,8 +70,8 @@ const Dashboard = () => {
   const [profileRefreshed, setProfileRefreshed] = useState(false);
 
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
-  const { data: discoveredArchetypes } = useArchetypeDiscovery();
-  const { data: playbookData } = usePlaybookData();
+
+
 
   const profileQuery = useQuery({
     queryKey: ["dashboard-profile", user?.id],
@@ -391,37 +389,7 @@ const Dashboard = () => {
               ))}
             </div>
 
-            {/* Charts */}
-            {posts.length > 0 && (
-              <DashboardCharts posts={posts as any} followerSnapshots={followerSnapshots} />
-            )}
           </>
-        )}
-
-        {/* Discovered Archetypes */}
-        {hasAnyData && (
-          <div className="space-y-3">
-            <h3 className="text-base font-semibold text-foreground">
-              {discoveredArchetypes ? "Your Content Archetypes" : "Content Archetypes"}
-            </h3>
-            {discoveredArchetypes?.archetypes ? (
-              <ArchetypeCards
-                archetypes={discoveredArchetypes.archetypes}
-                posts={allPosts ?? []}
-                playbook={playbookData}
-              />
-            ) : (
-              <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6 text-center">
-                <Brain className="h-6 w-6 mx-auto mb-2 text-primary" />
-                <p className="text-sm font-medium text-foreground">
-                  Click "Run Analysis" to discover your content archetypes
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  AI will analyze all your posts and build archetypes, insights, and a playbook
-                </p>
-              </div>
-            )}
-          </div>
         )}
 
         {/* ===== NEW COMMAND CENTER WIDGETS ===== */}
