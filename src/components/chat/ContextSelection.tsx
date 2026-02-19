@@ -127,7 +127,7 @@ export function InlineContextCards({ contextData, disabled, selectedLabel, onSel
                     <div className="min-w-0">
                       <span className="truncate font-medium block">{label}</span>
                       <span className="text-muted-foreground/60 text-[10px]">
-                        {(p.views || 0).toLocaleString()} views · {p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) : "0"}% eng
+                        {(p.views || 0).toLocaleString()} views · {p.engagement_rate ? p.engagement_rate.toFixed(1) : "0"}% eng
                       </span>
                     </div>
                     {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}

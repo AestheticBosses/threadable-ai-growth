@@ -41,7 +41,7 @@ export function PostingHeatmap() {
       if (hour == null || !dow || DAY_MAP[dow] == null) continue;
       const dayIdx = DAY_MAP[dow];
       const slotIdx = getSlotIndex(hour);
-      const er = (p.engagement_rate ?? 0) * 100;
+      const er = (p.engagement_rate ?? 0);
       g[slotIdx][dayIdx].total += er;
       g[slotIdx][dayIdx].count += 1;
     }
