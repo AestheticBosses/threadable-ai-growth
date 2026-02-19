@@ -350,6 +350,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          journey_stage: string | null
           performance_vs_previous: Json | null
           regression_insights: Json | null
           status: string | null
@@ -363,6 +364,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          journey_stage?: string | null
           performance_vs_previous?: Json | null
           regression_insights?: Json | null
           status?: string | null
@@ -376,6 +378,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          journey_stage?: string | null
           performance_vs_previous?: Json | null
           regression_insights?: Json | null
           status?: string | null

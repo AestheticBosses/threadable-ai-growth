@@ -5,6 +5,7 @@ import { PlanHealthHero } from "@/components/dashboard/PlanHealthHero";
 import { WeeklyPipeline } from "@/components/dashboard/WeeklyPipeline";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
+import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { BarChart3, RefreshCw, Brain, Loader2, User } from "lucide-react";
@@ -215,6 +216,9 @@ const Dashboard = () => {
 
             {/* ── Section 1: Plan Health Hero ── */}
             <PlanHealthHero />
+
+            {/* ── Milestone Card ── */}
+            <MilestoneCard />
 
             {/* ── Section 2: This Week's Pipeline ── */}
             <WeeklyPipeline />
