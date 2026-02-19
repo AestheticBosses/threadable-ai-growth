@@ -67,7 +67,7 @@ const NEW_PIPELINE: PipelineStepDef[] = [
 ];
 
 // ── Progress Step UI ───────────────────────────────────────────────────────────
-function PipelineProgressStep({ label, status, insight }: { label: string; status: string; insight?: string }) {
+function PipelineProgressStep({ label, status, insight, onRetry }: { label: string; status: string; insight?: string; onRetry?: () => void }) {
   return (
     <div className="space-y-0.5">
       <div className="flex items-center gap-3">
@@ -91,6 +91,14 @@ function PipelineProgressStep({ label, status, insight }: { label: string; statu
         }>
           {label}
         </span>
+        {status === "error" && onRetry && (
+          <button
+            onClick={onRetry}
+            className="text-xs text-primary hover:text-primary/80 font-medium transition-colors ml-auto"
+          >
+            Retry
+          </button>
+        )}
       </div>
       {insight && status === "done" && (
         <p className="text-xs text-primary/80 ml-8">{insight}</p>
@@ -481,12 +489,6 @@ const Onboarding = () => {
       });
 
       setPipelineComplete(true);
-
-      // Auto-transition to completion screen after a moment
-      setTimeout(() => {
-        setPipelineRunning(false);
-        setShowCompletion(true);
-      }, 1500);
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
       setPipelineRunning(false);
@@ -604,26 +606,66 @@ const Onboarding = () => {
   // Pipeline Progress Screen
   // ══════════════════════════════════════════════════════════════════════════════
   if (pipelineRunning) {
+    const handleRetryStep = async (stepId: string) => {
+      if (!user) return;
+      const retryMap: Record<string, { fn: string; body: any }> = {
+        fetch: { fn: "fetch-user-posts", body: { user_id: user.id } },
+        analysis: { fn: "run-analysis", body: { user_id: user.id } },
+        regression: { fn: "run-regression", body: { user_id: user.id } },
+        archetypes: { fn: "discover-archetypes", body: { user_id: user.id, niche: dreamClient.trim(), goals: mission.trim() } },
+        identity: { fn: "extract-identity", body: { user_id: user.id } },
+        voice: { fn: "analyze-voice", body: { user_id: user.id } },
+        playbook: { fn: "generate-playbook", body: { user_id: user.id } },
+        buckets: { fn: "generate-content-buckets", body: {} },
+        pillars: { fn: "generate-content-pillars", body: {} },
+        plan30: { fn: "generate-30day-plan", body: {} },
+        templates: { fn: "generate-templates", body: {} },
+      };
+      const mapping = retryMap[stepId];
+      if (mapping) {
+        await invokeStep(stepId, mapping.fn, mapping.body);
+      }
+    };
+
     return (
       <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center gap-6">
         <div className="max-w-md w-full px-6">
           <div className="text-center mb-8">
-            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
-            <h1 className="text-foreground text-2xl font-bold mb-2">Building your growth plan...</h1>
+            {!pipelineComplete && <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />}
+            <h1 className="text-foreground text-2xl font-bold mb-2">
+              {pipelineComplete ? "Plan built!" : "Building your growth plan..."}
+            </h1>
             <p className="text-muted-foreground text-sm">
-              This takes a few minutes — we're building your complete content system.
+              {pipelineComplete
+                ? pipelineHasErrors
+                  ? "Mostly complete — you can retry failed steps or continue."
+                  : "Your complete content system is ready."
+                : "This takes a few minutes — we're building your complete content system."}
             </p>
           </div>
           <div className="space-y-3">
             {pipelineSteps.map((s) => (
-              <PipelineProgressStep key={s.id} label={s.label} status={s.status} insight={s.insight} />
+              <PipelineProgressStep
+                key={s.id}
+                label={s.label}
+                status={s.status}
+                insight={s.insight}
+                onRetry={s.status === "error" ? () => handleRetryStep(s.id) : undefined}
+              />
             ))}
           </div>
           {pipelineComplete && (
             <div className="mt-8 text-center">
-              <p className={pipelineHasErrors ? "text-amber-400 font-medium mb-4" : "text-primary font-medium mb-4"}>
-                {pipelineHasErrors ? "Mostly complete — some steps had issues." : "Your system is built! 🎉"}
-              </p>
+              <Button
+                size="lg"
+                className="h-14 px-10 text-base font-semibold"
+                onClick={() => {
+                  setPipelineRunning(false);
+                  setShowCompletion(true);
+                }}
+              >
+                {pipelineHasErrors ? "Continue Anyway →" : "Continue →"}
+              </Button>
             </div>
           )}
         </div>

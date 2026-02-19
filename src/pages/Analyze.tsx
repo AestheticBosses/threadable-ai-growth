@@ -36,7 +36,7 @@ function deriveAnalysis(posts: ReturnType<typeof usePostsAnalyzed>["data"]): Rea
   if (!posts || posts.length === 0) return null;
 
   const totalEng = posts.reduce((s, p) => s + (p.engagement_rate ?? 0), 0);
-  const avgEngagement = ((totalEng / posts.length) * 100).toFixed(1);
+  const avgEngagement = (totalEng / posts.length).toFixed(1);
 
   // Best day
   const dayMap: Record<string, { views: number; count: number }> = {};
@@ -63,7 +63,7 @@ function deriveAnalysis(posts: ReturnType<typeof usePostsAnalyzed>["data"]): Rea
   posts.forEach((p) => {
     const c = p.content_category ?? "Uncategorized";
     if (!catMap[c]) catMap[c] = { eng: 0, count: 0 };
-    catMap[c].eng += (p.engagement_rate ?? 0) * 100;
+    catMap[c].eng += (p.engagement_rate ?? 0);
     catMap[c].count += 1;
   });
   const topContentTypes = Object.entries(catMap)
