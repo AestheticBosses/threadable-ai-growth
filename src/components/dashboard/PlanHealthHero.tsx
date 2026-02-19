@@ -6,10 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   CheckCircle2, Clock, FileText, Sparkles, Settings, BookOpen,
-  ChevronRight, CalendarCheck, AlertCircle
+  ChevronRight, CalendarCheck, AlertCircle, Pin
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, parseISO, isAfter, addDays } from "date-fns";
+
+const FUNNEL_META: Record<string, { label: string; color: string; dot: string; description: string }> = {
+  TOF: {
+    label: "TOF",
+    color: "text-blue-400",
+    dot: "bg-blue-400",
+    description: "Reach post — viral hook, make people stop scrolling",
+  },
+  MOF: {
+    label: "MOF",
+    color: "text-purple-400",
+    dot: "bg-purple-400",
+    description: "Trust post — personal story, start a conversation",
+  },
+  BOF: {
+    label: "BOF",
+    color: "text-emerald-400",
+    dot: "bg-emerald-400",
+    description: "Conversion post — mention your offer, drive action",
+  },
+};
 
 export function PlanHealthHero() {
   const { user } = useAuth();
@@ -20,7 +41,7 @@ export function PlanHealthHero() {
   const weekEnd = endOfWeek(startOfDay(today), { weekStartsOn: 1 });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["plan-health-hero", user?.id, todayStr],
+    queryKey: ["plan-health-hero-v2", user?.id, todayStr],
     queryFn: async () => {
       if (!user?.id) return null;
 
@@ -32,10 +53,11 @@ export function PlanHealthHero() {
           .maybeSingle(),
         supabase
           .from("content_plan_items")
-          .select("id, scheduled_date, archetype, pillar_id, status")
+          .select("id, scheduled_date, archetype, funnel_stage, pillar_id, topic_id, status")
           .eq("user_id", user.id)
           .gte("scheduled_date", format(weekStart, "yyyy-MM-dd"))
-          .lte("scheduled_date", format(weekEnd, "yyyy-MM-dd")),
+          .lte("scheduled_date", format(weekEnd, "yyyy-MM-dd"))
+          .order("scheduled_date", { ascending: true }),
         supabase
           .from("scheduled_posts")
           .select("id, status, scheduled_for, text_content, content_category")
@@ -59,37 +81,73 @@ export function PlanHealthHero() {
 
       const published = scheduledPosts.filter((p) => p.status === "published");
       const scheduled = scheduledPosts.filter((p) => p.status === "scheduled");
-      const drafts = draftPosts;
 
-      // Find next upcoming scheduled post
-      const now = new Date();
-      const nextPost = scheduledPosts
-        .filter((p) => p.status === "scheduled" && p.scheduled_for && new Date(p.scheduled_for) > now)
-        .sort((a, b) => new Date(a.scheduled_for!).getTime() - new Date(b.scheduled_for!).getTime())[0];
+      // Find today's plan item
+      const todayPlanItem = planItems.find((p) => p.scheduled_date === todayStr) ?? null;
 
-      // Find pillar for next post
-      let nextPillarName: string | null = null;
-      if (nextPost?.scheduled_for) {
-        const nextDateStr = format(new Date(nextPost.scheduled_for), "yyyy-MM-dd");
-        const matchingPlan = planItems.find((p) => p.scheduled_date === nextDateStr);
-        if (matchingPlan?.pillar_id) {
-          const { data: pillar } = await supabase
-            .from("content_pillars")
-            .select("name")
-            .eq("id", matchingPlan.pillar_id)
-            .maybeSingle();
-          nextPillarName = pillar?.name ?? null;
+      // Check if today already has a post
+      const todayPost = scheduledPosts.find((sp) => {
+        const postDate = sp.scheduled_for ? format(new Date(sp.scheduled_for), "yyyy-MM-dd") : null;
+        return postDate === todayStr;
+      }) ?? null;
+
+      const todayDone = todayPost !== null && (todayPost.status === "published" || todayPost.status === "scheduled" || todayPost.status === "draft");
+
+      // If today is done, find next unposted day
+      let nextUnpostedItem: typeof planItems[0] | null = null;
+      if (todayDone) {
+        for (const item of planItems) {
+          if (!item.scheduled_date || item.scheduled_date <= todayStr) continue;
+          const existingPost = scheduledPosts.find((sp) => {
+            const pd = sp.scheduled_for ? format(new Date(sp.scheduled_for), "yyyy-MM-dd") : null;
+            return pd === item.scheduled_date;
+          });
+          if (!existingPost) {
+            nextUnpostedItem = item;
+            break;
+          }
         }
       }
+
+      // Resolve pillar + topic names
+      const allPillarIds = [...new Set([
+        todayPlanItem?.pillar_id,
+        nextUnpostedItem?.pillar_id,
+      ].filter(Boolean))];
+      const allTopicIds = [...new Set([
+        todayPlanItem?.topic_id,
+        nextUnpostedItem?.topic_id,
+      ].filter(Boolean))];
+
+      const [pillarsRes, topicsRes] = await Promise.all([
+        allPillarIds.length > 0
+          ? supabase.from("content_pillars").select("id, name").in("id", allPillarIds as string[])
+          : Promise.resolve({ data: [] }),
+        allTopicIds.length > 0
+          ? supabase.from("connected_topics").select("id, name").in("id", allTopicIds as string[])
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const pillars: { id: string; name: string }[] = pillarsRes.data ?? [];
+      const topics: { id: string; name: string }[] = topicsRes.data ?? [];
+
+      const resolvePillar = (id?: string | null) => pillars.find((p) => p.id === id)?.name ?? null;
+      const resolveTopic = (id?: string | null) => topics.find((t) => t.id === id)?.name ?? null;
 
       return {
         threadsConnected,
         hasPlan,
         published: published.length,
         scheduled: scheduled.length,
-        drafts: drafts.length,
-        nextPost,
-        nextPillarName,
+        drafts: draftPosts.length,
+        todayPlanItem,
+        todayPost,
+        todayDone,
+        nextUnpostedItem,
+        todayPillar: resolvePillar(todayPlanItem?.pillar_id),
+        todayTopic: resolveTopic(todayPlanItem?.topic_id),
+        nextPillar: resolvePillar(nextUnpostedItem?.pillar_id),
+        nextTopic: resolveTopic(nextUnpostedItem?.topic_id),
       };
     },
     enabled: !!user?.id,
@@ -118,10 +176,7 @@ export function PlanHealthHero() {
             <h2 className="text-2xl font-bold text-foreground mb-1">Connect Threads to build your plan</h2>
             <p className="text-sm text-muted-foreground">Link your Threads account to start tracking and generating content.</p>
           </div>
-          <Button
-            onClick={() => navigate("/settings")}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shrink-0"
-          >
+          <Button onClick={() => navigate("/settings")} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shrink-0">
             <Settings className="h-4 w-4" />
             Go to Settings
           </Button>
@@ -141,108 +196,201 @@ export function PlanHealthHero() {
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="text-xs font-semibold uppercase tracking-wider text-primary">Ready to Build</span>
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-1">Your strategy is ready. Generate your content plan.</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-1">No content plan yet.</h2>
             <p className="text-sm text-muted-foreground">Your pillars and archetypes are set — now generate your weekly schedule.</p>
           </div>
-          <Button
-            onClick={() => navigate("/playbook")}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shrink-0"
-          >
+          <Button onClick={() => navigate("/playbook")} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shrink-0">
             <BookOpen className="h-4 w-4" />
-            Go to Playbook
+            Generate Your Plan →
           </Button>
         </div>
       </div>
     );
   }
 
-  // State 3: Plan exists
-  const hasDraftsAwaitingApproval = (data?.drafts ?? 0) > 0;
-  const headerText = hasDraftsAwaitingApproval ? "Your week needs attention" : "Your week is ready";
-  const headerColor = hasDraftsAwaitingApproval ? "text-yellow-400" : "text-emerald-400";
+  const { todayPlanItem, todayPost, todayDone, nextUnpostedItem, todayPillar, todayTopic, nextPillar, nextTopic } = data;
+
+  // Determine what to feature
+  const featuredItem = todayDone ? nextUnpostedItem : todayPlanItem;
+  const featuredPillar = todayDone ? nextPillar : todayPillar;
+  const featuredTopic = todayDone ? nextTopic : todayTopic;
+  const isNextDay = todayDone && !!nextUnpostedItem;
+  const funnel = featuredItem?.funnel_stage ? FUNNEL_META[featuredItem.funnel_stage] ?? null : null;
+
+  const handleGenerate = () => {
+    const params = new URLSearchParams();
+    if (featuredItem?.archetype) params.set("archetype", featuredItem.archetype);
+    if (featuredPillar) params.set("pillar", featuredPillar);
+    if (featuredTopic) params.set("topic", featuredTopic);
+    params.set("action", "template");
+    navigate(`/chat?${params.toString()}`);
+  };
 
   return (
-    <div className="relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card overflow-hidden p-6">
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/8 to-transparent pointer-events-none" />
-      <div className="relative space-y-4">
-        {/* Header */}
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <CalendarCheck className="h-4 w-4 text-primary" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan Health</span>
-          </div>
-          <h2 className={`text-2xl font-bold ${headerColor}`}>{headerText}</h2>
-        </div>
+    <div className="relative rounded-xl border border-primary/30 bg-gradient-to-br from-primary/8 via-card to-card overflow-hidden p-6 shadow-lg">
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/6 to-transparent pointer-events-none" />
+      <div className="relative space-y-5">
 
-        {/* Stats row */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span className="text-sm font-semibold text-foreground">{data?.published ?? 0} published</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-blue-400" />
-            <span className="text-sm font-semibold text-foreground">{data?.scheduled ?? 0} scheduled</span>
-          </div>
-          {(data?.drafts ?? 0) > 0 && (
-            <div className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-yellow-400" />
-              <span className="text-sm font-semibold text-yellow-400">{data?.drafts} awaiting approval</span>
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <CalendarCheck className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan Health</span>
             </div>
-          )}
-        </div>
-
-        {/* Next post */}
-        {data?.nextPost && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <ChevronRight className="h-4 w-4 text-primary shrink-0" />
-            <span>
-              Next:{" "}
-              <span className="text-foreground font-medium">
-                {format(new Date(data.nextPost.scheduled_for!), "EEE h:mmaaa")}
+            <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="font-semibold text-foreground">{data.published}</span> published
               </span>
-              {data.nextPillarName && (
-                <> — <span className="text-foreground font-medium">{data.nextPillarName}</span></>
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-blue-400" />
+                <span className="font-semibold text-foreground">{data.scheduled}</span> scheduled
+              </span>
+              {data.drafts > 0 && (
+                <button
+                  onClick={() => navigate("/queue?filter=draft")}
+                  className="flex items-center gap-1.5 text-yellow-400 hover:text-yellow-300 transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span className="font-semibold">{data.drafts}</span> awaiting approval
+                </button>
               )}
-              {data.nextPost.content_category && (
-                <> × <span className="text-muted-foreground">{data.nextPost.content_category}</span></>
-              )}
-            </span>
+            </div>
           </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex flex-wrap gap-2 pt-1">
-          {(data?.drafts ?? 0) > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => navigate("/queue?filter=draft")}
-              className="gap-1.5 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Review {data?.drafts} Draft{(data?.drafts ?? 0) > 1 ? "s" : ""}
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() => navigate("/chat?action=generate")}
-            className="gap-1.5 bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Generate Posts
-          </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={() => navigate("/queue")}
-            className="gap-1.5"
+            className="gap-1.5 shrink-0 text-xs"
           >
             <Clock className="h-3.5 w-3.5" />
             View Queue
           </Button>
         </div>
+
+        {/* ── TODAY'S POST HERO ── */}
+        {todayDone && todayPost ? (
+          // Today is done — show completion state + next unposted
+          <div className="space-y-3">
+            {/* Done banner */}
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-emerald-400">Today's post is ready</p>
+                {todayPost.text_content && (
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{todayPost.text_content.slice(0, 80)}…</p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => navigate(todayPost.status === "draft" ? "/queue?filter=draft" : "/queue")}
+                className="text-xs text-emerald-400 hover:text-emerald-300 shrink-0 gap-1"
+              >
+                {todayPost.status === "draft" ? "View Draft" : "View in Queue"}
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            </div>
+
+            {/* Next unposted */}
+            {nextUnpostedItem && (
+              <TodayPostCard
+                planItem={nextUnpostedItem}
+                pillarName={nextPillar}
+                topicName={nextTopic}
+                label="Next Post"
+                onGenerate={handleGenerate}
+              />
+            )}
+          </div>
+        ) : featuredItem ? (
+          // Today's assignment
+          <TodayPostCard
+            planItem={featuredItem}
+            pillarName={featuredPillar}
+            topicName={featuredTopic}
+            label="Today's Post"
+            onGenerate={handleGenerate}
+          />
+        ) : (
+          // Plan exists but nothing for today
+          <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">No post planned for today.</p>
+            <Button size="sm" onClick={() => navigate("/playbook")} variant="outline" className="text-xs gap-1">
+              <BookOpen className="h-3.5 w-3.5" />
+              View Playbook
+            </Button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function TodayPostCard({
+  planItem,
+  pillarName,
+  topicName,
+  label,
+  onGenerate,
+}: {
+  planItem: { archetype?: string | null; funnel_stage?: string | null; scheduled_date?: string | null };
+  pillarName?: string | null;
+  topicName?: string | null;
+  label: string;
+  onGenerate: () => void;
+}) {
+  const funnel = planItem.funnel_stage ? FUNNEL_META[planItem.funnel_stage] ?? null : null;
+
+  return (
+    <div className="rounded-xl border border-primary/40 bg-primary/5 p-5 space-y-4 shadow-[0_0_20px_-4px_hsl(var(--primary)/0.2)]">
+      {/* Label */}
+      <div className="flex items-center gap-2">
+        <Pin className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-primary">{label}</span>
+        {planItem.scheduled_date && (
+          <span className="text-xs text-muted-foreground ml-auto">
+            {format(parseISO(planItem.scheduled_date), "EEEE, MMM d")}
+          </span>
+        )}
+      </div>
+
+      {/* Pillar × Archetype */}
+      <div className="space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          {pillarName && (
+            <span className="text-base font-bold text-foreground">{pillarName}</span>
+          )}
+          {pillarName && planItem.archetype && (
+            <span className="text-muted-foreground font-light">×</span>
+          )}
+          {planItem.archetype && (
+            <span className="text-base font-bold text-foreground">{planItem.archetype}</span>
+          )}
+        </div>
+        {topicName && (
+          <p className="text-sm text-muted-foreground italic">"{topicName}"</p>
+        )}
+      </div>
+
+      {/* Funnel stage pill */}
+      {funnel && (
+        <div className="flex items-center gap-2">
+          <div className={`h-2 w-2 rounded-full ${funnel.dot}`} />
+          <span className={`text-xs font-semibold ${funnel.color}`}>{funnel.label}</span>
+          <span className="text-xs text-muted-foreground">— {funnel.description}</span>
+        </div>
+      )}
+
+      {/* CTA */}
+      <Button
+        onClick={onGenerate}
+        className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+      >
+        <Sparkles className="h-4 w-4" />
+        Generate {label} →
+      </Button>
     </div>
   );
 }
