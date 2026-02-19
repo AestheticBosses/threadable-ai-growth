@@ -131,9 +131,12 @@ export function WeeklyPipeline() {
     const params = new URLSearchParams();
     if (day.planItem?.archetype) params.set("archetype", day.planItem.archetype);
     if (day.pillar?.name) params.set("pillar", day.pillar.name);
-    params.set("action", "generate");
+    params.set("action", "template");
     navigate(`/chat?${params.toString()}`);
   };
+
+  const todayNeedsPost = (day: typeof days[0]) =>
+    day.isToday && day.status === "planned";
 
   return (
     <div className="space-y-3">
@@ -145,51 +148,63 @@ export function WeeklyPipeline() {
       </div>
 
       <div className="grid grid-cols-7 gap-1.5">
-        {days.map((day, i) => (
-          <button
-            key={i}
-            onClick={() => handleDayClick(day)}
-            className={`relative flex flex-col gap-1.5 rounded-xl border p-2.5 text-left transition-all hover:scale-[1.02] cursor-pointer min-h-[110px] ${
-              day.isToday
-                ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-sm"
-                : "border-border bg-card/30 hover:bg-accent/30"
-            }`}
-          >
-            {/* Day + date */}
-            <div>
-              <p className={`text-[10px] font-semibold ${day.isToday ? "text-primary" : "text-muted-foreground"}`}>
-                {format(day.dayDate, "EEE")}
-              </p>
-              <p className={`text-sm font-bold leading-none mt-0.5 ${day.isToday ? "text-primary" : "text-foreground"}`}>
-                {format(day.dayDate, "d")}
-              </p>
-            </div>
-
-            {/* Pillar */}
-            {day.pillar && day.pillarColor ? (
-              <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${day.pillarColor.bg} ${day.pillarColor.border}`}>
-                <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${day.pillarColor.dot}`} />
-                <span className={`text-[9px] font-semibold truncate leading-tight ${day.pillarColor.text}`}>
-                  {day.pillar.name.split(" ").slice(0, 2).join(" ")}
-                </span>
+        {days.map((day, i) => {
+          const isActionable = todayNeedsPost(day);
+          return (
+            <button
+              key={i}
+              onClick={() => handleDayClick(day)}
+              className={`relative flex flex-col gap-1.5 rounded-xl border p-2.5 text-left transition-all hover:scale-[1.02] cursor-pointer ${
+                day.isToday
+                  ? isActionable
+                    ? "border-primary/60 bg-primary/8 ring-2 ring-primary/30 shadow-[0_0_16px_-4px_hsl(var(--primary)/0.4)] min-h-[130px]"
+                    : "border-primary/50 bg-primary/5 ring-1 ring-primary/20 shadow-sm min-h-[110px]"
+                  : "border-border bg-card/30 hover:bg-accent/30 min-h-[110px]"
+              }`}
+            >
+              {/* Day + date */}
+              <div>
+                <p className={`text-[10px] font-semibold ${day.isToday ? "text-primary" : "text-muted-foreground"}`}>
+                  {format(day.dayDate, "EEE")}
+                </p>
+                <p className={`text-sm font-bold leading-none mt-0.5 ${day.isToday ? "text-primary" : "text-foreground"}`}>
+                  {format(day.dayDate, "d")}
+                </p>
               </div>
-            ) : (
-              <div className="flex-1" />
-            )}
 
-            {/* Archetype */}
-            {day.planItem?.archetype && (
-              <span className="text-[10px] text-muted-foreground truncate">
-                {ARCHETYPE_ICONS[day.planItem.archetype] ?? ""} {day.planItem.archetype}
-              </span>
-            )}
+              {/* Pillar */}
+              {day.pillar && day.pillarColor ? (
+                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${day.pillarColor.bg} ${day.pillarColor.border}`}>
+                  <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${day.pillarColor.dot}`} />
+                  <span className={`text-[9px] font-semibold truncate leading-tight ${day.pillarColor.text}`}>
+                    {day.pillar.name.split(" ").slice(0, 2).join(" ")}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex-1" />
+              )}
 
-            {/* Status badge */}
-            <div className="mt-auto">
-              <StatusBadge status={day.status} />
-            </div>
-          </button>
-        ))}
+              {/* Archetype */}
+              {day.planItem?.archetype && (
+                <span className="text-[10px] text-muted-foreground truncate">
+                  {ARCHETYPE_ICONS[day.planItem.archetype] ?? ""} {day.planItem.archetype}
+                </span>
+              )}
+
+              {/* Status badge */}
+              <div className="mt-auto space-y-1.5">
+                <StatusBadge status={day.status} />
+                {/* Generate CTA for today if not yet posted */}
+                {isActionable && (
+                  <div className="flex items-center gap-0.5 text-[9px] font-semibold text-primary">
+                    <Sparkles className="h-2.5 w-2.5" />
+                    Generate →
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
