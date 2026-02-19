@@ -415,6 +415,7 @@ const Onboarding = () => {
           mission: mission.trim() || null,
           posting_cadence: postingCadence,
           traffic_url: trafficUrl.trim() || null,
+          ...(journeyStage ? { journey_stage: journeyStage } : {}),
         })
         .eq("id", user.id);
 
@@ -468,32 +469,6 @@ const Onboarding = () => {
         is_established: isSeasoned,
       }).eq("id", user.id);
 
-      // Store journey stage in content_strategies
-      if (journeyStage) {
-        // Upsert into content_strategies with journey stage
-        const { data: existingStrategy } = await supabase
-          .from("content_strategies")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("strategy_type", "journey_stage")
-          .maybeSingle();
-
-        if (existingStrategy) {
-          await supabase
-            .from("content_strategies")
-            .update({ journey_stage: journeyStage } as any)
-            .eq("id", existingStrategy.id);
-        } else {
-          await supabase
-            .from("content_strategies")
-            .insert({
-              user_id: user.id,
-              strategy_type: "journey_stage",
-              journey_stage: journeyStage,
-              status: "active",
-            } as any);
-        }
-      }
 
       if (isSeasoned) {
         setAccountType("seasoned");

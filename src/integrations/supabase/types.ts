@@ -671,6 +671,7 @@ export type Database = {
           id: string
           include_credibility_markers: boolean
           is_established: boolean | null
+          journey_stage: string | null
           max_posts_per_day: number
           mission: string | null
           niche: string | null
@@ -702,6 +703,7 @@ export type Database = {
           id: string
           include_credibility_markers?: boolean
           is_established?: boolean | null
+          journey_stage?: string | null
           max_posts_per_day?: number
           mission?: string | null
           niche?: string | null
@@ -733,6 +735,7 @@ export type Database = {
           id?: string
           include_credibility_markers?: boolean
           is_established?: boolean | null
+          journey_stage?: string | null
           max_posts_per_day?: number
           mission?: string | null
           niche?: string | null
