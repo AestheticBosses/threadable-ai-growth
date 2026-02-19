@@ -23,6 +23,12 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 const navSections = [
   {
+    label: null,
+    items: [
+      { title: "Command Center", path: "/dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
     label: "CREATE",
     items: [
       { title: "Playbook", path: "/playbook", icon: Zap },
@@ -33,7 +39,6 @@ const navSections = [
   {
     label: "ANALYZE",
     items: [
-      { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
       { title: "Insights", path: "/insights", icon: Lightbulb },
     ],
   },
@@ -49,7 +54,7 @@ const navSections = [
 ];
 
 const mobileTabItems = [
-  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { title: "Command Center", path: "/dashboard", icon: LayoutDashboard },
   { title: "Queue", path: "/queue", icon: CalendarClock },
   { title: "Insights", path: "/insights", icon: Lightbulb },
 ];
@@ -118,9 +123,11 @@ export function AppLayout({ children }: AppSidebarProps) {
       <nav className="flex-1 px-2 py-2 space-y-4">
         {navSections.map((section) => (
           <div key={section.label}>
-            <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-              {section.label}
-            </p>
+            {section.label && (
+              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                {section.label}
+              </p>
+            )}
             <div className="space-y-0.5">
               {section.items.map((item) => (
                 <RouterNavLink
