@@ -167,7 +167,7 @@ const Onboarding = () => {
       if (data?.threads_username) {
         setThreadsConnected(true);
         setThreadsUsername(data.threads_username);
-        setStep(1); // auto-advance
+        // Don't auto-advance — always show Step 0 so users can verify/reconnect
       }
       if (data?.dream_client) setDreamClient(data.dream_client);
       if (data?.mission) setMission(data.mission);
@@ -676,16 +676,24 @@ const Onboarding = () => {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
-                    <Check className="h-5 w-5" /> Connected as @{threadsUsername}
+                <div className="space-y-6">
+                  <div className="inline-flex items-center gap-3 bg-card border border-border rounded-xl px-6 py-4 mx-auto">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Check className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="text-left">
+                      <p className="font-semibold text-foreground">Connected as @{threadsUsername}</p>
+                      <p className="text-xs text-muted-foreground">Your account is linked and ready</p>
+                    </div>
                   </div>
-                  <button
-                    onClick={handleDisconnect}
-                    className="text-muted-foreground hover:text-foreground text-sm underline transition-colors"
-                  >
-                    Switch account
-                  </button>
+                  <div>
+                    <button
+                      onClick={handleConnectThreads}
+                      className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                    >
+                      Not the right account? Reconnect →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -853,9 +861,7 @@ const Onboarding = () => {
           disabled={!isStepValid()}
         >
           {step === 0
-            ? threadsConnected
-              ? "Next →"
-              : "Skip for now →"
+            ? "Continue →"
             : step === 3
             ? "Build My Plan →"
             : "Next →"
