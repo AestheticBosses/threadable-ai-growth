@@ -80,13 +80,8 @@ serve(async (req) => {
         .limit(15),
     ]);
 
-    console.log("[generate-content-pillars] Data fetched — profile:", !!profile, "buckets:", buckets?.length || 0, "posts:", posts?.length || 0);
-
-    if (!profile?.niche) {
-      return new Response(JSON.stringify({ error: "No niche set. Complete onboarding first." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const niche = profile?.niche || profile?.dream_client || "general";
+    console.log("[generate-content-pillars] Data fetched — niche:", niche, "buckets:", buckets?.length || 0, "posts:", posts?.length || 0);
 
     if (!buckets || buckets.length === 0) {
       return new Response(JSON.stringify({ error: "No content buckets found. Generate buckets first." }), {
@@ -96,7 +91,7 @@ serve(async (req) => {
 
     // Build context sections
     const profileContext = [
-      `Niche: ${profile.niche}`,
+      `Niche: ${niche}`,
       `Dream Client: ${profile.dream_client || "Not specified"}`,
       `End Goal: ${profile.end_goal || "Not specified"}`,
       `Mission: ${profile.mission || "Not specified"}`,
