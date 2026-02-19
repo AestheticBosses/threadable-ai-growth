@@ -8,7 +8,6 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
@@ -21,11 +20,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import {
@@ -35,15 +33,14 @@ import {
   RefreshCw,
   Trash2,
   Pencil,
-  ChevronDown,
   CalendarIcon,
-  BarChart3,
-  X,
-  AlertTriangle,
   Target,
-  CalendarClock,
   Send,
   Wand2,
+  ChevronDown,
+  CheckCircle2,
+  Clock,
+  PartyPopper,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -55,12 +52,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { WeeklyCalendar } from "@/components/queue/WeeklyCalendar";
 import { PostStatusIndicator } from "@/components/queue/PostStatusIndicator";
 import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
-import { BulkScheduleDialog } from "@/components/queue/BulkScheduleDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
+
 type Post = {
   id: string;
   text_content: string | null;
@@ -79,12 +75,16 @@ type Post = {
   source: string | null;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-muted text-muted-foreground",
-  approved: "bg-emerald-500/10 text-emerald-600",
-  scheduled: "bg-primary/10 text-primary",
-  published: "bg-violet-500/10 text-violet-600",
-  failed: "bg-destructive/10 text-destructive",
+const FUNNEL_BADGE_COLORS: Record<string, string> = {
+  TOF: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  MOF: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  BOF: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+};
+
+const FUNNEL_LABELS: Record<string, string> = {
+  TOF: "TOF · Reach",
+  MOF: "MOF · Trust",
+  BOF: "BOF · Convert",
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -108,65 +108,39 @@ function scoreBg(score: number | null): string {
   return "bg-destructive/10";
 }
 
-// No longer using hardcoded labels — breakdown now contains question text from playbook
-
-const FUNNEL_BADGE_COLORS: Record<string, string> = {
-  TOF: "bg-violet-500/10 text-violet-400 border-violet-500/30",
-  MOF: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-  BOF: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-};
-
-const FUNNEL_LABELS: Record<string, string> = {
-  TOF: "TOF · Reach",
-  MOF: "MOF · Trust",
-  BOF: "BOF · Convert",
-};
-
-const TABS = ["all", "draft", "approved", "scheduled", "published", "failed"] as const;
-type TabVal = (typeof TABS)[number];
-
-const FUNNEL_FILTERS = ["all", "TOF", "MOF", "BOF"] as const;
-type FunnelFilter = (typeof FUNNEL_FILTERS)[number];
-
 const Queue = () => {
   usePageTitle("Content Queue", "Manage and schedule your Threads content");
   const navigate = useNavigate();
   const { user, session } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [activeTab, setActiveTab] = useState<TabVal>("all");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
-  const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
-  const [scoringId, setScoringId] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"date" | "status" | "category">("date");
   const [threadsUsername, setThreadsUsername] = useState<string | null>(null);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [pendingApproveId, setPendingApproveId] = useState<string | null>(null);
-  const [schedulingAll, setSchedulingAll] = useState(false);
+  const [approvingAll, setApprovingAll] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null);
-  const [funnelFilter, setFunnelFilter] = useState<FunnelFilter>("all");
   const [fixContextId, setFixContextId] = useState<string | null>(null);
   const [fixFeedback, setFixFeedback] = useState("");
   const [fixingId, setFixingId] = useState<string | null>(null);
-  const [bulkScheduleOpen, setBulkScheduleOpen] = useState(false);
-  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [scoringId, setScoringId] = useState<string | null>(null);
+
   const loadPosts = useCallback(async () => {
     if (!user) return;
     const { data } = await supabase
       .from("scheduled_posts")
       .select("id, text_content, content_category, funnel_stage, scheduled_for, status, ai_generated, user_edited, pre_post_score, score_breakdown, threads_media_id, published_at, error_message, created_at, source")
       .eq("user_id", user.id)
+      .in("status", ["draft", "approved", "scheduled"])
       .order("scheduled_for", { ascending: true });
     setPosts((data as Post[]) || []);
     setLoading(false);
   }, [user]);
 
-  // Load profile for threads username
   useEffect(() => {
     if (!user) return;
     supabase
@@ -183,56 +157,11 @@ const Queue = () => {
     loadPosts();
   }, [loadPosts]);
 
-  const filteredPosts = posts.filter((p) => {
-    const statusMatch = activeTab === "all" ? true : p.status === activeTab;
-    const funnelMatch = funnelFilter === "all" ? true : p.funnel_stage === funnelFilter;
-    return statusMatch && funnelMatch;
-  });
+  const drafts = posts.filter((p) => p.status === "draft");
+  const approved = posts.filter((p) => p.status === "approved" || p.status === "scheduled");
+  const allApproved = drafts.length === 0 && approved.length > 0;
 
-  const sortedPosts = [...filteredPosts].sort((a, b) => {
-    if (sortBy === "status") return (a.status || "").localeCompare(b.status || "");
-    if (sortBy === "category") return (a.content_category || "").localeCompare(b.content_category || "");
-    return new Date(a.scheduled_for || 0).getTime() - new Date(b.scheduled_for || 0).getTime();
-  });
-
-  const todayCount = posts.filter((p) => {
-    if (!p.scheduled_for) return false;
-    return new Date(p.scheduled_for).toDateString() === new Date().toDateString();
-  }).length;
-
-  const draftCount = posts.filter((p) => p.status === "draft").length;
-
-  // Generate posts
-  const handleGenerate = async (count: number) => {
-    if (!session?.access_token) return;
-    setGenerating(true);
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-content`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ posts_count: count }),
-        }
-      );
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Generation failed");
-      }
-      const data = await res.json();
-      toast({ title: `${data.total} posts generated!` });
-      await loadPosts();
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // Approve — check if scheduled_for is set, if not show date picker
+  // Approve single post
   const handleApprove = async (id: string) => {
     const post = posts.find((p) => p.id === id);
     if (!post?.scheduled_for) {
@@ -242,9 +171,9 @@ const Queue = () => {
     }
     await supabase.from("scheduled_posts").update({ status: "approved" }).eq("id", id);
     setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, status: "approved" } : p)));
+    toast({ title: "Post approved ✅" });
   };
 
-  // Approve with scheduled date from dialog
   const handleApproveWithDate = async (date: Date) => {
     if (!pendingApproveId) return;
     await supabase
@@ -259,29 +188,37 @@ const Queue = () => {
       )
     );
     setPendingApproveId(null);
-    toast({ title: "Post approved & scheduled" });
+    toast({ title: "Post approved & scheduled ✅" });
   };
 
-  // Retry failed post
-  const handleRetry = async (id: string) => {
-    await supabase
-      .from("scheduled_posts")
-      .update({ status: "approved", error_message: null })
-      .eq("id", id);
-    setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status: "approved", error_message: null } : p))
-    );
-    toast({ title: "Post queued for retry" });
+  // Approve all drafts
+  const handleApproveAll = async () => {
+    if (drafts.length === 0) return;
+    setApprovingAll(true);
+    try {
+      const draftIds = drafts.map((d) => d.id);
+      await supabase
+        .from("scheduled_posts")
+        .update({ status: "approved" })
+        .in("id", draftIds);
+      setPosts((prev) =>
+        prev.map((p) => (p.status === "draft" ? { ...p, status: "approved" } : p))
+      );
+      toast({ title: `${draftIds.length} drafts approved! ✅` });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setApprovingAll(false);
+    }
   };
 
   // Delete
   const handleDelete = async (id: string) => {
     await supabase.from("scheduled_posts").delete().eq("id", id);
     setPosts((prev) => prev.filter((p) => p.id !== id));
-    setSelected((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
 
-  // Save edit — re-score via score-post
+  // Save edit & re-score
   const handleSaveEdit = async (id: string) => {
     if (!session?.access_token) return;
     try {
@@ -320,8 +257,58 @@ const Queue = () => {
         )
       );
       setEditingId(null);
+      toast({ title: "Post updated ✏️" });
     } catch (e: any) {
       toast({ title: "Error scoring", description: e.message, variant: "destructive" });
+    }
+  };
+
+  // Retry failed post
+  const handleRetry = async (id: string) => {
+    await supabase
+      .from("scheduled_posts")
+      .update({ status: "approved", error_message: null })
+      .eq("id", id);
+    setPosts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, status: "approved", error_message: null } : p))
+    );
+    toast({ title: "Post queued for retry" });
+  };
+
+  // Update scheduled date
+  const handleDateChange = async (id: string, date: Date) => {
+    const existing = posts.find((p) => p.id === id);
+    if (!existing?.scheduled_for) return;
+    const oldDate = new Date(existing.scheduled_for);
+    date.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0);
+    await supabase.from("scheduled_posts").update({ scheduled_for: date.toISOString() }).eq("id", id);
+    setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, scheduled_for: date.toISOString() } : p)));
+  };
+
+  // Post Now
+  const handlePostNow = async (postId: string) => {
+    if (!session?.access_token) return;
+    setPublishingId(postId);
+    try {
+      const res = await supabase.functions.invoke("publish-post", {
+        body: { postId },
+      });
+      if (res.error) throw new Error(res.error.message || "Publishing failed");
+      const data = res.data as any;
+      if (data?.error) throw new Error(data.error);
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? { ...p, status: "published", published_at: new Date().toISOString(), threads_media_id: data.threads_media_id, error_message: null }
+            : p
+        )
+      );
+      toast({ title: "Posted to Threads! 🎉" });
+    } catch (e: any) {
+      toast({ title: "Publishing failed", description: e.message, variant: "destructive" });
+    } finally {
+      setPublishingId(null);
+      setConfirmPublishId(null);
     }
   };
 
@@ -391,137 +378,6 @@ const Queue = () => {
     }
   };
 
-  // Update scheduled date
-  const handleDateChange = async (id: string, date: Date) => {
-    const existing = posts.find((p) => p.id === id);
-    if (!existing?.scheduled_for) return;
-    const oldDate = new Date(existing.scheduled_for);
-    date.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0);
-    await supabase.from("scheduled_posts").update({ scheduled_for: date.toISOString() }).eq("id", id);
-    setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, scheduled_for: date.toISOString() } : p)));
-  };
-
-  // Schedule all drafts — spread evenly across the week at optimal times
-  const handleScheduleAllDrafts = async () => {
-    const drafts = posts.filter((p) => p.status === "draft");
-    if (drafts.length === 0) return;
-    setSchedulingAll(true);
-    try {
-      // Default optimal times
-      const optimalTimes = ["08:00", "12:00", "17:00", "20:00"];
-      const now = new Date();
-      const startDay = new Date(now);
-      startDay.setDate(startDay.getDate() + 1);
-
-      const updates: { id: string; scheduled_for: string }[] = [];
-      let dayOffset = 0;
-      let timeIdx = 0;
-
-      for (const draft of drafts) {
-        const schedDate = new Date(startDay);
-        schedDate.setDate(schedDate.getDate() + dayOffset);
-        const [h, m] = optimalTimes[timeIdx].split(":").map(Number);
-        schedDate.setHours(h, m, 0, 0);
-        updates.push({ id: draft.id, scheduled_for: schedDate.toISOString() });
-        timeIdx++;
-        if (timeIdx >= optimalTimes.length) {
-          timeIdx = 0;
-          dayOffset++;
-        }
-      }
-
-      // Update each post
-      for (const upd of updates) {
-        await supabase
-          .from("scheduled_posts")
-          .update({ scheduled_for: upd.scheduled_for, status: "approved" })
-          .eq("id", upd.id);
-      }
-
-      setPosts((prev) =>
-        prev.map((p) => {
-          const upd = updates.find((u) => u.id === p.id);
-          return upd ? { ...p, scheduled_for: upd.scheduled_for, status: "approved" } : p;
-        })
-      );
-      toast({ title: `${updates.length} drafts scheduled & approved!` });
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
-      setSchedulingAll(false);
-    }
-  };
-
-  // Post Now — publish immediately
-  const handlePostNow = async (postId: string) => {
-    if (!session?.access_token) return;
-    setPublishingId(postId);
-    try {
-      const res = await supabase.functions.invoke("publish-post", {
-        body: { postId },
-      });
-      if (res.error) throw new Error(res.error.message || "Publishing failed");
-      const data = res.data as any;
-      if (data?.error) throw new Error(data.error);
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, status: "published", published_at: new Date().toISOString(), threads_media_id: data.threads_media_id, error_message: null }
-            : p
-        )
-      );
-      toast({ title: "Posted to Threads! 🎉" });
-    } catch (e: any) {
-      toast({ title: "Publishing failed", description: e.message, variant: "destructive" });
-    } finally {
-      setPublishingId(null);
-      setConfirmPublishId(null);
-    }
-  };
-
-  const handleBulkApprove = async () => {
-    const ids = Array.from(selected);
-    await supabase.from("scheduled_posts").update({ status: "approved" }).in("id", ids);
-    setPosts((prev) => prev.map((p) => (selected.has(p.id) ? { ...p, status: "approved" } : p)));
-    setSelected(new Set());
-  };
-
-  const handleBulkDelete = async () => {
-    const ids = Array.from(selected);
-    await supabase.from("scheduled_posts").delete().in("id", ids);
-    setPosts((prev) => prev.filter((p) => !selected.has(p.id)));
-    setSelected(new Set());
-    setConfirmBulkDelete(false);
-    toast({ title: `${ids.length} posts deleted` });
-  };
-
-  const handleBulkSchedule = async (assignments: { id: string; scheduled_for: string }[]) => {
-    for (const a of assignments) {
-      await supabase.from("scheduled_posts").update({ scheduled_for: a.scheduled_for, status: "scheduled" }).eq("id", a.id);
-    }
-    setPosts((prev) =>
-      prev.map((p) => {
-        const a = assignments.find((x) => x.id === p.id);
-        return a ? { ...p, scheduled_for: a.scheduled_for, status: "scheduled" } : p;
-      })
-    );
-    setSelected(new Set());
-    toast({ title: `${assignments.length} posts scheduled!` });
-  };
-
-  const selectAllVisible = () => {
-    const allIds = new Set(filteredPosts.map((p) => p.id));
-    setSelected(allIds);
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
-      return n;
-    });
-  };
-
   // Fix Context — AI-assisted correction
   const handleFixContext = async () => {
     if (!session?.access_token || !fixContextId || !fixFeedback.trim()) return;
@@ -551,7 +407,7 @@ const Queue = () => {
               : p
           )
         );
-        toast({ title: "Post fixed! ✏️" });
+        toast({ title: "Post improved! ✏️" });
       }
       setFixContextId(null);
       setFixFeedback("");
@@ -560,6 +416,12 @@ const Queue = () => {
     } finally {
       setFixingId(null);
     }
+  };
+
+  // Truncate text for collapsed view
+  const truncate = (text: string | null, len = 120) => {
+    if (!text) return "No content";
+    return text.length > len ? text.slice(0, len) + "…" : text;
   };
 
   if (loading) {
@@ -574,142 +436,51 @@ const Queue = () => {
 
   return (
     <AppLayout>
-      <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Content Queue</h1>
-            <p className="mt-1 text-muted-foreground">
-              {todayCount} post{todayCount !== 1 ? "s" : ""} scheduled for today
+            <p className="mt-1 text-sm text-muted-foreground">
+              {approved.length} scheduled · {drafts.length} draft{drafts.length !== 1 ? "s" : ""} awaiting approval
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Schedule All Drafts */}
-            {draftCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={schedulingAll}
-                onClick={handleScheduleAllDrafts}
-                className="gap-1"
-              >
-                {schedulingAll ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CalendarClock className="h-3.5 w-3.5" />
-                )}
-                Schedule All Drafts ({draftCount})
-              </Button>
-            )}
-
-            {/* Sort */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1 text-xs">
-                  Sort: {sortBy}
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortBy("date")}>Date</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("status")}>Status</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("category")}>Category</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-          </div>
-        </div>
-
-        {/* Weekly Calendar */}
-        <WeeklyCalendar posts={posts} />
-
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-border overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px whitespace-nowrap",
-                activeTab === tab
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+          {drafts.length > 0 && (
+            <Button
+              onClick={handleApproveAll}
+              disabled={approvingAll}
+              className="gap-2"
+            >
+              {approvingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
               )}
-            >
-              {tab}
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                ({tab === "all" ? posts.length : posts.filter((p) => p.status === tab).length})
-              </span>
-            </button>
-          ))}
+              Approve All Drafts ({drafts.length})
+            </Button>
+          )}
         </div>
 
-        {/* Funnel filter */}
-        <div className="flex gap-1.5">
-          {FUNNEL_FILTERS.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFunnelFilter(f)}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded-full border transition-colors capitalize",
-                funnelFilter === f
-                  ? f === "all" ? "border-primary bg-primary/10 text-primary" : FUNNEL_BADGE_COLORS[f]
-                  : "border-border text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f === "all" ? "All Funnel" : FUNNEL_LABELS[f]}
-              <span className="ml-1 opacity-60">
-                ({f === "all" ? posts.length : posts.filter((p) => p.funnel_stage === f).length})
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Bulk actions */}
-        {selected.size > 0 && (
-          <div className="sticky top-0 z-20 flex items-center gap-3 rounded-lg border-2 border-primary/30 bg-card px-4 py-3 shadow-md">
-            <span className="text-sm font-medium text-foreground">
-              {selected.size} selected
-            </span>
-            <Button size="sm" variant="outline" onClick={handleBulkApprove} className="gap-1"
-              disabled={!Array.from(selected).some((id) => posts.find((p) => p.id === id)?.status === "draft")}
-            >
-              <Check className="h-3 w-3" />
-              Approve
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setBulkScheduleOpen(true)} className="gap-1">
-              <CalendarClock className="h-3 w-3" />
-              Schedule
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setConfirmBulkDelete(true)} className="gap-1 text-destructive hover:text-destructive">
-              <Trash2 className="h-3 w-3" />
-              Delete
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} className="ml-auto">
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+        {/* All-approved confirmation state */}
+        {allApproved && (
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="rounded-full bg-emerald-500/10 p-3">
+                <PartyPopper className="h-6 w-6 text-emerald-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Your week is scheduled 🎉</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {approved.length} post{approved.length !== 1 ? "s" : ""} will publish automatically at their scheduled times.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* Select All */}
-        {filteredPosts.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Checkbox
-              checked={filteredPosts.length > 0 && filteredPosts.every((p) => selected.has(p.id))}
-              onCheckedChange={(checked) => {
-                if (checked) selectAllVisible();
-                else setSelected(new Set());
-              }}
-            />
-            <span className="text-xs text-muted-foreground">
-              Select all ({filteredPosts.length})
-            </span>
-          </div>
-        )}
-
-        {/* Posts */}
-        {sortedPosts.length === 0 ? (
+        {/* Empty state */}
+        {posts.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <Sparkles className="h-10 w-10 text-muted-foreground" />
             <p className="text-foreground font-medium">No posts in your queue yet.</p>
@@ -725,310 +496,78 @@ const Queue = () => {
               </Button>
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* Draft posts section */}
+        {drafts.length > 0 && (
           <div className="space-y-3">
-            {sortedPosts.map((post) => (
-              <Card key={post.id} className={cn("overflow-hidden", selected.has(post.id) && "ring-1 ring-primary/40")}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <Checkbox
-                      checked={selected.has(post.id)}
-                      onCheckedChange={() => toggleSelect(post.id)}
-                      className="mt-1"
-                    />
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Drafts — Review & Approve
+            </h2>
+            {drafts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                expanded={expandedId === post.id}
+                onToggle={() => setExpandedId(expandedId === post.id ? null : post.id)}
+                editingId={editingId}
+                editText={editText}
+                onStartEdit={(id, text) => { setEditingId(id); setEditText(text); }}
+                onCancelEdit={() => setEditingId(null)}
+                onEditTextChange={setEditText}
+                onSaveEdit={handleSaveEdit}
+                onApprove={handleApprove}
+                onDelete={handleDelete}
+                onPostNow={(id) => setConfirmPublishId(id)}
+                publishingId={publishingId}
+                onFixPost={(id) => { setFixContextId(id); setFixFeedback(""); }}
+                onRegenerate={handleRegenerate}
+                regeneratingId={regeneratingId}
+                onScore={handleScorePost}
+                scoringId={scoringId}
+                onRetry={handleRetry}
+                onDateChange={handleDateChange}
+                threadsUsername={threadsUsername}
+                truncate={truncate}
+                isDraft
+              />
+            ))}
+          </div>
+        )}
 
-                    <div className="min-w-0 flex-1 space-y-3">
-                      {/* Top row: badges */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className={STATUS_COLORS[post.status || "draft"]}>
-                          {post.status}
-                        </Badge>
-                        {post.content_category && (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-xs",
-                              CATEGORY_COLORS[post.content_category.toLowerCase()] || ""
-                            )}
-                          >
-                            {post.content_category}
-                          </Badge>
-                        )}
-                        {post.funnel_stage && (
-                          <Badge
-                            variant="outline"
-                            className={cn("text-xs", FUNNEL_BADGE_COLORS[post.funnel_stage] || "")}
-                          >
-                            {FUNNEL_LABELS[post.funnel_stage] || post.funnel_stage}
-                          </Badge>
-                        )}
-                        {post.source && post.source !== "manual" && (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                            {post.source === "content_plan" ? "From Content Plan" : post.source === "chat" ? "From Chat" : "Generated"}
-                          </Badge>
-                        )}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge
-                                variant="secondary"
-                                className={cn("text-xs cursor-help gap-1", scoreBg(post.pre_post_score), scoreColor(post.pre_post_score))}
-                              >
-                                {post.pre_post_score != null ? `Score: ${post.pre_post_score}/6` : "Not scored"}
-                                <Info className="h-3 w-3" />
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="max-w-xs p-3 space-y-2">
-                              <p className="text-xs font-semibold">Post Score Breakdown</p>
-                              {post.score_breakdown ? (
-                                <div className="space-y-1">
-                                  {Object.entries(post.score_breakdown)
-                                    .filter(([key]) => key !== "total")
-                                    .map(([key, val]) => {
-                                      const item = val as any;
-                                      const passed = typeof item === "object" ? (item.passed ?? item.score === 1) : !!item;
-                                      const label = typeof item === "object" && item.question ? item.question : key;
-                                      return (
-                                        <div key={key} className="flex items-center gap-1.5 text-xs">
-                                          <span>{passed ? "✅" : "❌"}</span>
-                                          <span className={passed ? "text-foreground" : "text-muted-foreground"}>{label}</span>
-                                        </div>
-                                      );
-                                    })}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">Click "Score" to analyze this post</p>
-                              )}
-                              <div className="border-t border-border pt-1.5 space-y-0.5 text-[10px] text-muted-foreground">
-                                <p>Score 0-2: Don't post</p>
-                                <p>Score 3: Rework it</p>
-                                <p>Score 4+: Ship it ✅</p>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        {post.user_edited && (
-                          <Badge variant="outline" className="text-xs">Edited</Badge>
-                        )}
-                        {post.pre_post_score != null && post.pre_post_score < 4 && (
-                          <Badge variant="secondary" className="text-xs bg-yellow-500/10 text-yellow-600 gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Low score
-                          </Badge>
-                        )}
-                        {post.scheduled_for && post.status !== "published" && post.status !== "failed" && (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto">
-                                <CalendarIcon className="h-3 w-3" />
-                                {format(new Date(post.scheduled_for), "MMM d, HH:mm")}
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="end">
-                              <Calendar
-                                mode="single"
-                                selected={new Date(post.scheduled_for)}
-                                onSelect={(d) => d && handleDateChange(post.id, d)}
-                                className="p-3 pointer-events-auto"
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        )}
-                      </div>
-
-                      {/* Status indicator */}
-                      <PostStatusIndicator
-                        status={post.status}
-                        scheduledFor={post.scheduled_for}
-                        publishedAt={post.published_at}
-                        threadsMediaId={post.threads_media_id}
-                        threadsUsername={threadsUsername}
-                        errorMessage={post.error_message}
-                        onRetry={() => handleRetry(post.id)}
-                      />
-
-                      {/* Post text */}
-                      {editingId === post.id ? (
-                        <div className="space-y-2">
-                          <Textarea
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            rows={4}
-                            className="text-sm resize-none"
-                            autoFocus
-                          />
-                          <div className="flex items-center justify-between">
-                            <span className={cn("text-xs", editText.length > 500 ? "text-destructive" : "text-muted-foreground")}>
-                              {editText.length}/500
-                            </span>
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
-                                Cancel
-                              </Button>
-                              <Button size="sm" onClick={() => handleSaveEdit(post.id)}>
-                                Save
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
-                            {post.text_content || "No content"}
-                          </p>
-                          <span className={cn(
-                            "text-xs mt-1 inline-block",
-                            (post.text_content?.length || 0) > 500 ? "text-destructive" : "text-muted-foreground"
-                          )}>
-                            {post.text_content?.length || 0} chars
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Score breakdown */}
-                      {expandedScoreId === post.id && post.score_breakdown && (
-                        <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                            Score Breakdown ({(post.score_breakdown as any)?.total ?? post.pre_post_score ?? "?"}/6)
-                          </p>
-                          {Object.entries(post.score_breakdown)
-                            .filter(([key]) => key !== "total")
-                            .map(([key, val]) => {
-                              const item = val as any;
-                              const passed = typeof item === "object" ? (item.passed ?? item.score === 1) : !!item;
-                              const label = typeof item === "object" && item.question ? item.question : key;
-                              const points = typeof item === "object" && item.points != null ? item.points : 1;
-                              const dataBacking = typeof item === "object" ? item.data_backing : "";
-                              return (
-                                <div key={key} className="space-y-0.5">
-                                  <div className="flex items-center gap-2 text-sm">
-                                    <span className={passed ? "text-emerald-600" : "text-destructive"}>
-                                      {passed ? "✅" : "❌"}
-                                    </span>
-                                    <span className={passed ? "text-foreground" : "text-muted-foreground"}>
-                                      {label}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground ml-auto">
-                                      {points > 0 ? `+${points}` : points}pt
-                                    </span>
-                                  </div>
-                                  {dataBacking && (
-                                    <p className="text-xs text-muted-foreground pl-6 italic">{dataBacking}</p>
-                                  )}
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      {editingId !== post.id && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {post.status === "draft" && (
-                            <Button size="sm" variant="outline" onClick={() => handleApprove(post.id)} className="gap-1 h-7 text-xs">
-                              <Check className="h-3 w-3" />
-                              Approve
-                            </Button>
-                          )}
-                          {post.status !== "published" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleRegenerate(post)}
-                                disabled={regeneratingId === post.id}
-                                className="gap-1 h-7 text-xs"
-                              >
-                                {regeneratingId === post.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="h-3 w-3" />
-                                )}
-                                Regenerate
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleScorePost(post)}
-                                disabled={scoringId === post.id}
-                                className="gap-1 h-7 text-xs"
-                              >
-                                {scoringId === post.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Target className="h-3 w-3" />
-                                )}
-                                Score
-                              </Button>
-                            </>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setExpandedScoreId(expandedScoreId === post.id ? null : post.id)}
-                            className="gap-1 h-7 text-xs"
-                          >
-                            <BarChart3 className="h-3 w-3" />
-                            {expandedScoreId === post.id ? "Hide" : "Why this score?"}
-                          </Button>
-                          {post.status !== "published" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => { setEditingId(post.id); setEditText(post.text_content || ""); }}
-                                className="gap-1 h-7 text-xs"
-                              >
-                                <Pencil className="h-3 w-3" />
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => { setFixContextId(post.id); setFixFeedback(""); }}
-                                className="gap-1 h-7 text-xs"
-                              >
-                                <Wand2 className="h-3 w-3" />
-                                Improve Post
-                              </Button>
-                            </>
-                          )}
-                          {(post.status === "draft" || post.status === "approved") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                if ((post.text_content?.length || 0) > 500) {
-                                  toast({ title: "Post too long", description: "Edit to under 500 characters before posting.", variant: "destructive" });
-                                  return;
-                                }
-                                setConfirmPublishId(post.id);
-                              }}
-                              disabled={publishingId === post.id}
-                              className="gap-1 h-7 text-xs"
-                            >
-                              {publishingId === post.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <Send className="h-3 w-3" />
-                              )}
-                              🚀 Post Now
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDelete(post.id)}
-                            className="gap-1 h-7 text-xs text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+        {/* Approved/Scheduled posts section */}
+        {approved.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Scheduled Posts
+            </h2>
+            {approved.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                expanded={expandedId === post.id}
+                onToggle={() => setExpandedId(expandedId === post.id ? null : post.id)}
+                editingId={editingId}
+                editText={editText}
+                onStartEdit={(id, text) => { setEditingId(id); setEditText(text); }}
+                onCancelEdit={() => setEditingId(null)}
+                onEditTextChange={setEditText}
+                onSaveEdit={handleSaveEdit}
+                onApprove={handleApprove}
+                onDelete={handleDelete}
+                onPostNow={(id) => setConfirmPublishId(id)}
+                publishingId={publishingId}
+                onFixPost={(id) => { setFixContextId(id); setFixFeedback(""); }}
+                onRegenerate={handleRegenerate}
+                regeneratingId={regeneratingId}
+                onScore={handleScorePost}
+                scoringId={scoringId}
+                onRetry={handleRetry}
+                onDateChange={handleDateChange}
+                threadsUsername={threadsUsername}
+                truncate={truncate}
+                isDraft={false}
+              />
             ))}
           </div>
         )}
@@ -1062,7 +601,7 @@ const Queue = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Fix Context Modal */}
+      {/* Fix / Improve Post Modal */}
       <Dialog open={!!fixContextId} onOpenChange={(open) => { if (!open) { setFixContextId(null); setFixFeedback(""); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1076,7 +615,7 @@ const Queue = () => {
               </p>
             </div>
             <Input
-              placeholder='e.g. "I was CMO not owner" or "Too long, make it shorter"'
+              placeholder='e.g. "Too long, make it shorter" or "Make it more punchy"'
               value={fixFeedback}
               onChange={(e) => setFixFeedback(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !fixingId && fixFeedback.trim() && handleFixContext()}
@@ -1093,33 +632,311 @@ const Queue = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Bulk Schedule Dialog */}
-      <BulkScheduleDialog
-        open={bulkScheduleOpen}
-        onOpenChange={setBulkScheduleOpen}
-        postCount={selected.size}
-        postIds={Array.from(selected)}
-        onConfirm={handleBulkSchedule}
-      />
-
-      {/* Bulk Delete Confirmation */}
-      <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selected.size} posts?</AlertDialogTitle>
-            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleBulkDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete {selected.size} Posts
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </AppLayout>
   );
 };
+
+// ─── Post Card Component ──────────────────────────────────────
+
+interface PostCardProps {
+  post: Post;
+  expanded: boolean;
+  onToggle: () => void;
+  editingId: string | null;
+  editText: string;
+  onStartEdit: (id: string, text: string) => void;
+  onCancelEdit: () => void;
+  onEditTextChange: (text: string) => void;
+  onSaveEdit: (id: string) => void;
+  onApprove: (id: string) => void;
+  onDelete: (id: string) => void;
+  onPostNow: (id: string) => void;
+  publishingId: string | null;
+  onFixPost: (id: string) => void;
+  onRegenerate: (post: Post) => void;
+  regeneratingId: string | null;
+  onScore: (post: Post) => void;
+  scoringId: string | null;
+  onRetry: (id: string) => void;
+  onDateChange: (id: string, date: Date) => void;
+  threadsUsername: string | null;
+  truncate: (text: string | null, len?: number) => string;
+  isDraft: boolean;
+}
+
+function PostCard({
+  post,
+  expanded,
+  onToggle,
+  editingId,
+  editText,
+  onStartEdit,
+  onCancelEdit,
+  onEditTextChange,
+  onSaveEdit,
+  onApprove,
+  onDelete,
+  onPostNow,
+  publishingId,
+  onFixPost,
+  onRegenerate,
+  regeneratingId,
+  onScore,
+  scoringId,
+  onRetry,
+  onDateChange,
+  threadsUsername,
+  truncate,
+  isDraft,
+}: PostCardProps) {
+  const isEditing = editingId === post.id;
+
+  return (
+    <Card className={cn(
+      "overflow-hidden transition-all",
+      isDraft ? "border-border" : "border-emerald-500/20"
+    )}>
+      <Collapsible open={expanded} onOpenChange={onToggle}>
+        {/* Collapsed header — always visible */}
+        <CollapsibleTrigger asChild>
+          <button className="w-full text-left p-4 flex items-start gap-3 hover:bg-accent/30 transition-colors">
+            <div className="mt-0.5">
+              {isDraft ? (
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              {/* Top row: date/time + badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                {!isDraft && (
+                  <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+                    Scheduled
+                  </Badge>
+                )}
+                {isDraft && (
+                  <Badge variant="secondary" className="bg-muted text-muted-foreground text-xs">
+                    Draft
+                  </Badge>
+                )}
+                {post.scheduled_for && (
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {format(new Date(post.scheduled_for), "EEE, MMM d · HH:mm")}
+                  </span>
+                )}
+                {post.funnel_stage && (
+                  <Badge
+                    variant="outline"
+                    className={cn("text-[10px]", FUNNEL_BADGE_COLORS[post.funnel_stage] || "")}
+                  >
+                    {FUNNEL_LABELS[post.funnel_stage] || post.funnel_stage}
+                  </Badge>
+                )}
+                {post.content_category && (
+                  <Badge
+                    variant="outline"
+                    className={cn("text-[10px]", CATEGORY_COLORS[post.content_category.toLowerCase()] || "")}
+                  >
+                    {post.content_category}
+                  </Badge>
+                )}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="secondary"
+                        className={cn("text-[10px] cursor-help gap-0.5", scoreBg(post.pre_post_score), scoreColor(post.pre_post_score))}
+                      >
+                        {post.pre_post_score != null ? `${post.pre_post_score}/6` : "—"}
+                        <Info className="h-2.5 w-2.5" />
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs p-3 space-y-2">
+                      <p className="text-xs font-semibold">Score Breakdown</p>
+                      {post.score_breakdown ? (
+                        <div className="space-y-1">
+                          {Object.entries(post.score_breakdown)
+                            .filter(([key]) => key !== "total")
+                            .map(([key, val]) => {
+                              const item = val as any;
+                              const passed = typeof item === "object" ? (item.passed ?? item.score === 1) : !!item;
+                              const label = typeof item === "object" && item.question ? item.question : key;
+                              return (
+                                <div key={key} className="flex items-center gap-1.5 text-xs">
+                                  <span>{passed ? "✅" : "❌"}</span>
+                                  <span className={passed ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Not scored yet</p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+
+              {/* Truncated preview */}
+              <p className="text-sm text-foreground/80 leading-relaxed">
+                {truncate(post.text_content)}
+              </p>
+            </div>
+
+            <ChevronDown className={cn(
+              "h-4 w-4 text-muted-foreground shrink-0 mt-1 transition-transform",
+              expanded && "rotate-180"
+            )} />
+          </button>
+        </CollapsibleTrigger>
+
+        {/* Expanded content */}
+        <CollapsibleContent>
+          <div className="px-4 pb-4 space-y-4 border-t border-border pt-4 ml-7">
+            {/* Status indicator */}
+            <PostStatusIndicator
+              status={post.status}
+              scheduledFor={post.scheduled_for}
+              publishedAt={post.published_at}
+              threadsMediaId={post.threads_media_id}
+              threadsUsername={threadsUsername}
+              errorMessage={post.error_message}
+              onRetry={() => onRetry(post.id)}
+            />
+
+            {/* Full content or editor */}
+            {isEditing ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={editText}
+                  onChange={(e) => onEditTextChange(e.target.value)}
+                  rows={6}
+                  className="text-sm resize-none"
+                  autoFocus
+                />
+                <div className="flex items-center justify-between">
+                  <span className={cn("text-xs", editText.length > 500 ? "text-destructive" : "text-muted-foreground")}>
+                    {editText.length}/500
+                  </span>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="ghost" onClick={onCancelEdit}>Cancel</Button>
+                    <Button size="sm" onClick={() => onSaveEdit(post.id)} disabled={editText.length > 500}>Save</Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                  {post.text_content || "No content"}
+                </p>
+                <span className={cn(
+                  "text-xs mt-2 inline-block",
+                  (post.text_content?.length || 0) > 500 ? "text-destructive" : "text-muted-foreground"
+                )}>
+                  {post.text_content?.length || 0} chars
+                </span>
+              </div>
+            )}
+
+            {/* Date picker for scheduled */}
+            {post.scheduled_for && !isDraft && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <CalendarIcon className="h-3 w-3" />
+                    Reschedule: {format(new Date(post.scheduled_for), "MMM d, HH:mm")}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={new Date(post.scheduled_for)}
+                    onSelect={(d) => d && onDateChange(post.id, d)}
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {/* Actions */}
+            {!isEditing && (
+              <div className="flex flex-wrap gap-1.5">
+                {isDraft && (
+                  <Button size="sm" onClick={() => onApprove(post.id)} className="gap-1 h-7 text-xs">
+                    <Check className="h-3 w-3" />
+                    Approve
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onStartEdit(post.id, post.text_content || "")}
+                  className="gap-1 h-7 text-xs"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onFixPost(post.id)}
+                  className="gap-1 h-7 text-xs"
+                >
+                  <Wand2 className="h-3 w-3" />
+                  Improve
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onRegenerate(post)}
+                  disabled={regeneratingId === post.id}
+                  className="gap-1 h-7 text-xs"
+                >
+                  {regeneratingId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  Regenerate
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onScore(post)}
+                  disabled={scoringId === post.id}
+                  className="gap-1 h-7 text-xs"
+                >
+                  {scoringId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Target className="h-3 w-3" />}
+                  Score
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if ((post.text_content?.length || 0) > 500) {
+                      toast({ title: "Post too long", description: "Edit to under 500 characters before posting.", variant: "destructive" });
+                      return;
+                    }
+                    onPostNow(post.id);
+                  }}
+                  disabled={publishingId === post.id}
+                  className="gap-1 h-7 text-xs"
+                >
+                  {publishingId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                  🚀 Post Now
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onDelete(post.id)}
+                  className="gap-1 h-7 text-xs text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
 
 export default Queue;
