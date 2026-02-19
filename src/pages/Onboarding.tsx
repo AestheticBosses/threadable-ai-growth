@@ -255,11 +255,30 @@ const Onboarding = () => {
     updateStep(stepId, "active");
     try {
       const headers = await getAuthHeaders();
-      const { error } = await supabase.functions.invoke(fnName, { body, headers });
-      if (error) { updateStep(stepId, "error"); return false; }
+      const { data, error } = await supabase.functions.invoke(fnName, { body, headers });
+      if (error) {
+        // Extract detailed error from edge function response
+        let detail = error.message || "Unknown error";
+        try {
+          if (error.context && typeof error.context.json === "function") {
+            const errBody = await error.context.json();
+            detail = errBody?.error || errBody?.message || JSON.stringify(errBody);
+          }
+        } catch { /* context not readable */ }
+        console.error(`[Pipeline] ${fnName} FAILED:`, detail, { error, data });
+        updateStep(stepId, "error");
+        return false;
+      }
+      // Some functions return 200 with { error: "..." } in the body
+      if (data?.error) {
+        console.error(`[Pipeline] ${fnName} returned error in body:`, data.error);
+        updateStep(stepId, "error");
+        return false;
+      }
       updateStep(stepId, "done");
       return true;
-    } catch {
+    } catch (e) {
+      console.error(`[Pipeline] ${fnName} EXCEPTION:`, e);
       updateStep(stepId, "error");
       return false;
     }

@@ -19,21 +19,17 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const jwt = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: userError } = await adminClient.auth.getUser(jwt);
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
-
-    const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const userId = user.id;
+    console.log("[generate-content-buckets] Auth OK, userId:", userId);
 
     // Fetch data in parallel
     const [{ data: profile }, { data: identity }, { data: posts }] = await Promise.all([
@@ -56,6 +52,8 @@ serve(async (req) => {
         .order("views", { ascending: false })
         .limit(30),
     ]);
+
+    console.log("[generate-content-buckets] Data fetched — profile:", !!profile, "posts:", posts?.length || 0);
 
     if (!profile?.niche) {
       return new Response(JSON.stringify({ error: "No niche set. Complete onboarding first." }), {
@@ -150,7 +148,7 @@ Rules:
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
       console.error("Anthropic API error:", aiResponse.status, errText);
-      return new Response(JSON.stringify({ error: "AI generation failed" }), {
+      return new Response(JSON.stringify({ error: `AI generation failed (${aiResponse.status}): ${errText.slice(0, 300)}` }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

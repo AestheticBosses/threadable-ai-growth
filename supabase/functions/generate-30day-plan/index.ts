@@ -104,21 +104,17 @@ serve(async (req) => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const jwt = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: userError } = await adminClient.auth.getUser(jwt);
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
-
-    const adminClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const userId = user.id;
+    console.log("[generate-30day-plan] Auth OK, userId:", userId);
 
     // Fetch all data in parallel
     const [
@@ -150,6 +146,8 @@ serve(async (req) => {
         .eq("strategy_type", "archetype_discovery")
         .maybeSingle(),
     ]);
+
+    console.log("[generate-30day-plan] Data fetched — pillars:", pillars?.length || 0, "topics:", topics?.length || 0, "archetypes:", !!archetypeStrategy, "postsPerDay:", profile?.posts_per_day, "cadence:", profile?.posting_cadence);
 
     if (!pillars || pillars.length === 0) {
       return new Response(JSON.stringify({ error: "No content pillars found. Generate pillars first." }), {
