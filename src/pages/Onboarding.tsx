@@ -505,18 +505,15 @@ const Onboarding = () => {
         return prev;
       });
 
-      // 6. Mark onboarding complete
-      await supabase.from("profiles").update({ onboarding_complete: true }).eq("id", user.id);
-      await refreshProfile();
-
-      // 7. Get completion stats
-      const { count: scheduledCount } = await supabase
-        .from("content_plan_items")
+      // 6. Get completion stats (count actual draft posts generated)
+      const { count: draftCount } = await supabase
+        .from("scheduled_posts")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("status", "draft");
 
       setCompletionStats({
-        postsGenerated: scheduledCount || 0,
+        postsGenerated: draftCount || 0,
         journeyStage,
         goalType,
       });
@@ -563,6 +560,14 @@ const Onboarding = () => {
   // ══════════════════════════════════════════════════════════════════════════════
   // Completion Screen
   // ══════════════════════════════════════════════════════════════════════════════
+  const handleCompletionNavigate = async (path: string) => {
+    if (!user) return;
+    // Mark onboarding complete only when user clicks through
+    await supabase.from("profiles").update({ onboarding_complete: true }).eq("id", user.id);
+    await refreshProfile();
+    navigate(path, { replace: true });
+  };
+
   if (showCompletion && completionStats) {
     const funnel = STAGE_FUNNEL[completionStats.journeyStage] || STAGE_FUNNEL.getting_started;
     return (
@@ -570,10 +575,10 @@ const Onboarding = () => {
         <div className="max-w-lg w-full text-center space-y-8">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              Your week is ready 🚀
+              Your system is built 🚀
             </h1>
             <p className="text-muted-foreground text-lg">
-              {completionStats.postsGenerated} posts planned · optimized for {GOAL_LABELS[completionStats.goalType]}
+              {completionStats.postsGenerated} posts generated · {completionStats.postsGenerated} awaiting approval · Optimized for {GOAL_LABELS[completionStats.goalType]}
             </p>
           </div>
 
@@ -583,22 +588,19 @@ const Onboarding = () => {
               <div className="flex items-start gap-3">
                 <span className="text-primary text-lg">●</span>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Reach posts (TOF) — {funnel.tof}%</p>
-                  <p className="text-xs text-muted-foreground">Bring new people in with viral hooks</p>
+                  <p className="text-sm font-medium text-foreground">Reach posts (TOF): bring new people in — {funnel.tof}%</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-accent-foreground text-lg">●</span>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Trust posts (MOF) — {funnel.mof}%</p>
-                  <p className="text-xs text-muted-foreground">Personal stories that start conversations</p>
+                  <p className="text-sm font-medium text-foreground">Trust posts (MOF): make them believe — {funnel.mof}%</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-secondary-foreground text-lg">●</span>
                 <div>
-                  <p className="text-sm font-medium text-foreground">Convert posts (BOF) — {funnel.bof}%</p>
-                  <p className="text-xs text-muted-foreground">Mention your offer and drive action</p>
+                  <p className="text-sm font-medium text-foreground">Convert posts (BOF): give them a next step — {funnel.bof}%</p>
                 </div>
               </div>
             </div>
@@ -608,26 +610,19 @@ const Onboarding = () => {
             <Button
               size="lg"
               className="w-full h-14 text-base font-semibold"
-              onClick={() => navigate("/dashboard", { replace: true })}
+              onClick={() => handleCompletionNavigate("/queue")}
             >
               Review & Approve My Week →
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Estimated time saved this week: ~3 hours
-            </p>
           </div>
 
           <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground/60">
-            <button onClick={() => navigate("/playbook")} className="hover:text-foreground transition-colors">
+            <button onClick={() => handleCompletionNavigate("/playbook")} className="hover:text-foreground transition-colors">
               View Playbook
             </button>
             <span>·</span>
-            <button onClick={() => navigate("/strategy")} className="hover:text-foreground transition-colors">
-              View Pillars
-            </button>
-            <span>·</span>
-            <button onClick={() => navigate("/templates")} className="hover:text-foreground transition-colors">
-              View Templates
+            <button onClick={() => handleCompletionNavigate("/dashboard")} className="hover:text-foreground transition-colors">
+              View Command Center
             </button>
           </div>
         </div>
