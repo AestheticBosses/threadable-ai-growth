@@ -17,7 +17,7 @@ import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calend
 import {
   usePlaybookData, useArchetypeDiscovery,
   useProfileStrategy, useContentBuckets, useContentPillars,
-  useConnectedTopics, useContentPlanItems,
+  useConnectedTopics, useContentPlanItems, useJourneyStage,
 } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
 import { useHasIdentity } from "@/hooks/usePlansData";
@@ -86,6 +86,7 @@ const Playbook = () => {
   const { data: pillars, isLoading: pillarsLoading } = useContentPillars();
   const { data: topics } = useConnectedTopics();
   const { data: planItems, isLoading: planLoading } = useContentPlanItems();
+  const { data: journeyStage } = useJourneyStage();
 
   // State
   const [activeTab, setActiveTab] = useState("strategy");
@@ -323,6 +324,43 @@ const Playbook = () => {
   return (
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* ── Journey Stage Banner ── */}
+        {journeyStage && (() => {
+          const stageMap = {
+            getting_started: {
+              emoji: "🌱",
+              label: "Building Your Audience",
+              desc: "Plan optimized for reach (70% TOF, 20% MOF, 10% BOF)",
+            },
+            growing: {
+              emoji: "📈",
+              label: "Growing & Engaging",
+              desc: "Plan optimized for engagement (30% TOF, 50% MOF, 20% BOF)",
+            },
+            monetizing: {
+              emoji: "🚀",
+              label: "Ready to Monetize",
+              desc: "Plan optimized for conversions (20% TOF, 30% MOF, 50% BOF)",
+            },
+          };
+          const s = stageMap[journeyStage];
+          return (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 px-5 py-3 flex items-center gap-3">
+              <span className="text-xl">{s.emoji}</span>
+              <div>
+                <span className="text-sm font-semibold text-foreground">Stage: {s.label}</span>
+                <span className="text-xs text-muted-foreground ml-2">— {s.desc}</span>
+              </div>
+              <button
+                onClick={() => navigate("/onboarding")}
+                className="ml-auto text-xs text-primary hover:underline shrink-0"
+              >
+                Change stage
+              </button>
+            </div>
+          );
+        })()}
+
         {/* ── Mission Banner ── */}
         {profileStrategy?.mission && (
           <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-5">

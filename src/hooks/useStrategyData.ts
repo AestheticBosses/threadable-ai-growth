@@ -221,3 +221,23 @@ export function useContentPlanItems() {
     enabled: !!user?.id,
   });
 }
+
+export type JourneyStage = "getting_started" | "growing" | "monetizing";
+
+export function useJourneyStage() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["journey-stage", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from("content_strategies")
+        .select("journey_stage")
+        .eq("user_id", user.id)
+        .eq("strategy_type", "journey_stage")
+        .maybeSingle();
+      return ((data as any)?.journey_stage as JourneyStage) ?? null;
+    },
+    enabled: !!user?.id,
+  });
+}

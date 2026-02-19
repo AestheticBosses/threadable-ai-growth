@@ -13,6 +13,7 @@ const STEPS = [
   "Your Niche",
   "Dream Client",
   "End Goal",
+  "Your Journey",
   "Your Strategy",
 ];
 
@@ -21,6 +22,29 @@ const CADENCE_OPTIONS = [
   { value: "5x_week", label: "Weekdays (5x/week)" },
   { value: "3x_week", label: "3x per week" },
   { value: "2x_week", label: "2x per week" },
+];
+
+type JourneyStage = "getting_started" | "growing" | "monetizing";
+
+const JOURNEY_OPTIONS: { value: JourneyStage; emoji: string; title: string; subtitle: string }[] = [
+  {
+    value: "getting_started",
+    emoji: "🌱",
+    title: "Just Getting Started",
+    subtitle: "Under 1K followers — I need to build an audience first",
+  },
+  {
+    value: "growing",
+    emoji: "📈",
+    title: "Growing & Engaging",
+    subtitle: "I have an audience but need more DMs, replies, and conversations",
+  },
+  {
+    value: "monetizing",
+    emoji: "🚀",
+    title: "Ready to Monetize",
+    subtitle: "I have engagement and I'm ready to sell something",
+  },
 ];
 
 type AccountType = "seasoned" | "new";
@@ -108,6 +132,7 @@ const Onboarding = () => {
   const [niche, setNiche] = useState("");
   const [dreamClient, setDreamClient] = useState("");
   const [endGoal, setEndGoal] = useState("");
+  const [journeyStage, setJourneyStage] = useState<JourneyStage | null>(null);
   const [mission, setMission] = useState("");
   const [postingCadence, setPostingCadence] = useState("7x_week");
   const [trafficUrl, setTrafficUrl] = useState("");
@@ -251,18 +276,18 @@ const Onboarding = () => {
 
     // 7. Generate playbook (requires archetypes)
     if (archetypesOk) {
-      await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+      await invokeStep("playbook", "generate-playbook", { user_id: user.id, journey_stage: journeyStage });
     } else {
       updateStep("playbook", "error");
     }
 
     // 8. Generate content buckets (needs archetypes + identity)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", { journey_stage: journeyStage });
 
     // 9. Generate content pillars + connected topics (needs buckets)
     let pillarsOk = false;
     if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", { journey_stage: journeyStage });
     } else {
       updateStep("pillars", "error");
     }
@@ -279,15 +304,15 @@ const Onboarding = () => {
     try {
       const headers = await getAuthHeaders();
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan" },
+        body: { plan_type: "content_plan", journey_stage: journeyStage },
         headers,
       });
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan" },
+        body: { plan_type: "branding_plan", journey_stage: journeyStage },
         headers,
       });
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy" },
+        body: { plan_type: "funnel_strategy", journey_stage: journeyStage },
         headers,
       });
       updateStep("plans", "done");
@@ -331,15 +356,15 @@ const Onboarding = () => {
     await invokeStep("identity", "extract-identity", {});
 
     // 5. Generate playbook
-    await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+    await invokeStep("playbook", "generate-playbook", { user_id: user.id, journey_stage: journeyStage });
 
     // 6. Generate content buckets (needs archetypes + identity)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", { journey_stage: journeyStage });
 
     // 7. Generate content pillars + connected topics (needs buckets)
     let pillarsOk = false;
     if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", { journey_stage: journeyStage });
     } else {
       updateStep("pillars", "error");
     }
@@ -356,15 +381,15 @@ const Onboarding = () => {
     try {
       const headers = await getAuthHeaders();
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan" },
+        body: { plan_type: "content_plan", journey_stage: journeyStage },
         headers,
       });
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan" },
+        body: { plan_type: "branding_plan", journey_stage: journeyStage },
         headers,
       });
       await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy" },
+        body: { plan_type: "funnel_strategy", journey_stage: journeyStage },
         headers,
       });
       updateStep("plans", "done");
@@ -443,6 +468,33 @@ const Onboarding = () => {
         is_established: isSeasoned,
       }).eq("id", user.id);
 
+      // Store journey stage in content_strategies
+      if (journeyStage) {
+        // Upsert into content_strategies with journey stage
+        const { data: existingStrategy } = await supabase
+          .from("content_strategies")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "journey_stage")
+          .maybeSingle();
+
+        if (existingStrategy) {
+          await supabase
+            .from("content_strategies")
+            .update({ journey_stage: journeyStage } as any)
+            .eq("id", existingStrategy.id);
+        } else {
+          await supabase
+            .from("content_strategies")
+            .insert({
+              user_id: user.id,
+              strategy_type: "journey_stage",
+              journey_stage: journeyStage,
+              status: "active",
+            } as any);
+        }
+      }
+
       if (isSeasoned) {
         setAccountType("seasoned");
         setPipelineSteps(SEASONED_STEPS.map((s) => ({
@@ -499,6 +551,8 @@ const Onboarding = () => {
       case 3:
         return endGoal.trim().length > 0;
       case 4:
+        return journeyStage !== null;
+      case 5:
         return mission.trim().length > 0;
       default:
         return false;
@@ -506,7 +560,7 @@ const Onboarding = () => {
   };
 
   const handleNext = () => {
-    if (step === 4) {
+    if (step === 5) {
       handleComplete();
     } else {
       setStep((s) => s + 1);
@@ -720,6 +774,51 @@ const Onboarding = () => {
         )}
 
         {step === 4 && (
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">
+                Where Are You on Your Threads Journey?
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                This helps us set the right funnel mix and milestone goals for you.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {JOURNEY_OPTIONS.map((opt) => {
+                const selected = journeyStage === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setJourneyStage(opt.value)}
+                    className={`w-full text-left rounded-xl border p-5 transition-all duration-150 ${
+                      selected
+                        ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                        : "border-border bg-card hover:border-foreground/20 hover:bg-muted/30"
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <span className="text-3xl shrink-0 mt-0.5">{opt.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className={`font-semibold text-base ${selected ? "text-foreground" : "text-foreground"}`}>
+                          {opt.title}
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-0.5">{opt.subtitle}</div>
+                      </div>
+                      {selected && (
+                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
+                          <Check className="h-3 w-3 text-primary-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
           <div className="space-y-5">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">
               Your Content Strategy
@@ -797,7 +896,7 @@ const Onboarding = () => {
               disabled={!isStepValid() || saving}
               className="gap-2 px-6"
             >
-              {step === 4 ? (
+              {step === 5 ? (
                 saving ? "Saving…" : "Launch My Growth Engine →"
               ) : (
                 <>
