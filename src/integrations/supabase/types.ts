@@ -658,6 +658,8 @@ export type Database = {
           auto_approve_ai_posts: boolean
           created_at: string
           display_name: string | null
+          dm_keyword: string | null
+          dm_offer: string | null
           dream_client: string | null
           email: string | null
           end_goal: string | null
@@ -668,6 +670,7 @@ export type Database = {
           funnel_mof_pct: number | null
           funnel_tof_pct: number | null
           generate_weekend_posts: boolean
+          goal_type: string | null
           id: string
           include_credibility_markers: boolean
           is_established: boolean | null
@@ -690,6 +693,8 @@ export type Database = {
           auto_approve_ai_posts?: boolean
           created_at?: string
           display_name?: string | null
+          dm_keyword?: string | null
+          dm_offer?: string | null
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
@@ -700,6 +705,7 @@ export type Database = {
           funnel_mof_pct?: number | null
           funnel_tof_pct?: number | null
           generate_weekend_posts?: boolean
+          goal_type?: string | null
           id: string
           include_credibility_markers?: boolean
           is_established?: boolean | null
@@ -722,6 +728,8 @@ export type Database = {
           auto_approve_ai_posts?: boolean
           created_at?: string
           display_name?: string | null
+          dm_keyword?: string | null
+          dm_offer?: string | null
           dream_client?: string | null
           email?: string | null
           end_goal?: string | null
@@ -732,6 +740,7 @@ export type Database = {
           funnel_mof_pct?: number | null
           funnel_tof_pct?: number | null
           generate_weekend_posts?: boolean
+          goal_type?: string | null
           id?: string
           include_credibility_markers?: boolean
           is_established?: boolean | null
