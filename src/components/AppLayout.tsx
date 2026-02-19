@@ -3,19 +3,14 @@ import {
   LayoutDashboard,
   Lightbulb,
   CalendarClock,
-  Mic2,
   Settings,
   Zap,
   LogOut,
   MoreHorizontal,
-  BookOpen,
-  Brain,
   PenSquare,
-  FileText,
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
-import { OnboardingTracker } from "@/components/dashboard/OnboardingTracker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,16 +18,16 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 const navSections = [
   {
-    label: null,
+    label: "DAILY",
     items: [
       { title: "Command Center", path: "/dashboard", icon: LayoutDashboard },
+      { title: "Chat", path: "/chat", icon: PenSquare },
     ],
   },
   {
     label: "CREATE",
     items: [
       { title: "Playbook", path: "/playbook", icon: Zap },
-      { title: "Templates", path: "/templates", icon: FileText },
       { title: "Content Queue", path: "/queue", icon: CalendarClock },
     ],
   },
@@ -45,9 +40,6 @@ const navSections = [
   {
     label: "CONFIGURE",
     items: [
-      { title: "Identity", path: "/my-story", icon: BookOpen },
-      { title: "Voice", path: "/voice", icon: Mic2 },
-      { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
       { title: "Settings", path: "/settings", icon: Settings },
     ],
   },
@@ -62,10 +54,6 @@ const mobileTabItems = [
 const moreItems = [
   { title: "Chat", path: "/chat", icon: PenSquare },
   { title: "Playbook", path: "/playbook", icon: Zap },
-  { title: "Templates", path: "/templates", icon: FileText },
-  { title: "Identity", path: "/my-story", icon: BookOpen },
-  { title: "Voice", path: "/voice", icon: Mic2 },
-  { title: "Knowledge Base", path: "/knowledge-base", icon: Brain },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
@@ -100,34 +88,13 @@ export function AppLayout({ children }: AppSidebarProps) {
         </span>
       </div>
 
-      {/* Chat button */}
-      <div className="px-2 pt-3 pb-1">
-        <RouterNavLink
-          to="/chat"
-          className={cn(
-            "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors",
-            isActive("/chat")
-              ? "bg-primary text-primary-foreground"
-              : "bg-primary/90 text-primary-foreground hover:bg-primary"
-          )}
-        >
-          <PenSquare className="h-4 w-4" />
-          Chat
-        </RouterNavLink>
-      </div>
-
-      {/* Onboarding Progress */}
-      <OnboardingTracker />
-
       {/* Nav */}
-      <nav className="flex-1 px-2 py-2 space-y-4">
+      <nav className="flex-1 px-2 py-3 space-y-4">
         {navSections.map((section) => (
           <div key={section.label}>
-            {section.label && (
-              <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                {section.label}
-              </p>
-            )}
+            <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              {section.label}
+            </p>
             <div className="space-y-0.5">
               {section.items.map((item) => (
                 <RouterNavLink
