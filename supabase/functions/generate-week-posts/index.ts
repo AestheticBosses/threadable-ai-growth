@@ -8,7 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const TIME_SLOTS = ["10:00", "12:00", "17:00", "20:00"];
+const TIME_SLOTS_UTC = ["17:00", "19:00", "00:00", "03:00"];
 
 function funnelInstruction(
   stage: string,
@@ -204,7 +204,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
         }
 
         // 5. Insert into scheduled_posts
-        const timeSlot = TIME_SLOTS[i % TIME_SLOTS.length];
+        const timeSlot = TIME_SLOTS_UTC[i % TIME_SLOTS_UTC.length];
         const scheduledFor = `${item.scheduled_date}T${timeSlot}:00`;
 
         const { data: inserted, error: insertErr } = await adminClient
