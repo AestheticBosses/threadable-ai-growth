@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
+import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,11 +67,18 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Get journey stage for funnel optimization
+    const journeyStage = await fetchJourneyStage(adminClient, userId);
+    const stageConfig = getStageConfig(journeyStage);
+
     const systemPrompt = `You are Threadable — a data-driven content strategist. You create strategies backed by regression analysis of this user's actual post performance.
 
 Here is everything you know about this user:
 
 ${userContext}
+
+=== JOURNEY STAGE OPTIMIZATION ===
+${stageConfig.promptBlock}
 
 === YOUR TASK ===
 Analyze the user's regression insights and current performance to create an updated content strategy. The strategy should:
@@ -78,7 +86,7 @@ Analyze the user's regression insights and current performance to create an upda
 1. Identify which archetypes to use more/less based on recent performance data
 2. Recommend posting frequency and optimal times based on their data
 3. Suggest specific content angles that align with their top-performing patterns
-4. Map content recommendations to their funnel (TOF/MOF/BOF distribution)
+4. Map content recommendations to their funnel (TOF/MOF/BOF distribution) — use the journey stage funnel mix above
 5. Reference their sales funnel to ensure content drives toward their business goals
 
 Base every recommendation on their data. Do not give generic advice.`;

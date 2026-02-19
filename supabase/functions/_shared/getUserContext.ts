@@ -1,3 +1,5 @@
+import { fetchJourneyStage, getStageConfig } from "./journeyStage.ts";
+
 /**
  * Classify hook type from the opening words of a post.
  */
@@ -74,7 +76,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile").eq("id", userId).single(),
+    supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
     supabase.from("content_templates").select("archetype, template_text").eq("user_id", userId).order("archetype").order("sort_order"),
     // Competitor accounts the user is studying
@@ -87,6 +89,11 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("connected_topics").select("id, pillar_id, name").eq("user_id", userId).eq("is_active", true),
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(14),
   ]);
+
+  // === JOURNEY STAGE ===
+  const journeyStage = await fetchJourneyStage(supabase, userId);
+  const stageConfig = getStageConfig(journeyStage);
+  const journeySection = `Stage: ${stageConfig.label}\nFunnel mix: ${stageConfig.funnelMix.tof}% TOF / ${stageConfig.funnelMix.mof}% MOF / ${stageConfig.funnelMix.bof}% BOF\nContent focus: ${stageConfig.contentFocus}`;
 
   // === IDENTITY (condensed — strip anecdotes the AI would copy) ===
   const identity = identityRes.data;
@@ -247,7 +254,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   // === PROFILE ===
   const profile = profileRes.data;
   const profileSection = profile
-    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}`
+    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nMission: ${profile.mission || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nTraffic URL (for BOF/CTA posts): ${profile.traffic_url || "Not set"}\nVoice Profile: ${profile.voice_profile ? JSON.stringify(profile.voice_profile) : "Not set"}`
     : "No profile data.";
 
   // === SALES FUNNEL ===
@@ -351,7 +358,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     postsBlock += "\n\n=== RECENT POST PATTERNS (for variety reference) ===\n" + recentSection;
   }
 
-  const result = "=== USER IDENTITY ===\n" +
+  const result = "=== JOURNEY STAGE ===\n" +
+    journeySection + "\n\n" +
+    "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +

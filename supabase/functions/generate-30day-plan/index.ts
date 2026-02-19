@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,7 +129,7 @@ serve(async (req) => {
     ] = await Promise.all([
       adminClient
         .from("profiles")
-        .select("posting_cadence, end_goal")
+        .select("posting_cadence, end_goal, journey_stage")
         .eq("id", userId)
         .single(),
       adminClient
@@ -197,12 +198,13 @@ serve(async (req) => {
       archetypeSchedule = new Array(totalPosts).fill("General");
     }
 
-    // Funnel stage distribution: 60% TOF, 30% MOF, 10% BOF
+    // Funnel stage distribution based on journey stage
+    const stageConfig = getStageConfig(profile?.journey_stage);
     const funnelDistribution = weightedRoundRobin(
       [
-        { stage: "TOF", weight: 60 },
-        { stage: "MOF", weight: 30 },
-        { stage: "BOF", weight: 10 },
+        { stage: "TOF", weight: stageConfig.funnelMix.tof },
+        { stage: "MOF", weight: stageConfig.funnelMix.mof },
+        { stage: "BOF", weight: stageConfig.funnelMix.bof },
       ],
       totalPosts
     ).map((f: any) => f.stage);

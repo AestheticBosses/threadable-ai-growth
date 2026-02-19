@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,9 +74,13 @@ Deno.serve(async (req) => {
     // 4. Get voice profile
     const { data: profileData } = await adminClient
       .from("profiles")
-      .select("voice_profile, niche, dream_client, end_goal")
+      .select("voice_profile, niche, dream_client, end_goal, posting_cadence, traffic_url")
       .eq("id", user.id)
       .single();
+
+    // Get journey stage for funnel optimization
+    const journeyStage = await fetchJourneyStage(adminClient, user.id);
+    const stageConfig = getStageConfig(journeyStage);
 
     const archetypes = archetypeRow.strategy_data;
     const insightsBullets = regressionInsights?.human_readable_insights
@@ -104,6 +109,12 @@ Creator context:
 - Niche: ${profileData?.niche || "Not specified"}
 - Dream client: ${profileData?.dream_client || "Not specified"}
 - End goal: ${profileData?.end_goal || "Not specified"}
+- Posting cadence: ${profileData?.posting_cadence || "Not set"}
+- Traffic URL (for BOF/CTA posts): ${profileData?.traffic_url || "Not set"}
+- Voice profile: ${profileData?.voice_profile ? JSON.stringify(profileData.voice_profile) : "Not set"}
+
+Journey stage optimization:
+${stageConfig.promptBlock}
 
 Create a complete, actionable playbook that includes:
 

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
+import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,12 +137,18 @@ serve(async (req) => {
 
     const userContext = await getUserContext(admin, user.id);
 
-    const systemPrompt =
+    // Get journey stage for funnel optimization
+    const journeyStage = await fetchJourneyStage(admin, user.id);
+    const stageConfig = getStageConfig(journeyStage);
+    const stageBlock = `\n\n=== JOURNEY STAGE OPTIMIZATION ===\n${stageConfig.promptBlock}`;
+
+    const basePrompt =
       plan_type === "content_plan"
         ? CONTENT_PLAN_PROMPT
         : plan_type === "branding_plan"
         ? BRANDING_PLAN_PROMPT
         : FUNNEL_STRATEGY_PROMPT;
+    const systemPrompt = basePrompt + stageBlock;
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
