@@ -49,6 +49,7 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
   { id: "buckets", label: "Creating content buckets…", status: "waiting" },
   { id: "pillars", label: "Building content pillars…", status: "waiting" },
   { id: "plan30", label: "Generating your growth map…", status: "waiting" },
+  { id: "weekposts", label: "Generating your first week of posts…", status: "waiting" },
   { id: "plans", label: "Creating content, branding & funnel plans…", status: "waiting" },
   { id: "templates", label: "Building content templates…", status: "waiting" },
 ];
@@ -62,6 +63,7 @@ const NEW_PIPELINE: PipelineStepDef[] = [
   { id: "buckets", label: "Creating content buckets…", status: "waiting" },
   { id: "pillars", label: "Building content pillars…", status: "waiting" },
   { id: "plan30", label: "Generating your growth map…", status: "waiting" },
+  { id: "weekposts", label: "Generating your first week of posts…", status: "waiting" },
   { id: "plans", label: "Creating your content strategy…", status: "waiting" },
   { id: "templates", label: "Building starter templates…", status: "waiting" },
 ];
@@ -327,6 +329,12 @@ const Onboarding = () => {
       updateStep("plan30", "error");
     }
 
+    if (pillarsOk) {
+      await invokeStep("weekposts", "generate-week-posts", {});
+    } else {
+      updateStep("weekposts", "error");
+    }
+
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
@@ -371,6 +379,12 @@ const Onboarding = () => {
       await invokeStep("plan30", "generate-30day-plan", {});
     } else {
       updateStep("plan30", "error");
+    }
+
+    if (pillarsOk) {
+      await invokeStep("weekposts", "generate-week-posts", {});
+    } else {
+      updateStep("weekposts", "error");
     }
 
     updateStep("plans", "active");
@@ -638,6 +652,7 @@ const Onboarding = () => {
         buckets: { fn: "generate-content-buckets", body: {} },
         pillars: { fn: "generate-content-pillars", body: {} },
         plan30: { fn: "generate-30day-plan", body: {} },
+        weekposts: { fn: "generate-week-posts", body: {} },
         templates: { fn: "generate-templates", body: {} },
       };
       const mapping = retryMap[stepId];
