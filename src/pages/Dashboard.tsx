@@ -17,7 +17,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const Dashboard = () => {
-  usePageTitle("Dashboard", "Your weekly accountability hub");
+  usePageTitle("Command Center", "Your weekly command center");
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -149,7 +149,7 @@ const Dashboard = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Command Center</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your weekly command center.</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
