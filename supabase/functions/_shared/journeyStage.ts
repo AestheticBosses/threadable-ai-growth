@@ -55,13 +55,25 @@ export function getStageConfig(stage: string | null | undefined): JourneyStageCo
 }
 
 /**
- * Read journey_stage from the profiles table for a given user.
+ * Read journey_stage and goal_type from the profiles table for a given user.
  */
 export async function fetchJourneyStage(supabase: any, userId: string): Promise<string> {
   const { data } = await supabase
     .from("profiles")
-    .select("journey_stage")
+    .select("journey_stage, goal_type")
     .eq("id", userId)
     .single();
   return data?.journey_stage || DEFAULT_STAGE;
+}
+
+/**
+ * Fetch the user's goal_type from profiles.
+ */
+export async function fetchGoalType(supabase: any, userId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("goal_type")
+    .eq("id", userId)
+    .single();
+  return data?.goal_type || null;
 }

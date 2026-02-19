@@ -129,7 +129,7 @@ serve(async (req) => {
     ] = await Promise.all([
       adminClient
         .from("profiles")
-        .select("posting_cadence, end_goal, journey_stage")
+        .select("posting_cadence, end_goal, journey_stage, posts_per_day")
         .eq("id", userId)
         .single(),
       adminClient
@@ -157,15 +157,22 @@ serve(async (req) => {
       });
     }
 
+    const postsPerDay = profile?.posts_per_day || null;
     const cadence = profile?.posting_cadence || "7x_week";
     const cadenceConfig = CADENCE_MAP[cadence] || CADENCE_MAP["7x_week"];
-    const totalPosts = cadenceConfig.total;
+
+    // Use posts_per_day if set (new onboarding), otherwise fall back to cadence map
+    const totalPosts = postsPerDay ? postsPerDay * 30 : cadenceConfig.total;
+    const effectiveDaysPerWeek = postsPerDay ? 7 : cadenceConfig.daysPerWeek;
 
     // Build posting dates starting from tomorrow
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + 1);
     startDate.setHours(0, 0, 0, 0);
-    const postingDates = getPostingDates(cadence, startDate, totalPosts);
+    // When using posts_per_day, post every day; otherwise use cadence schedule
+    const postingDates = postsPerDay
+      ? getPostingDates("7x_week", startDate, totalPosts)
+      : getPostingDates(cadence, startDate, totalPosts);
 
     // Distribute posts across pillars by percentage
     const pillarSchedule = weightedRoundRobin(
@@ -222,8 +229,8 @@ serve(async (req) => {
     for (let i = 0; i < totalPosts; i++) {
       const pillar = pillarSchedule[i];
       const date = postingDates[i];
-      const week = Math.floor(i / cadenceConfig.daysPerWeek) + 1;
-      const dayInWeek = (i % cadenceConfig.daysPerWeek) + 1;
+      const week = Math.floor(i / effectiveDaysPerWeek) + 1;
+      const dayInWeek = (i % effectiveDaysPerWeek) + 1;
 
       // Pick topic from this pillar (round-robin, least-used first since topics are pre-sorted)
       const pillarTopics = topicsByPillar[pillar.id] || [];
@@ -264,7 +271,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Generated 30-day plan: ${planItems.length} posts for user: ${userId} (cadence: ${cadence})`);
+    console.log(`Generated 30-day plan: ${planItems.length} posts for user: ${userId} (${postsPerDay ? `${postsPerDay}/day` : `cadence: ${cadence}`})`);
 
     // Return summary with readable plan
     const summary = planItems.map((p) => ({
@@ -282,7 +289,7 @@ serve(async (req) => {
       data: summary,
       total_posts: planItems.length,
       cadence,
-      weeks: Math.ceil(planItems.length / cadenceConfig.daysPerWeek),
+      weeks: Math.ceil(planItems.length / effectiveDaysPerWeek),
       funnel_split: {
         TOF: funnelDistribution.filter((f) => f === "TOF").length,
         MOF: funnelDistribution.filter((f) => f === "MOF").length,

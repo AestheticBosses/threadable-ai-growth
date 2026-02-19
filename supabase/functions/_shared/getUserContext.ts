@@ -76,7 +76,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count").eq("id", userId).single(),
+    supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count, goal_type, dm_keyword, dm_offer, posts_per_day").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
     supabase.from("content_templates").select("archetype, template_text").eq("user_id", userId).order("archetype").order("sort_order"),
     // Competitor accounts the user is studying
@@ -254,7 +254,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   // === PROFILE ===
   const profile = profileRes.data;
   const profileSection = profile
-    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nMission: ${profile.mission || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nTraffic URL (for BOF/CTA posts): ${profile.traffic_url || "Not set"}\nVoice Profile: ${profile.voice_profile ? JSON.stringify(profile.voice_profile) : "Not set"}`
+    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nGoal Type: ${profile.goal_type || "Not set"}\nMission: ${profile.mission || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nPosts Per Day: ${profile.posts_per_day || "Not set"}\nTraffic URL (for BOF/CTA posts): ${profile.traffic_url || "Not set"}\nDM Keyword: ${profile.dm_keyword || "Not set"}\nDM Offer: ${profile.dm_offer || "Not set"}\nVoice Profile: ${profile.voice_profile ? JSON.stringify(profile.voice_profile) : "Not set"}`
     : "No profile data.";
 
   // === SALES FUNNEL ===
@@ -336,6 +336,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const trafficUrl = profile?.traffic_url || "Not set";
+  const dmKeyword = profile?.dm_keyword || "";
+  const dmOffer = profile?.dm_offer || "";
 
   function funnelInstruction(stage: string): string {
     switch (stage) {
@@ -343,8 +345,16 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
         return "This is a TOP OF FUNNEL post. Goal = maximum reach and new eyeballs. Write a viral hook, shareable observation, or contrarian take. Keep it short and punchy. Do NOT mention your offer, CTA, or link. Just make people stop scrolling.";
       case "MOF":
         return "This is a MIDDLE OF FUNNEL post. Goal = build trust and start conversations. Share a personal story, teaching moment, or vulnerable take. End with a question or conversation starter. You can mention what you do but don't hard-sell.";
-      case "BOF":
-        return `This is a BOTTOM OF FUNNEL post. Goal = convert followers into leads or customers. Mention your offer, include a CTA, reference your traffic URL: ${trafficUrl}. Use proof, case studies, or urgency. This post should make someone DM you or click your link.`;
+      case "BOF": {
+        let bof = `This is a BOTTOM OF FUNNEL post. Goal = convert followers into leads or customers. Mention your offer, include a CTA, reference your traffic URL: ${trafficUrl}. Use proof, case studies, or urgency.`;
+        if (dmKeyword && dmOffer) {
+          bof += ` DM trigger: tell readers to DM you the word "${dmKeyword}" to get "${dmOffer}".`;
+        } else if (dmKeyword) {
+          bof += ` DM trigger: tell readers to DM you the word "${dmKeyword}".`;
+        }
+        bof += " This post should make someone DM you or click your link.";
+        return bof;
+      }
       default:
         return "";
     }

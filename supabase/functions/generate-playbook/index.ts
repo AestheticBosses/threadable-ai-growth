@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     // 4. Get voice profile
     const { data: profileData } = await adminClient
       .from("profiles")
-      .select("voice_profile, niche, dream_client, end_goal, posting_cadence, traffic_url")
+      .select("voice_profile, niche, dream_client, end_goal, posting_cadence, traffic_url, goal_type, dm_keyword, dm_offer, posts_per_day")
       .eq("id", user.id)
       .single();
 
@@ -109,8 +109,12 @@ Creator context:
 - Niche: ${profileData?.niche || "Not specified"}
 - Dream client: ${profileData?.dream_client || "Not specified"}
 - End goal: ${profileData?.end_goal || "Not specified"}
+- Goal type: ${profileData?.goal_type || "Not set"}
 - Posting cadence: ${profileData?.posting_cadence || "Not set"}
+- Posts per day: ${profileData?.posts_per_day || "Not set"}
 - Traffic URL (for BOF/CTA posts): ${profileData?.traffic_url || "Not set"}
+- DM keyword: ${profileData?.dm_keyword || "Not set"}
+- DM offer: ${profileData?.dm_offer || "Not set"}
 - Voice profile: ${profileData?.voice_profile ? JSON.stringify(profileData.voice_profile) : "Not set"}
 
 Journey stage optimization:
