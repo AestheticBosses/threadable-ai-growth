@@ -51,13 +51,14 @@ export function PlanHealthHero() {
           .select("threads_username, threads_user_id")
           .eq("id", user.id)
           .maybeSingle(),
+        // Fetch from today onward (up to 60 days) so we can always find the next item
         supabase
           .from("content_plan_items")
           .select("id, scheduled_date, archetype, funnel_stage, pillar_id, topic_id, status")
           .eq("user_id", user.id)
-          .gte("scheduled_date", format(weekStart, "yyyy-MM-dd"))
-          .lte("scheduled_date", format(weekEnd, "yyyy-MM-dd"))
-          .order("scheduled_date", { ascending: true }),
+          .gte("scheduled_date", todayStr)
+          .order("scheduled_date", { ascending: true })
+          .limit(60),
         supabase
           .from("scheduled_posts")
           .select("id, status, scheduled_for, text_content, content_category")
@@ -93,19 +94,18 @@ export function PlanHealthHero() {
 
       const todayDone = todayPost !== null && (todayPost.status === "published" || todayPost.status === "scheduled" || todayPost.status === "draft");
 
-      // If today is done, find next unposted day
+      // Find next unposted item:
+      // - If today is done OR has no plan item, find the next future plan item with no post
       let nextUnpostedItem: typeof planItems[0] | null = null;
-      if (todayDone) {
-        for (const item of planItems) {
-          if (!item.scheduled_date || item.scheduled_date <= todayStr) continue;
-          const existingPost = scheduledPosts.find((sp) => {
-            const pd = sp.scheduled_for ? format(new Date(sp.scheduled_for), "yyyy-MM-dd") : null;
-            return pd === item.scheduled_date;
-          });
-          if (!existingPost) {
-            nextUnpostedItem = item;
-            break;
-          }
+      for (const item of planItems) {
+        if (!item.scheduled_date || item.scheduled_date === todayStr) continue;
+        const existingPost = scheduledPosts.find((sp) => {
+          const pd = sp.scheduled_for ? format(new Date(sp.scheduled_for), "yyyy-MM-dd") : null;
+          return pd === item.scheduled_date;
+        });
+        if (!existingPost) {
+          nextUnpostedItem = item;
+          break;
         }
       }
 
@@ -210,12 +210,13 @@ export function PlanHealthHero() {
 
   const { todayPlanItem, todayPost, todayDone, nextUnpostedItem, todayPillar, todayTopic, nextPillar, nextTopic } = data;
 
-  // Determine what to feature
-  const featuredItem = todayDone ? nextUnpostedItem : todayPlanItem;
-  const featuredPillar = todayDone ? nextPillar : todayPillar;
-  const featuredTopic = todayDone ? nextTopic : todayTopic;
-  const isNextDay = todayDone && !!nextUnpostedItem;
-  const funnel = featuredItem?.funnel_stage ? FUNNEL_META[featuredItem.funnel_stage] ?? null : null;
+  // Determine what to feature:
+  // Priority: today's unposted item → next future unposted item (if today done or no item today)
+  const hasTodayItem = !!todayPlanItem && !todayDone;
+  const featuredItem = hasTodayItem ? todayPlanItem : nextUnpostedItem;
+  const featuredPillar = hasTodayItem ? todayPillar : nextPillar;
+  const featuredTopic = hasTodayItem ? todayTopic : nextTopic;
+  const featuredLabel = hasTodayItem ? "Today's Post" : "Next Post";
 
   const handleGenerate = () => {
     const params = new URLSearchParams();
@@ -271,9 +272,8 @@ export function PlanHealthHero() {
 
         {/* ── TODAY'S POST HERO ── */}
         {todayDone && todayPost ? (
-          // Today is done — show completion state + next unposted
+          // Today is done — show completion banner + next upcoming
           <div className="space-y-3">
-            {/* Done banner */}
             <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
               <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -292,8 +292,6 @@ export function PlanHealthHero() {
                 <ChevronRight className="h-3 w-3" />
               </Button>
             </div>
-
-            {/* Next unposted */}
             {nextUnpostedItem && (
               <TodayPostCard
                 planItem={nextUnpostedItem}
@@ -305,21 +303,21 @@ export function PlanHealthHero() {
             )}
           </div>
         ) : featuredItem ? (
-          // Today's assignment
+          // Show today's item or next upcoming item (if no item today)
           <TodayPostCard
             planItem={featuredItem}
             pillarName={featuredPillar}
             topicName={featuredTopic}
-            label="Today's Post"
+            label={featuredLabel}
             onGenerate={handleGenerate}
           />
         ) : (
-          // Plan exists but nothing for today
+          // Truly no upcoming plan items at all
           <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 flex items-center justify-between gap-3">
-            <p className="text-sm text-muted-foreground">No post planned for today.</p>
+            <p className="text-sm text-muted-foreground">No upcoming posts in your plan.</p>
             <Button size="sm" onClick={() => navigate("/playbook")} variant="outline" className="text-xs gap-1">
               <BookOpen className="h-3.5 w-3.5" />
-              View Playbook
+              Generate Your Plan →
             </Button>
           </div>
         )}
