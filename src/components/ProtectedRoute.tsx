@@ -2,7 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading, onboardingCompleted, hasStrategy } = useAuth();
+  const { session, loading, onboardingCompleted } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -17,20 +17,14 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
 
+  // Not onboarded → force onboarding
   if (onboardingCompleted === false && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
   }
 
+  // Already onboarded → block re-entering onboarding
   if (onboardingCompleted === true && location.pathname === "/onboarding") {
     return <Navigate to="/dashboard" replace />;
-  }
-
-  if (
-    onboardingCompleted === true &&
-    hasStrategy === false &&
-    location.pathname === "/dashboard"
-  ) {
-    return <Navigate to="/analyze" replace />;
   }
 
   return <>{children}</>;
