@@ -325,7 +325,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "No content pillars defined yet.";
 
-  // === THIS WEEK'S CONTENT PLAN ===
+  // === TODAY'S POST + WEEK PLAN ===
   const planItems = planItemsRes.data || [];
   // Build pillar name lookup
   const pillarNameMap: Record<string, string> = {};
@@ -334,21 +334,51 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const topicIdMap: Record<string, string> = {};
   for (const t of allTopics) topicIdMap[t.id] = t.name;
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const weekPlanSection = planItems.length > 0
-    ? "IMPORTANT: Do NOT always start from the top of this list. Pick different plan items each time. If the user asks for 5 posts, select 5 items spread across different days — not just the first 5.\n\n" +
-      planItems.map((item: any, i: number) => {
+
+  const trafficUrl = profile?.traffic_url || "Not set";
+
+  function funnelInstruction(stage: string): string {
+    switch (stage) {
+      case "TOF":
+        return "This is a TOP OF FUNNEL post. Goal = maximum reach and new eyeballs. Write a viral hook, shareable observation, or contrarian take. Keep it short and punchy. Do NOT mention your offer, CTA, or link. Just make people stop scrolling.";
+      case "MOF":
+        return "This is a MIDDLE OF FUNNEL post. Goal = build trust and start conversations. Share a personal story, teaching moment, or vulnerable take. End with a question or conversation starter. You can mention what you do but don't hard-sell.";
+      case "BOF":
+        return `This is a BOTTOM OF FUNNEL post. Goal = convert followers into leads or customers. Mention your offer, include a CTA, reference your traffic URL: ${trafficUrl}. Use proof, case studies, or urgency. This post should make someone DM you or click your link.`;
+      default:
+        return "";
+    }
+  }
+
+  let todaySection = "No content plan generated yet.";
+  let restOfWeekSection = "";
+
+  if (planItems.length > 0) {
+    const today = planItems[0];
+    const todayPillar = pillarNameMap[today.pillar_id] || "Unknown Pillar";
+    const todayTopic = today.topic_id ? topicIdMap[today.topic_id] : null;
+    const todayArchetype = today.archetype || "—";
+    const todayFunnel = today.funnel_stage || "TOF";
+
+    todaySection = `Pillar: ${todayPillar}\nArchetype: ${todayArchetype}${todayTopic ? `\nTopic: "${todayTopic}"` : ""}\nFunnel Stage: ${todayFunnel}\nWhat this means: ${funnelInstruction(todayFunnel)}`;
+
+    if (planItems.length > 1) {
+      restOfWeekSection = planItems.slice(1).map((item: any, i: number) => {
         const date = new Date(item.scheduled_date + "T12:00:00");
         const dayName = dayNames[date.getDay()];
-        const dayLabel = i === 0 ? `Today (${dayName})` : i === 1 ? `Tomorrow (${dayName})` : `${dayName} ${item.scheduled_date}`;
+        const dayLabel = i === 0 ? `Tomorrow (${dayName})` : `${dayName} ${item.scheduled_date}`;
         const pillarName = pillarNameMap[item.pillar_id] || "Unknown Pillar";
         const topicName = item.topic_id ? topicIdMap[item.topic_id] : null;
         const archetype = item.archetype || "—";
         const funnel = item.funnel_stage || "—";
         const test = item.is_test_slot ? " [TEST]" : "";
         const topicPart = topicName ? ` — "${topicName}"` : "";
-        return `${dayLabel}: ${pillarName} × ${archetype}${topicPart} (${funnel})${test}`;
-      }).join("\n")
-    : "No content plan generated yet.";
+        return `${dayLabel}: ${pillarName} × ${archetype}${topicPart} (${funnel})${test}\n  → ${funnelInstruction(funnel)}`;
+      }).join("\n");
+    }
+  }
+
+  const weekPlanSection = todaySection;
 
   let postsBlock = "=== TOP PERFORMING POST PATTERNS BY VIEWS (do NOT copy these posts — learn the patterns) ===\n" + viewsSection;
   if (engagementSection) {
@@ -399,8 +429,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     bucketsSection + "\n\n" +
     "=== CONTENT PILLARS ===\n" +
     pillarsSection + "\n\n" +
-    "=== THIS WEEK'S CONTENT PLAN ===\n" +
+    "=== TODAY'S POST (GENERATE THIS FIRST) ===\n" +
     weekPlanSection + "\n\n" +
+    (restOfWeekSection ? "=== REST OF THIS WEEK'S PLAN (for additional posts) ===\nWhen asked to generate a single post or template, generate for TODAY'S POST first. When asked for multiple posts, generate them in order from the plan — today first, then tomorrow, etc.\n\n" + restOfWeekSection + "\n\n" : "") +
     "=== PLANS ===\n" +
     plansSection;
 
