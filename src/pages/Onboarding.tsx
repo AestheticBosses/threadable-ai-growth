@@ -6,166 +6,182 @@ import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ArrowLeft, ArrowRight, AtSign, Loader2 } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Check, ArrowLeft, AtSign, Loader2 } from "lucide-react";
 
-const STEPS = [
-  "Connect Threads",
-  "Your Niche",
-  "Dream Client",
-  "End Goal",
-  "Your Journey",
-  "Your Strategy",
-];
-
-const CADENCE_OPTIONS = [
-  { value: "7x_week", label: "Daily (7x/week)" },
-  { value: "5x_week", label: "Weekdays (5x/week)" },
-  { value: "3x_week", label: "3x per week" },
-  { value: "2x_week", label: "2x per week" },
-];
-
-type JourneyStage = "getting_started" | "growing" | "monetizing";
-
-const JOURNEY_OPTIONS: { value: JourneyStage; emoji: string; title: string; subtitle: string }[] = [
-  {
-    value: "getting_started",
-    emoji: "🌱",
-    title: "Just Getting Started",
-    subtitle: "Under 1K followers — I need to build an audience first",
-  },
-  {
-    value: "growing",
-    emoji: "📈",
-    title: "Growing & Engaging",
-    subtitle: "I have an audience but need more DMs, replies, and conversations",
-  },
-  {
-    value: "monetizing",
-    emoji: "🚀",
-    title: "Ready to Monetize",
-    subtitle: "I have engagement and I'm ready to sell something",
-  },
-];
-
-type AccountType = "seasoned" | "new";
+// ── Types ──────────────────────────────────────────────────────────────────────
+type GoalType = "dm_leads" | "grow_audience" | "drive_traffic";
 
 interface PipelineStepDef {
   id: string;
   label: string;
   status: "waiting" | "active" | "done" | "error";
+  insight?: string;
 }
 
-const SEASONED_STEPS: PipelineStepDef[] = [
-  { id: "fetch", label: "Fetching your Threads posts", status: "waiting" },
-  { id: "analysis", label: "Analyzing your content patterns", status: "waiting" },
-  { id: "regression", label: "Running regression analysis", status: "waiting" },
-  { id: "archetypes", label: "Discovering your content archetypes", status: "waiting" },
-  { id: "identity", label: "Extracting your identity", status: "waiting" },
-  { id: "voice", label: "Analyzing your writing voice", status: "waiting" },
-  { id: "playbook", label: "Generating your playbook", status: "waiting" },
-  { id: "buckets", label: "Creating content buckets", status: "waiting" },
-  { id: "pillars", label: "Building content pillars", status: "waiting" },
-  { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
-  { id: "plans", label: "Creating content, branding & funnel plans", status: "waiting" },
-  { id: "templates", label: "Building content templates", status: "waiting" },
+const GOAL_OPTIONS: { value: GoalType; emoji: string; title: string; subtitle: string }[] = [
+  { value: "dm_leads", emoji: "💬", title: "Get Clients via DM", subtitle: "Drive conversations that become clients" },
+  { value: "grow_audience", emoji: "👥", title: "Grow My Audience", subtitle: "Get more followers, views, and reach" },
+  { value: "drive_traffic", emoji: "🔗", title: "Drive Traffic", subtitle: "Send people to your link or landing page" },
 ];
 
-const NEW_STEPS: PipelineStepDef[] = [
-  { id: "fetch", label: "Checking your Threads account", status: "waiting" },
-  { id: "competitors", label: "Finding top accounts in your niche", status: "waiting" },
-  { id: "archetypes", label: "Identifying winning content patterns", status: "waiting" },
-  { id: "identity", label: "Building your starter identity", status: "waiting" },
-  { id: "playbook", label: "Generating your playbook", status: "waiting" },
-  { id: "buckets", label: "Creating content buckets", status: "waiting" },
-  { id: "pillars", label: "Building content pillars", status: "waiting" },
-  { id: "plan30", label: "Generating 30-day plan", status: "waiting" },
-  { id: "plans", label: "Creating your content strategy", status: "waiting" },
-  { id: "templates", label: "Building starter templates", status: "waiting" },
+const POSTS_PER_DAY_NOTES: Record<string, string> = {
+  "1-2": "Sustainable and focused",
+  "3-5": "Growth mode — most common",
+  "6-7": "Aggressive growth",
+};
+
+function getPostsNote(v: number): string {
+  if (v <= 2) return POSTS_PER_DAY_NOTES["1-2"];
+  if (v <= 5) return POSTS_PER_DAY_NOTES["3-5"];
+  return POSTS_PER_DAY_NOTES["6-7"];
+}
+
+// ── Pipeline Steps ─────────────────────────────────────────────────────────────
+const SEASONED_PIPELINE: PipelineStepDef[] = [
+  { id: "fetch", label: "Fetching your posts…", status: "waiting" },
+  { id: "analysis", label: "Analyzing what works…", status: "waiting" },
+  { id: "regression", label: "Running regression analysis…", status: "waiting" },
+  { id: "archetypes", label: "Discovering your content archetypes…", status: "waiting" },
+  { id: "identity", label: "Extracting your identity…", status: "waiting" },
+  { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
+  { id: "playbook", label: "Generating your playbook…", status: "waiting" },
+  { id: "buckets", label: "Creating content buckets…", status: "waiting" },
+  { id: "pillars", label: "Building content pillars…", status: "waiting" },
+  { id: "plan30", label: "Generating your growth map…", status: "waiting" },
+  { id: "plans", label: "Creating content, branding & funnel plans…", status: "waiting" },
+  { id: "templates", label: "Building content templates…", status: "waiting" },
 ];
 
-function PipelineProgressStep({ label, status }: { label: string; status: string }) {
+const NEW_PIPELINE: PipelineStepDef[] = [
+  { id: "fetch", label: "Checking your Threads account…", status: "waiting" },
+  { id: "archetypes", label: "Identifying winning content patterns…", status: "waiting" },
+  { id: "identity", label: "Building your starter identity…", status: "waiting" },
+  { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
+  { id: "playbook", label: "Generating your playbook…", status: "waiting" },
+  { id: "buckets", label: "Creating content buckets…", status: "waiting" },
+  { id: "pillars", label: "Building content pillars…", status: "waiting" },
+  { id: "plan30", label: "Generating your growth map…", status: "waiting" },
+  { id: "plans", label: "Creating your content strategy…", status: "waiting" },
+  { id: "templates", label: "Building starter templates…", status: "waiting" },
+];
+
+// ── Progress Step UI ───────────────────────────────────────────────────────────
+function PipelineProgressStep({ label, status, insight }: { label: string; status: string; insight?: string }) {
   return (
-    <div className="flex items-center gap-3">
-      {status === "waiting" && (
-        <div className="w-6 h-6 rounded-full border border-muted-foreground/40 shrink-0" />
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-3">
+        {status === "waiting" && <div className="w-5 h-5 rounded-full border border-muted-foreground/30 shrink-0" />}
+        {status === "active" && <div className="w-5 h-5 animate-spin border-2 border-primary border-t-transparent rounded-full shrink-0" />}
+        {status === "done" && (
+          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+            <Check className="h-3 w-3 text-primary-foreground" />
+          </div>
+        )}
+        {status === "error" && (
+          <div className="w-5 h-5 rounded-full bg-destructive flex items-center justify-center shrink-0">
+            <span className="text-destructive-foreground text-[10px] font-bold">!</span>
+          </div>
+        )}
+        <span className={
+          status === "done" ? "text-muted-foreground text-sm" :
+          status === "active" ? "text-foreground font-medium text-sm" :
+          status === "error" ? "text-destructive text-sm" :
+          "text-muted-foreground/40 text-sm"
+        }>
+          {label}
+        </span>
+      </div>
+      {insight && status === "done" && (
+        <p className="text-xs text-primary/80 ml-8">{insight}</p>
       )}
-      {status === "active" && (
-        <div className="w-6 h-6 animate-spin border-2 border-primary border-t-transparent rounded-full shrink-0" />
-      )}
-      {status === "done" && (
-        <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
-          <Check className="h-3.5 w-3.5 text-primary-foreground" />
-        </div>
-      )}
-      {status === "error" && (
-        <div className="w-6 h-6 rounded-full bg-destructive flex items-center justify-center shrink-0">
-          <span className="text-destructive-foreground text-xs font-bold">!</span>
-        </div>
-      )}
-      <span
-        className={
-          status === "done"
-            ? "text-muted-foreground text-sm"
-            : status === "active"
-            ? "text-foreground font-medium text-sm"
-            : status === "error"
-            ? "text-destructive text-sm"
-            : "text-muted-foreground/50 text-sm"
-        }
-      >
-        {label}
-      </span>
     </div>
   );
 }
 
+// ── Funnel percentages by journey stage ────────────────────────────────────────
+const STAGE_FUNNEL: Record<string, { tof: number; mof: number; bof: number }> = {
+  getting_started: { tof: 70, mof: 20, bof: 10 },
+  growing: { tof: 30, mof: 50, bof: 20 },
+  monetizing: { tof: 20, mof: 30, bof: 50 },
+};
+
+const GOAL_LABELS: Record<GoalType, string> = {
+  dm_leads: "DM leads",
+  grow_audience: "audience growth",
+  drive_traffic: "traffic",
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ══════════════════════════════════════════════════════════════════════════════
 const Onboarding = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshProfile } = useAuth();
+
+  // Step state (0–3)
   const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
 
+  // Step 0 — Connect Threads
   const [threadsConnected, setThreadsConnected] = useState(false);
   const [threadsUsername, setThreadsUsername] = useState("");
-  const [niche, setNiche] = useState("");
-  const [dreamClient, setDreamClient] = useState("");
-  const [endGoal, setEndGoal] = useState("");
-  const [journeyStage, setJourneyStage] = useState<JourneyStage | null>(null);
-  const [mission, setMission] = useState("");
-  const [postingCadence, setPostingCadence] = useState("7x_week");
+
+  // Step 1 — Goal
+  const [goalType, setGoalType] = useState<GoalType | null>(null);
+  const [dmKeyword, setDmKeyword] = useState("");
+  const [dmOffer, setDmOffer] = useState("");
   const [trafficUrl, setTrafficUrl] = useState("");
 
-  // Pipeline state
+  // Step 2 — About You
+  const [dreamClient, setDreamClient] = useState("");
+  const [mission, setMission] = useState("");
+
+  // Step 3 — Posts per day
+  const [postsPerDay, setPostsPerDay] = useState(3);
+
+  // Pipeline
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStepDef[]>([]);
   const [pipelineComplete, setPipelineComplete] = useState(false);
   const [pipelineHasErrors, setPipelineHasErrors] = useState(false);
-  const [accountType, setAccountType] = useState<AccountType>("new");
 
+  // Completion screen
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [completionStats, setCompletionStats] = useState<{
+    postsGenerated: number;
+    journeyStage: string;
+    goalType: GoalType;
+  } | null>(null);
+
+  // ── Load existing profile ──────────────────────────────────────────────────
   useEffect(() => {
     const loadProfile = async () => {
       if (!user) return;
       const { data } = await supabase
         .from("profiles")
-        .select("threads_username")
+        .select("threads_username, dream_client, mission, traffic_url, max_posts_per_day")
         .eq("id", user.id)
         .single();
       if (data?.threads_username) {
         setThreadsConnected(true);
         setThreadsUsername(data.threads_username);
-        setStep(1);
+        setStep(1); // auto-advance
       }
+      if (data?.dream_client) setDreamClient(data.dream_client);
+      if (data?.mission) setMission(data.mission);
+      if (data?.traffic_url) setTrafficUrl(data.traffic_url);
+      if (data?.max_posts_per_day) setPostsPerDay(data.max_posts_per_day);
       setProfileLoading(false);
     };
     loadProfile();
   }, [user]);
 
+  // ── Handle OAuth callback ──────────────────────────────────────────────────
   useEffect(() => {
     const connected = searchParams.get("threads_connected");
     const error = searchParams.get("threads_error");
-
     if (connected === "true") {
       const refetch = async () => {
         if (!user) return;
@@ -183,373 +199,16 @@ const Onboarding = () => {
       };
       refetch();
     } else if (error) {
-      toast({ title: "Threads connection failed", description: `Error: ${error}`, variant: "destructive" });
+      toast({ title: "Connection failed", description: `Error: ${error}`, variant: "destructive" });
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams, user]);
 
-  const handleDisconnect = async () => {
-    if (!user) return;
-    const confirmed = window.confirm(
-      "Disconnect this Threads account? You can then connect a different one."
-    );
-    if (!confirmed) return;
-
-    await supabase.from("profiles").update({
-      threads_access_token: null,
-      threads_user_id: null,
-      threads_username: null,
-      threads_profile_picture_url: null,
-      display_name: null,
-    }).eq("id", user.id);
-
-    await supabase.from("posts_analyzed").delete().eq("user_id", user.id);
-
-    setThreadsConnected(false);
-    setThreadsUsername("");
-  };
-
-  const updateStep = (stepId: string, status: "waiting" | "active" | "done" | "error") => {
-    setPipelineSteps((prev) =>
-      prev.map((s) => (s.id === stepId ? { ...s, status } : s))
-    );
-  };
-
-  const getAuthHeaders = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session ? { Authorization: `Bearer ${session.access_token}` } : {};
-  };
-
-  const invokeStep = async (stepId: string, fnName: string, body: any) => {
-    updateStep(stepId, "active");
-    try {
-      const headers = await getAuthHeaders();
-      const { error } = await supabase.functions.invoke(fnName, { body, headers });
-      if (error) {
-        console.error(`Pipeline step ${stepId} failed:`, error);
-        updateStep(stepId, "error");
-        return false;
-      }
-      updateStep(stepId, "done");
-      return true;
-    } catch (err) {
-      console.error(`Pipeline step ${stepId} threw:`, err);
-      updateStep(stepId, "error");
-      return false;
-    }
-  };
-
-  const runSeasonedPipelineAfterFetch = async () => {
-    if (!user) return;
-
-    // 2. Analyze content patterns
-    const analysisOk = await invokeStep("analysis", "run-analysis", { user_id: user.id });
-
-    // 3. Run regression analysis
-    const regressionOk = await invokeStep("regression", "run-regression", { user_id: user.id });
-
-    // 4. Discover archetypes (requires analysis + regression)
-    let archetypesOk = false;
-    if (analysisOk && regressionOk) {
-      archetypesOk = await invokeStep("archetypes", "discover-archetypes", {
-        user_id: user.id,
-        niche: niche.trim(),
-        goals: endGoal.trim(),
-      });
-    } else {
-      updateStep("archetypes", "error");
-    }
-
-    // 4b. Categorize posts with discovered archetypes (background, non-blocking)
-    if (archetypesOk) {
-      getAuthHeaders().then((headers) =>
-        supabase.functions.invoke("categorize-posts", { headers })
-          .catch((err: any) => console.error("categorize-posts error:", err))
-      );
-    }
-
-    // 5. Extract identity (independent — runs regardless)
-    await invokeStep("identity", "extract-identity", { user_id: user.id });
-
-    // 6. Analyze voice (independent — runs regardless)
-    await invokeStep("voice", "analyze-voice", { user_id: user.id });
-
-    // 7. Generate playbook (requires archetypes)
-    if (archetypesOk) {
-      await invokeStep("playbook", "generate-playbook", { user_id: user.id, journey_stage: journeyStage });
-    } else {
-      updateStep("playbook", "error");
-    }
-
-    // 8. Generate content buckets (needs archetypes + identity)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", { journey_stage: journeyStage });
-
-    // 9. Generate content pillars + connected topics (needs buckets)
-    let pillarsOk = false;
-    if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", { journey_stage: journeyStage });
-    } else {
-      updateStep("pillars", "error");
-    }
-
-    // 10. Generate 30-day plan (needs pillars)
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
-    }
-
-    // 11. Generate all 3 plans (uses whatever context is available)
-    updateStep("plans", "active");
-    try {
-      const headers = await getAuthHeaders();
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan", journey_stage: journeyStage },
-        headers,
-      });
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan", journey_stage: journeyStage },
-        headers,
-      });
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy", journey_stage: journeyStage },
-        headers,
-      });
-      updateStep("plans", "done");
-    } catch (err) {
-      console.error("Plans step threw:", err);
-      updateStep("plans", "error");
-    }
-
-    // 12. Generate templates (LAST — needs pillars + archetypes)
-    if (archetypesOk) {
-      await invokeStep("templates", "generate-templates", {});
-    } else {
-      updateStep("templates", "error");
-    }
-  };
-
-  const runNewAccountPipelineAfterFetch = async () => {
-    if (!user) return;
-
-    // 2. Find aspirational accounts
-    await invokeStep("competitors", "discover-niche-accounts", {
-      niche: niche.trim(),
-      dream_client: dreamClient.trim(),
-    });
-
-    // 3. Discover archetypes (niche-based)
-    await invokeStep("archetypes", "discover-archetypes", {
-      user_id: user.id,
-      new_account: true,
-      niche: niche.trim(),
-      goals: endGoal.trim(),
-    });
-
-    // 3b. Categorize any existing posts with discovered archetypes (background)
-    getAuthHeaders().then((headers) =>
-      supabase.functions.invoke("categorize-posts", { headers })
-        .catch((err: any) => console.error("categorize-posts error:", err))
-    );
-
-    // 4. Generate starter identity via AI (uses niche/dream_client/end_goal from profile)
-    await invokeStep("identity", "extract-identity", {});
-
-    // 5. Generate playbook
-    await invokeStep("playbook", "generate-playbook", { user_id: user.id, journey_stage: journeyStage });
-
-    // 6. Generate content buckets (needs archetypes + identity)
-    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", { journey_stage: journeyStage });
-
-    // 7. Generate content pillars + connected topics (needs buckets)
-    let pillarsOk = false;
-    if (bucketsOk) {
-      pillarsOk = await invokeStep("pillars", "generate-content-pillars", { journey_stage: journeyStage });
-    } else {
-      updateStep("pillars", "error");
-    }
-
-    // 8. Generate 30-day plan (needs pillars)
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
-    }
-
-    // 9. Generate plans
-    updateStep("plans", "active");
-    try {
-      const headers = await getAuthHeaders();
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan", journey_stage: journeyStage },
-        headers,
-      });
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan", journey_stage: journeyStage },
-        headers,
-      });
-      await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy", journey_stage: journeyStage },
-        headers,
-      });
-      updateStep("plans", "done");
-    } catch (err) {
-      console.error("Plans step threw:", err);
-      updateStep("plans", "error");
-    }
-
-    // 10. Generate starter templates (LAST — needs pillars + archetypes)
-    await invokeStep("templates", "generate-templates", {});
-  };
-
-  const handleComplete = async () => {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          niche: niche.trim(),
-          dream_client: dreamClient.trim(),
-          end_goal: endGoal.trim(),
-          mission: mission.trim() || null,
-          posting_cadence: postingCadence,
-          traffic_url: trafficUrl.trim() || null,
-          ...(journeyStage ? { journey_stage: journeyStage } : {}),
-        })
-        .eq("id", user.id);
-
-      if (error) throw error;
-      await refreshProfile();
-
-      // First, always fetch posts to determine account maturity
-      setPipelineRunning(true);
-      setPipelineComplete(false);
-      setPipelineHasErrors(false);
-
-      // Start with seasoned steps (fetch will determine actual path)
-      setPipelineSteps(SEASONED_STEPS.map((s) => ({ ...s, status: "waiting" as const })));
-      setAccountType("seasoned");
-
-      // Fetch posts first
-      const { count } = await supabase
-        .from("posts_analyzed")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("source", "own");
-
-      if ((count ?? 0) === 0) {
-        updateStep("fetch", "active");
-        try {
-          const headers = await getAuthHeaders();
-          await supabase.functions.invoke("fetch-user-posts", {
-            body: { user_id: user.id },
-            headers,
-          });
-        } catch {
-          // OK if fails
-        }
-        updateStep("fetch", "done");
-      }
-
-      // Now check actual account maturity from post data
-      const { data: posts } = await supabase
-        .from("posts_analyzed")
-        .select("views")
-        .eq("user_id", user.id)
-        .eq("source", "own")
-        .order("views", { ascending: false });
-
-      const totalPosts = posts?.length || 0;
-      const hasViralPosts = posts?.some((p) => (p.views ?? 0) >= 5000);
-      const isSeasoned = totalPosts >= 20 && hasViralPosts;
-
-      // Update profile with detected maturity
-      await supabase.from("profiles").update({
-        is_established: isSeasoned,
-      }).eq("id", user.id);
-
-
-      if (isSeasoned) {
-        setAccountType("seasoned");
-        setPipelineSteps(SEASONED_STEPS.map((s) => ({
-          ...s,
-          status: s.id === "fetch" ? "done" as const : "waiting" as const,
-        })));
-        // Run remaining seasoned steps (fetch already done)
-        await runSeasonedPipelineAfterFetch();
-      } else {
-        setAccountType("new");
-        setPipelineSteps(NEW_STEPS.map((s) => ({
-          ...s,
-          status: s.id === "fetch" ? "done" as const : "waiting" as const,
-        })));
-        // Run new account pipeline (fetch already done)
-        await runNewAccountPipelineAfterFetch();
-      }
-
-      // Check for errors
-      setPipelineSteps((prev) => {
-        const hasErrors = prev.some((s) => s.status === "error");
-        setPipelineHasErrors(hasErrors);
-        return prev;
-      });
-
-      // Mark onboarding complete now that pipeline has finished
-      await supabase
-        .from("profiles")
-        .update({ onboarding_complete: true })
-        .eq("id", user.id);
-
-      await refreshProfile();
-      setPipelineComplete(true);
-    } catch (e: any) {
-      toast({ title: "Error saving profile", description: e.message, variant: "destructive" });
-      setPipelineRunning(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleGoToDashboard = () => {
-    navigate("/my-story", { replace: true });
-  };
-
-  const isStepValid = () => {
-    switch (step) {
-      case 0:
-        return true;
-      case 1:
-        return niche.trim().length > 0;
-      case 2:
-        return dreamClient.trim().length > 0;
-      case 3:
-        return endGoal.trim().length > 0;
-      case 4:
-        return journeyStage !== null;
-      case 5:
-        return mission.trim().length > 0;
-      default:
-        return false;
-    }
-  };
-
-  const handleNext = () => {
-    if (step === 5) {
-      handleComplete();
-    } else {
-      setStep((s) => s + 1);
-    }
-  };
-
+  // ── Connect Threads ────────────────────────────────────────────────────────
   const handleConnectThreads = () => {
     if (!user) return;
     const clientId = import.meta.env.VITE_THREADS_APP_ID || "921740210802274";
     const redirectUri = import.meta.env.VITE_THREADS_REDIRECT_URI || "https://iobnntqhmswxtubkdjon.supabase.co/functions/v1/threads-oauth-callback";
-    if (!clientId || !redirectUri) {
-      toast({ title: "Configuration error", description: "Threads OAuth is not configured.", variant: "destructive" });
-      return;
-    }
     const url = new URL("https://threads.net/oauth/authorize");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
@@ -559,330 +218,650 @@ const Onboarding = () => {
     window.location.href = url.toString();
   };
 
-  return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Pipeline progress overlay */}
-      {pipelineRunning && (
-        <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center gap-6">
-          <div className="max-w-md w-full px-6">
-            <div className="text-center mb-8">
-              <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
-              <h1 className="text-white text-2xl font-bold mb-2">
-                Setting up your Threadable
-              </h1>
-              <p className="text-gray-400">
-                {accountType === "seasoned"
-                  ? "We're analyzing your content to build your personalized strategy."
-                  : "We're building your starter strategy based on what works in your niche."}
-              </p>
-              <p className="text-gray-500 text-sm mt-1">
-                This takes a few minutes — we're building your complete content strategy.
-              </p>
-            </div>
+  const handleDisconnect = async () => {
+    if (!user) return;
+    const confirmed = window.confirm("Disconnect this Threads account? You can then connect a different one.");
+    if (!confirmed) return;
+    await supabase.from("profiles").update({
+      threads_access_token: null, threads_user_id: null, threads_username: null,
+      threads_profile_picture_url: null, display_name: null,
+    }).eq("id", user.id);
+    await supabase.from("posts_analyzed").delete().eq("user_id", user.id);
+    setThreadsConnected(false);
+    setThreadsUsername("");
+  };
 
-            <div className="space-y-4">
-              {pipelineSteps.map((s) => (
-                <PipelineProgressStep key={s.id} label={s.label} status={s.status} />
-              ))}
-            </div>
+  // ── Pipeline helpers ───────────────────────────────────────────────────────
+  const updateStep = (stepId: string, status: PipelineStepDef["status"], insight?: string) => {
+    setPipelineSteps((prev) =>
+      prev.map((s) => (s.id === stepId ? { ...s, status, ...(insight ? { insight } : {}) } : s))
+    );
+  };
 
-            {pipelineComplete && (
-              <div className="mt-8 text-center">
-              <p className={pipelineHasErrors ? "text-amber-400 font-medium mb-4" : "text-primary font-medium mb-4"}>
-                  {pipelineHasErrors
-                    ? "Setup mostly complete — some steps had issues but you can retry them later."
-                    : "Your account is ready! 🎉"}
-                </p>
-                <Button onClick={handleGoToDashboard} size="lg" className="px-8">
-                  Review Your Identity →
-                </Button>
-              </div>
-            )}
+  const getAuthHeaders = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session ? { Authorization: `Bearer ${session.access_token}` } : {};
+  };
+
+  const invokeStep = async (stepId: string, fnName: string, body: any): Promise<boolean> => {
+    updateStep(stepId, "active");
+    try {
+      const headers = await getAuthHeaders();
+      const { error } = await supabase.functions.invoke(fnName, { body, headers });
+      if (error) { updateStep(stepId, "error"); return false; }
+      updateStep(stepId, "done");
+      return true;
+    } catch {
+      updateStep(stepId, "error");
+      return false;
+    }
+  };
+
+  // ── Seasoned pipeline (has posts with views) ──────────────────────────────
+  const runSeasonedPipeline = async () => {
+    if (!user) return;
+
+    const analysisOk = await invokeStep("analysis", "run-analysis", { user_id: user.id });
+    const regressionOk = await invokeStep("regression", "run-regression", { user_id: user.id });
+
+    let archetypesOk = false;
+    if (analysisOk && regressionOk) {
+      archetypesOk = await invokeStep("archetypes", "discover-archetypes", {
+        user_id: user.id, niche: dreamClient.trim(), goals: mission.trim(),
+      });
+    } else {
+      updateStep("archetypes", "error");
+    }
+
+    if (archetypesOk) {
+      getAuthHeaders().then((h) => supabase.functions.invoke("categorize-posts", { headers: h }).catch(() => {}));
+    }
+
+    await invokeStep("identity", "extract-identity", { user_id: user.id });
+    await invokeStep("voice", "analyze-voice", { user_id: user.id });
+
+    if (archetypesOk) {
+      await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+    } else {
+      updateStep("playbook", "error");
+    }
+
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
+    }
+
+    updateStep("plans", "active");
+    try {
+      const headers = await getAuthHeaders();
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "content_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "branding_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "funnel_strategy" }, headers });
+      updateStep("plans", "done");
+    } catch {
+      updateStep("plans", "error");
+    }
+
+    if (archetypesOk) {
+      await invokeStep("templates", "generate-templates", {});
+    } else {
+      updateStep("templates", "error");
+    }
+  };
+
+  // ── New account pipeline ──────────────────────────────────────────────────
+  const runNewPipeline = async () => {
+    if (!user) return;
+
+    await invokeStep("archetypes", "discover-archetypes", {
+      user_id: user.id, new_account: true, niche: dreamClient.trim(), goals: mission.trim(),
+    });
+
+    getAuthHeaders().then((h) => supabase.functions.invoke("categorize-posts", { headers: h }).catch(() => {}));
+
+    await invokeStep("identity", "extract-identity", {});
+    await invokeStep("voice", "analyze-voice", { user_id: user.id });
+    await invokeStep("playbook", "generate-playbook", { user_id: user.id });
+
+    const bucketsOk = await invokeStep("buckets", "generate-content-buckets", {});
+    let pillarsOk = false;
+    if (bucketsOk) {
+      pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
+    } else {
+      updateStep("pillars", "error");
+    }
+
+    if (pillarsOk) {
+      await invokeStep("plan30", "generate-30day-plan", {});
+    } else {
+      updateStep("plan30", "error");
+    }
+
+    updateStep("plans", "active");
+    try {
+      const headers = await getAuthHeaders();
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "content_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "branding_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { plan_type: "funnel_strategy" }, headers });
+      updateStep("plans", "done");
+    } catch {
+      updateStep("plans", "error");
+    }
+
+    await invokeStep("templates", "generate-templates", {});
+  };
+
+  // ── Complete onboarding ────────────────────────────────────────────────────
+  const handleBuildPlan = async () => {
+    if (!user || !goalType) return;
+    setPipelineRunning(true);
+    setPipelineComplete(false);
+    setPipelineHasErrors(false);
+
+    try {
+      // 1. Save profile fields
+      await supabase.from("profiles").update({
+        dream_client: dreamClient.trim(),
+        mission: mission.trim() || null,
+        max_posts_per_day: postsPerDay,
+        traffic_url: trafficUrl.trim() || null,
+        goal_type: goalType,
+        dm_keyword: dmKeyword.trim() || null,
+        dm_offer: dmOffer.trim() || null,
+      } as any).eq("id", user.id);
+
+      await refreshProfile();
+
+      // 2. Start pipeline — first fetch posts
+      setPipelineSteps(SEASONED_PIPELINE.map((s) => ({ ...s, status: "waiting" as const })));
+
+      // Check if posts already fetched
+      const { count } = await supabase
+        .from("posts_analyzed")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("source", "own");
+
+      if ((count ?? 0) === 0 && threadsConnected) {
+        updateStep("fetch", "active");
+        try {
+          const headers = await getAuthHeaders();
+          await supabase.functions.invoke("fetch-user-posts", { body: { user_id: user.id }, headers });
+        } catch {}
+        updateStep("fetch", "done");
+      } else {
+        updateStep("fetch", "done");
+      }
+
+      // 3. Auto-detect journey stage
+      const { data: posts } = await supabase
+        .from("posts_analyzed")
+        .select("id, views, text_content")
+        .eq("user_id", user.id)
+        .eq("source", "own");
+
+      const postCount = posts?.length || 0;
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("follower_count")
+        .eq("id", user.id)
+        .single();
+      const followerCount = profileData?.follower_count || 0;
+
+      let journeyStage = "getting_started";
+      if (postCount === 0 || followerCount < 1000) {
+        journeyStage = "getting_started";
+      } else {
+        // Check for monetization signals
+        const ctaPosts = posts?.filter((p) => {
+          const text = (p.text_content || "").toLowerCase();
+          return text.includes("dm me") || text.includes("link in bio") || text.includes("book a call") || text.includes("grab") || text.includes("sign up");
+        }) || [];
+        const ctaRatio = ctaPosts.length / postCount;
+
+        if (goalType === "dm_leads" && ctaRatio > 0.05) {
+          journeyStage = "monetizing";
+        } else if (ctaRatio > 0.1) {
+          journeyStage = "monetizing";
+        } else {
+          journeyStage = "growing";
+        }
+      }
+
+      await supabase.from("profiles").update({
+        journey_stage: journeyStage,
+        is_established: postCount >= 20 && (posts?.some((p) => (p.views ?? 0) >= 5000) || false),
+      }).eq("id", user.id);
+
+      // 4. Determine pipeline path
+      const isSeasoned = postCount >= 20 && (posts?.some((p) => (p.views ?? 0) >= 5000) || false);
+
+      if (isSeasoned) {
+        setPipelineSteps(SEASONED_PIPELINE.map((s) => ({
+          ...s, status: s.id === "fetch" ? "done" as const : "waiting" as const,
+        })));
+        await runSeasonedPipeline();
+      } else {
+        setPipelineSteps(NEW_PIPELINE.map((s) => ({
+          ...s, status: s.id === "fetch" ? "done" as const : "waiting" as const,
+        })));
+        await runNewPipeline();
+      }
+
+      // 5. Check for errors
+      setPipelineSteps((prev) => {
+        const hasErrors = prev.some((s) => s.status === "error");
+        setPipelineHasErrors(hasErrors);
+        return prev;
+      });
+
+      // 6. Mark onboarding complete
+      await supabase.from("profiles").update({ onboarding_complete: true }).eq("id", user.id);
+      await refreshProfile();
+
+      // 7. Get completion stats
+      const { count: scheduledCount } = await supabase
+        .from("content_plan_items")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      setCompletionStats({
+        postsGenerated: scheduledCount || 0,
+        journeyStage,
+        goalType,
+      });
+
+      setPipelineComplete(true);
+
+      // Auto-transition to completion screen after a moment
+      setTimeout(() => {
+        setPipelineRunning(false);
+        setShowCompletion(true);
+      }, 1500);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+      setPipelineRunning(false);
+    }
+  };
+
+  // ── Step validation ────────────────────────────────────────────────────────
+  const isStepValid = () => {
+    switch (step) {
+      case 0: return true; // can proceed connected or not
+      case 1: return goalType !== null;
+      case 2: return dreamClient.trim().length > 0 && mission.trim().length > 0;
+      case 3: return true;
+      default: return false;
+    }
+  };
+
+  const handleNext = () => {
+    if (step === 0 && !threadsConnected) {
+      // Allow advancing but warn
+      setStep(1);
+      return;
+    }
+    if (step < 3) {
+      setStep((s) => s + 1);
+    } else {
+      handleBuildPlan();
+    }
+  };
+
+  if (profileLoading) {
+    return (
+      <div className="fixed inset-0 bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Completion Screen
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (showCompletion && completionStats) {
+    const funnel = STAGE_FUNNEL[completionStats.journeyStage] || STAGE_FUNNEL.getting_started;
+    return (
+      <div className="fixed inset-0 bg-background flex flex-col items-center justify-center px-6">
+        <div className="max-w-lg w-full text-center space-y-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+              Your week is ready 🚀
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              {completionStats.postsGenerated} posts planned · optimized for {GOAL_LABELS[completionStats.goalType]}
+            </p>
           </div>
-        </div>
-      )}
 
-      {/* Stepper */}
-      <div className="mx-auto w-full max-w-xl px-6 pt-12 pb-4">
-        <div className="flex items-center justify-between gap-2">
-          {STEPS.map((label, i) => (
-            <div key={label} className="flex flex-1 flex-col items-center gap-2">
-              <div className="flex w-full items-center">
-                <div
-                  className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-                    i < step
-                      ? "bg-primary text-primary-foreground"
-                      : i === step
-                      ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {i < step ? <Check className="h-4 w-4" /> : i + 1}
+          <div className="rounded-xl border border-border bg-card/50 p-6 text-left space-y-4">
+            <p className="text-sm font-semibold text-foreground">Here's how we'll hit your goal:</p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-primary text-lg">●</span>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Reach posts (TOF) — {funnel.tof}%</p>
+                  <p className="text-xs text-muted-foreground">Bring new people in with viral hooks</p>
                 </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className={`h-0.5 w-full transition-colors ${
-                      i < step ? "bg-primary" : "bg-border"
-                    }`}
-                  />
-                )}
               </div>
-              <span
-                className={`text-xs font-medium transition-colors text-center ${
-                  i <= step ? "text-foreground" : "text-muted-foreground"
-                }`}
-              >
-                {label}
-              </span>
+              <div className="flex items-start gap-3">
+                <span className="text-accent-foreground text-lg">●</span>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Trust posts (MOF) — {funnel.mof}%</p>
+                  <p className="text-xs text-muted-foreground">Personal stories that start conversations</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-secondary-foreground text-lg">●</span>
+                <div>
+                  <p className="text-sm font-medium text-foreground">Convert posts (BOF) — {funnel.bof}%</p>
+                  <p className="text-xs text-muted-foreground">Mention your offer and drive action</p>
+                </div>
+              </div>
             </div>
-          ))}
+          </div>
+
+          <div className="space-y-3">
+            <Button
+              size="lg"
+              className="w-full h-14 text-base font-semibold"
+              onClick={() => navigate("/dashboard", { replace: true })}
+            >
+              Review & Approve My Week →
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Estimated time saved this week: ~3 hours
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground/60">
+            <button onClick={() => navigate("/playbook")} className="hover:text-foreground transition-colors">
+              View Playbook
+            </button>
+            <span>·</span>
+            <button onClick={() => navigate("/strategy")} className="hover:text-foreground transition-colors">
+              View Pillars
+            </button>
+            <span>·</span>
+            <button onClick={() => navigate("/templates")} className="hover:text-foreground transition-colors">
+              View Templates
+            </button>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Step content */}
-      <div className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-6 pb-32">
-        {step === 0 && (
-          <div className="space-y-6 text-center">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Connect Your Threads Account
-            </h1>
-            {!threadsConnected ? (
-              <>
-                <Button
-                  size="lg"
-                  className="mx-auto flex h-14 gap-3 rounded-xl px-8 text-base font-semibold"
-                  onClick={handleConnectThreads}
-                >
-                  <AtSign className="h-5 w-5" />
-                  Connect Threads
-                </Button>
-                <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
-                  We'll use this to analyze your posts and publish content on your behalf.
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Pipeline Progress Screen
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (pipelineRunning) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center gap-6">
+        <div className="max-w-md w-full px-6">
+          <div className="text-center mb-8">
+            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+            <h1 className="text-foreground text-2xl font-bold mb-2">Building your growth plan...</h1>
+            <p className="text-muted-foreground text-sm">
+              This takes a few minutes — we're building your complete content system.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {pipelineSteps.map((s) => (
+              <PipelineProgressStep key={s.id} label={s.label} status={s.status} insight={s.insight} />
+            ))}
+          </div>
+          {pipelineComplete && (
+            <div className="mt-8 text-center">
+              <p className={pipelineHasErrors ? "text-amber-400 font-medium mb-4" : "text-primary font-medium mb-4"}>
+                {pipelineHasErrors ? "Mostly complete — some steps had issues." : "Your system is built! 🎉"}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // Main 4-Step Flow
+  // ══════════════════════════════════════════════════════════════════════════════
+  return (
+    <div className="fixed inset-0 bg-background flex flex-col">
+      {/* Back link */}
+      {step > 0 && (
+        <button
+          onClick={() => setStep((s) => s - 1)}
+          className="absolute top-6 left-6 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors z-10"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+      )}
+
+      {/* Centered content */}
+      <div className="flex-1 flex items-center justify-center px-6">
+        <div className="max-w-lg w-full">
+
+          {/* ── Step 0: Connect Threads ── */}
+          {step === 0 && (
+            <div className="space-y-8 text-center">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+                  Let's connect your Threads account
+                </h1>
+                <p className="text-muted-foreground text-lg">
+                  We'll analyze your content to build a strategy that actually works.
                 </p>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
-                  <Check className="h-5 w-5" />
-                  Connected as @{threadsUsername} ✓
-                </div>
-                <button
-                  onClick={handleDisconnect}
-                  className="text-muted-foreground hover:text-foreground text-sm underline transition-colors"
-                >
-                  Switch account
-                </button>
               </div>
-            )}
-          </div>
-        )}
 
-        {step === 1 && (
-          <div className="space-y-5">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              What's Your Niche?
-            </h1>
-            <div className="space-y-2">
-              <label htmlFor="niche" className="text-sm font-medium text-foreground">
-                What's your niche?
-              </label>
-              <Input
-                id="niche"
-                value={niche}
-                onChange={(e) => setNiche(e.target.value)}
-                placeholder="e.g., Medical spa marketing, SaaS growth, fitness coaching"
-                className="h-12 text-base"
-              />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Be specific. "Marketing" is too broad. "Marketing for medical spas and aesthetic clinics" is perfect.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-5">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Who's Your Dream Client?
-            </h1>
-            <div className="space-y-2">
-              <label htmlFor="dream-client" className="text-sm font-medium text-foreground">
-                Describe your dream client
-              </label>
-              <Textarea
-                id="dream-client"
-                value={dreamClient}
-                onChange={(e) => setDreamClient(e.target.value)}
-                placeholder="e.g., Med spa owners doing $30K-$100K/mo who want to scale to $300K+ through content and authority building"
-                rows={4}
-                className="text-base resize-none"
-              />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Think about who you want reaching out in your DMs after reading your threads.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-5">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              What's Your End Goal?
-            </h1>
-            <div className="space-y-2">
-              <label htmlFor="end-goal" className="text-sm font-medium text-foreground">
-                What's your end goal with Threads?
-              </label>
-              <Textarea
-                id="end-goal"
-                value={endGoal}
-                onChange={(e) => setEndGoal(e.target.value)}
-                placeholder="e.g., Build authority, drive DMs for my $5K program, grow to 50K followers in 6 months"
-                rows={4}
-                className="text-base resize-none"
-              />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                This shapes what types of content we create and optimize for.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-6">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">
-                Where Are You on Your Threads Journey?
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                This helps us set the right funnel mix and milestone goals for you.
-              </p>
-            </div>
-            <div className="space-y-3">
-              {JOURNEY_OPTIONS.map((opt) => {
-                const selected = journeyStage === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setJourneyStage(opt.value)}
-                    className={`w-full text-left rounded-xl border p-5 transition-all duration-150 ${
-                      selected
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-                        : "border-border bg-card hover:border-foreground/20 hover:bg-muted/30"
-                    }`}
+              {!threadsConnected ? (
+                <div className="space-y-4">
+                  <Button
+                    size="lg"
+                    className="h-14 px-10 text-base font-semibold gap-3"
+                    onClick={handleConnectThreads}
                   >
-                    <div className="flex items-start gap-4">
-                      <span className="text-3xl shrink-0 mt-0.5">{opt.emoji}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-semibold text-base ${selected ? "text-foreground" : "text-foreground"}`}>
-                          {opt.title}
+                    <AtSign className="h-5 w-5" /> Connect Threads →
+                  </Button>
+                  <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                    We only analyze public posts. We never post without your approval.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-2 text-lg font-medium text-primary">
+                    <Check className="h-5 w-5" /> Connected as @{threadsUsername}
+                  </div>
+                  <button
+                    onClick={handleDisconnect}
+                    className="text-muted-foreground hover:text-foreground text-sm underline transition-colors"
+                  >
+                    Switch account
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 1: Your Goal ── */}
+          {step === 1 && (
+            <div className="space-y-6">
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground text-center">
+                What do you want from Threads?
+              </h1>
+
+              <div className="space-y-3">
+                {GOAL_OPTIONS.map((opt) => {
+                  const selected = goalType === opt.value;
+                  return (
+                    <div key={opt.value}>
+                      <button
+                        type="button"
+                        onClick={() => setGoalType(selected ? null : opt.value)}
+                        className={`w-full text-left rounded-xl border p-5 transition-all duration-150 ${
+                          selected
+                            ? "border-primary bg-primary/10 ring-1 ring-primary/40"
+                            : "border-border bg-card hover:border-foreground/20"
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="text-2xl">{opt.emoji}</span>
+                          <div className="flex-1">
+                            <p className="font-semibold text-foreground">{opt.title}</p>
+                            <p className="text-sm text-muted-foreground">{opt.subtitle}</p>
+                          </div>
+                          {selected && (
+                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          )}
                         </div>
-                        <div className="text-sm text-muted-foreground mt-0.5">{opt.subtitle}</div>
-                      </div>
-                      {selected && (
-                        <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
-                          <Check className="h-3 w-3 text-primary-foreground" />
+                      </button>
+
+                      {/* Expanded fields for DM Leads */}
+                      {selected && opt.value === "dm_leads" && (
+                        <div className="mt-3 ml-12 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">What's your DM keyword?</label>
+                            <Input
+                              value={dmKeyword}
+                              onChange={(e) => setDmKeyword(e.target.value)}
+                              placeholder="SCALE"
+                              className="h-11 text-base"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm text-muted-foreground block mb-1">What do they get when they DM it?</label>
+                            <Input
+                              value={dmOffer}
+                              onChange={(e) => setDmOffer(e.target.value)}
+                              placeholder="My free scaling framework"
+                              className="h-11 text-base"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expanded fields for Drive Traffic */}
+                      {selected && opt.value === "drive_traffic" && (
+                        <div className="mt-3 ml-12 animate-in slide-in-from-top-2 duration-200">
+                          <label className="text-sm text-muted-foreground block mb-1">What's your link?</label>
+                          <Input
+                            value={trafficUrl}
+                            onChange={(e) => setTrafficUrl(e.target.value)}
+                            placeholder="https://..."
+                            className="h-11 text-base"
+                          />
                         </div>
                       )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {step === 5 && (
-          <div className="space-y-5">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Your Content Strategy
-            </h1>
-            <div className="space-y-2">
-              <label htmlFor="mission" className="text-sm font-medium text-foreground">
-                What is the ONE thing you want to be known for?
-              </label>
-              <Input
-                id="mission"
-                value={mission}
-                onChange={(e) => setMission(e.target.value)}
-                placeholder="e.g., Helping everyday people achieve extraordinary results"
-                className="h-12 text-base"
-              />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Your north star. Every piece of content should ladder up to this.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                How often do you want to post?
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {CADENCE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setPostingCadence(opt.value)}
-                    className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
-                      postingCadence === opt.value
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border bg-card text-muted-foreground hover:border-foreground/20"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
-            <div className="space-y-2">
-              <label htmlFor="traffic-url" className="text-sm font-medium text-foreground">
-                Where do you want to drive traffic?
-              </label>
-              <Input
-                id="traffic-url"
-                value={trafficUrl}
-                onChange={(e) => setTrafficUrl(e.target.value)}
-                placeholder="e.g., yoursite.com/book, newsletter link, course URL (optional)"
-                className="h-12 text-base"
-              />
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Optional. Your main CTA link for bottom-of-funnel posts.
-              </p>
+          )}
+
+          {/* ── Step 2: About You ── */}
+          {step === 2 && (
+            <div className="space-y-6">
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground text-center">
+                Two quick things about you
+              </h1>
+
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    Who do you want attention from?
+                  </label>
+                  <Textarea
+                    value={dreamClient}
+                    onChange={(e) => setDreamClient(e.target.value)}
+                    placeholder="Consultants doing $20K/mo who want to scale without burnout"
+                    rows={2}
+                    className="text-base resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This helps us write posts that attract the right people.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    What do you want to be known for?
+                  </label>
+                  <Input
+                    value={mission}
+                    onChange={(e) => setMission(e.target.value)}
+                    placeholder="Helping online business owners get sales using Threads"
+                    className="h-12 text-base"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This shapes your positioning and voice.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* ── Step 3: Posting Commitment ── */}
+          {step === 3 && (
+            <div className="space-y-8">
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground text-center">
+                How aggressive do you want to grow?
+              </h1>
+
+              <div className="text-center">
+                <span className="text-7xl font-bold text-primary tabular-nums">{postsPerDay}</span>
+                <p className="text-muted-foreground mt-2 text-lg">posts per day</p>
+              </div>
+
+              <div className="px-4">
+                <Slider
+                  value={[postsPerDay]}
+                  onValueChange={(v) => setPostsPerDay(v[0])}
+                  min={1}
+                  max={7}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  <span>1</span>
+                  <span>7</span>
+                </div>
+              </div>
+
+              <p className="text-center text-sm text-muted-foreground">{getPostsNote(postsPerDay)}</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Bottom nav */}
-      {!pipelineRunning && (
-        <div className="fixed bottom-0 inset-x-0 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <div className="mx-auto flex w-full max-w-lg items-center justify-between px-6 py-4">
-            <Button
-              variant="ghost"
-              onClick={() => setStep((s) => s - 1)}
-              disabled={step === 0}
-              className="gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={!isStepValid() || saving}
-              className="gap-2 px-6"
-            >
-              {step === 5 ? (
-                saving ? "Saving…" : "Launch My Growth Engine →"
-              ) : (
-                <>
-                  Next
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Bottom CTA */}
+      <div className="px-6 pb-8 pt-4 flex justify-center">
+        <Button
+          size="lg"
+          className="h-14 px-10 text-base font-semibold min-w-[240px]"
+          onClick={handleNext}
+          disabled={!isStepValid()}
+        >
+          {step === 0
+            ? threadsConnected
+              ? "Next →"
+              : "Skip for now →"
+            : step === 3
+            ? "Build My Plan →"
+            : "Next →"
+          }
+        </Button>
+      </div>
     </div>
   );
 };
