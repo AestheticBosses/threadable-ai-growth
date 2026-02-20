@@ -6,12 +6,16 @@ import { ContentPreferencesCard } from "@/components/settings/ContentPreferences
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { DangerZoneCard } from "@/components/settings/DangerZoneCard";
 import { SubscriptionCard } from "@/components/settings/SubscriptionCard";
+import { IdentityTab } from "@/components/settings/IdentityTab";
+import { VoiceTab } from "@/components/settings/VoiceTab";
+import { KnowledgeBaseTab } from "@/components/settings/KnowledgeBaseTab";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscription } from "@/hooks/useSubscription";
 import { toast } from "@/hooks/use-toast";
 import { useSearchParams } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ProfileData {
   threads_username: string | null;
@@ -33,7 +37,6 @@ const SettingsPage = () => {
   const [searchParams] = useSearchParams();
   const { plan, status, aiPostsUsed, aiPostsLimit, isPaid, refetch: refetchSubscription } = useSubscription();
 
-  // Handle Stripe redirect
   useEffect(() => {
     const subscriptionParam = searchParams.get("subscription");
     if (subscriptionParam === "success") {
@@ -66,48 +69,69 @@ const SettingsPage = () => {
       <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Manage your account, integrations, and preferences.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            What you add here shapes every post Threadable generates for you.
+          </p>
         </div>
 
-        {/* Subscription card renders independently — does not depend on profile */}
-        <SubscriptionCard
-          plan={plan}
-          status={status}
-          aiPostsUsed={aiPostsUsed}
-          aiPostsLimit={aiPostsLimit}
-          isPaid={isPaid}
-          onRefetch={refetchSubscription}
-        />
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className="w-full flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
+            <TabsTrigger value="general" className="text-xs sm:text-sm">General</TabsTrigger>
+            <TabsTrigger value="identity" className="text-xs sm:text-sm">Identity</TabsTrigger>
+            <TabsTrigger value="voice" className="text-xs sm:text-sm">Voice</TabsTrigger>
+            <TabsTrigger value="knowledge" className="text-xs sm:text-sm">Knowledge Base</TabsTrigger>
+          </TabsList>
 
-        {loading ? (
-          <div className="space-y-6">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-48 w-full rounded-lg" />
-            ))}
-          </div>
-        ) : profile ? (
-          <>
-            <ThreadsConnectionCard
-              threadsUsername={profile.threads_username}
-              tokenExpiresAt={profile.threads_token_expires_at}
-              onDisconnect={fetchProfile}
+          <TabsContent value="general" className="mt-6 space-y-6">
+            <SubscriptionCard
+              plan={plan}
+              status={status}
+              aiPostsUsed={aiPostsUsed}
+              aiPostsLimit={aiPostsLimit}
+              isPaid={isPaid}
+              onRefetch={refetchSubscription}
             />
 
-            <ContentPreferencesCard
-              maxPostsPerDay={profile.max_posts_per_day}
-              includeCredibilityMarkers={profile.include_credibility_markers}
-              autoApproveAiPosts={profile.auto_approve_ai_posts}
-              generateWeekendPosts={profile.generate_weekend_posts}
-              onSaved={fetchProfile}
-            />
+            {loading ? (
+              <div className="space-y-6">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-48 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : profile ? (
+              <>
+                <ThreadsConnectionCard
+                  threadsUsername={profile.threads_username}
+                  tokenExpiresAt={profile.threads_token_expires_at}
+                  onDisconnect={fetchProfile}
+                />
+                <ContentPreferencesCard
+                  maxPostsPerDay={profile.max_posts_per_day}
+                  includeCredibilityMarkers={profile.include_credibility_markers}
+                  autoApproveAiPosts={profile.auto_approve_ai_posts}
+                  generateWeekendPosts={profile.generate_weekend_posts}
+                  onSaved={fetchProfile}
+                />
+                <ApiKeysCard />
+                <DangerZoneCard />
+              </>
+            ) : (
+              <p className="text-muted-foreground">Unable to load profile data.</p>
+            )}
+          </TabsContent>
 
-            <ApiKeysCard />
+          <TabsContent value="identity" className="mt-6">
+            <IdentityTab />
+          </TabsContent>
 
-            <DangerZoneCard />
-          </>
-        ) : (
-          <p className="text-muted-foreground">Unable to load profile data.</p>
-        )}
+          <TabsContent value="voice" className="mt-6">
+            <VoiceTab />
+          </TabsContent>
+
+          <TabsContent value="knowledge" className="mt-6">
+            <KnowledgeBaseTab />
+          </TabsContent>
+        </Tabs>
       </div>
     </AppLayout>
   );
