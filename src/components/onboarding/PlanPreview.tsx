@@ -21,7 +21,7 @@ const STAGE_HEADINGS: Record<string, { title: string; subtitle: string }> = {
   },
   growing: {
     title: "You've built momentum. Now we make it intentional.",
-    subtitle: "Your content shows momentum. We'll build trust and introduce structured conversion posts.",
+    subtitle: "We'll turn attention into trust — and trust into structured conversion.",
   },
   monetizing: {
     title: "You already convert. Now we make it repeatable.",
@@ -64,9 +64,9 @@ const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
 const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
   growing: {
     drive_traffic: [
-      "Your audience engages more with tension than tips.",
-      "Reach comes from authority framing.",
-      "Trust builds through specific proof, not generic advice.",
+      "Your highest engagement posts create tension before teaching.",
+      "Authority framing expands reach faster than neutral advice.",
+      "Specific proof earns trust. Generic advice doesn't.",
     ],
     dm_leads: [
       "Conversation starts with belief, not pitches.",
@@ -117,7 +117,7 @@ const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
 
 /* ── Section 4 — Prescription ── */
 const PRESCRIPTION_LINES: Record<GoalType, string> = {
-  drive_traffic: "TOF: authority hooks. MOF: proof-based trust. BOF: embedded links.",
+  drive_traffic: "TOF: lead with authority hooks. MOF: build trust through specific proof. BOF: convert with embedded links.",
   dm_leads: "TOF: curiosity. MOF: belief-building. BOF: natural keyword introduction.",
   grow_audience: "TOF: contrarian hooks. MOF: personal stories. BOF: consistency signals.",
 };
@@ -290,7 +290,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
             </div>
           </div>
           <p className="text-sm italic text-muted-foreground">
-            Calibrated for your {STAGE_LABELS[journeyStage] || "Getting Started"} stage and goal: {GOAL_LABELS[goalType]}.
+            Calibrated for your {STAGE_LABELS[journeyStage] || "Getting Started"} stage and {GOAL_LABELS[goalType]} goal.
           </p>
         </section>
 
