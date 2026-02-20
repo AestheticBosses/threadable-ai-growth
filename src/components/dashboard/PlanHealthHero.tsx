@@ -63,8 +63,7 @@ export function PlanHealthHero() {
           .from("scheduled_posts")
           .select("id, status, scheduled_for, text_content, content_category")
           .eq("user_id", user.id)
-          .gte("scheduled_for", weekStart.toISOString())
-          .lte("scheduled_for", weekEnd.toISOString()),
+          .in("status", ["approved", "scheduled", "published"]),
         supabase
           .from("scheduled_posts")
           .select("id")
