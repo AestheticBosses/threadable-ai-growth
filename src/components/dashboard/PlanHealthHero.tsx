@@ -81,7 +81,7 @@ export function PlanHealthHero() {
       const hasPlan = planItems.length > 0;
 
       const published = scheduledPosts.filter((p) => p.status === "published");
-      const scheduled = scheduledPosts.filter((p) => p.status === "scheduled");
+      const scheduled = scheduledPosts.filter((p) => p.status === "scheduled" || p.status === "approved");
 
       // Find today's plan item
       const todayPlanItem = planItems.find((p) => p.scheduled_date === todayStr) ?? null;
