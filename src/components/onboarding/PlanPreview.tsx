@@ -13,17 +13,18 @@ interface PlanPreviewProps {
   onNavigate: (path: string) => Promise<void>;
 }
 
+/* ── Section 1 — Stage Declaration ── */
 const STAGE_HEADINGS: Record<string, { title: string; subtitle: string }> = {
   getting_started: {
-    title: "You're building your foundation.",
+    title: "You're building from zero. That's the advantage.",
     subtitle: "We'll focus on reach and establishing your authority voice before introducing CTAs.",
   },
   growing: {
-    title: "You're in the Growing stage.",
+    title: "You've built momentum. Now we make it intentional.",
     subtitle: "Your content shows momentum. We'll build trust and introduce structured conversion posts.",
   },
   monetizing: {
-    title: "You're ready to monetize.",
+    title: "You already convert. Now we make it repeatable.",
     subtitle: "Your audience knows you. Time to turn attention into consistent revenue.",
   },
 };
@@ -40,9 +41,10 @@ const GOAL_LABELS: Record<GoalType, string> = {
   drive_traffic: "traffic",
 };
 
+/* ── Section 2 — Patterns (fallback insights) ── */
 const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
   dm_leads: [
-    "Trust-building posts generate 3x more DM conversations than pure reach posts.",
+    "Trust posts drive the most DM momentum.",
     "Specificity converts — vague hooks lose readers in the first line.",
     "Consistent posting at your cadence trains your audience to expect you.",
   ],
@@ -56,6 +58,75 @@ const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
     "Posts that tease a resource before linking drive higher click-through.",
     "Warm audiences click — cold audiences scroll. Trust comes first.",
   ],
+};
+
+/* ── Section 3 — Insight (outcome statements) ── */
+const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
+  growing: {
+    drive_traffic: [
+      "Your audience engages more with tension than tips.",
+      "Reach comes from authority framing.",
+      "Trust builds through specific proof, not generic advice.",
+    ],
+    dm_leads: [
+      "Conversation starts with belief, not pitches.",
+      "Your best posts create curiosity before the ask.",
+      "Trust posts drive the most DM momentum.",
+    ],
+    grow_audience: [
+      "Contrarian framing outperforms agreeable content.",
+      "Personal stories get shared more than tactical advice.",
+      "Consistency compounds — volume alone doesn't.",
+    ],
+  },
+  getting_started: {
+    drive_traffic: [
+      "Authority framing earns trust before links earn clicks.",
+      "Specific proof points outperform generic advice.",
+      "Reach comes from hooks that create tension.",
+    ],
+    dm_leads: [
+      "Belief-driven posts start more conversations than pitches.",
+      "Curiosity hooks pull people in before the ask.",
+      "Trust posts drive the most DM momentum.",
+    ],
+    grow_audience: [
+      "Contrarian takes earn more shares than agreeable content.",
+      "Vulnerability creates connection faster than expertise.",
+      "Consistency compounds — volume alone doesn't.",
+    ],
+  },
+  monetizing: {
+    drive_traffic: [
+      "Your audience is warm — embedded CTAs outperform hard sells.",
+      "Proof-based trust posts prime clicks before the link.",
+      "Authority framing keeps traffic quality high.",
+    ],
+    dm_leads: [
+      "Your audience already trusts you — curiosity pulls DMs.",
+      "Belief-building posts create the warmest conversations.",
+      "Trust posts drive the most DM momentum.",
+    ],
+    grow_audience: [
+      "Contrarian framing keeps your content shareable at scale.",
+      "Personal stories compound your reach over time.",
+      "Consistency compounds — volume alone doesn't.",
+    ],
+  },
+};
+
+/* ── Section 4 — Prescription ── */
+const PRESCRIPTION_LINES: Record<GoalType, string> = {
+  drive_traffic: "TOF: authority hooks. MOF: proof-based trust. BOF: embedded links.",
+  dm_leads: "TOF: curiosity. MOF: belief-building. BOF: natural keyword introduction.",
+  grow_audience: "TOF: contrarian hooks. MOF: personal stories. BOF: consistency signals.",
+};
+
+/* ── Section 5 — Weekly Plan ── */
+const WEEKLY_PLAN_LINES: Record<GoalType, string> = {
+  drive_traffic: "Designed to earn the click, validate fast, and send traffic with intent.",
+  dm_leads: "Designed to start conversations, earn replies, and pull DMs inbound.",
+  grow_audience: "Designed to get shared, earn follows, and compound consistency.",
 };
 
 const STAGE_FUNNEL: Record<string, { tof: number; mof: number; bof: number }> = {
@@ -98,6 +169,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
 
   const stage = STAGE_HEADINGS[journeyStage] || STAGE_HEADINGS.getting_started;
   const funnel = STAGE_FUNNEL[journeyStage] || STAGE_FUNNEL.getting_started;
+  const stageInsights = INSIGHT_STATEMENTS[journeyStage]?.[goalType] || INSIGHT_STATEMENTS.getting_started[goalType];
 
   useEffect(() => {
     if (!user) return;
@@ -161,15 +233,15 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
     <div className="fixed inset-0 bg-background overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-6 py-12 space-y-12">
 
-        {/* Section 1 — Stage Reveal */}
+        {/* Section 1 — Stage Declaration */}
         <section className="text-center space-y-3">
           <h1 className="text-3xl md:text-4xl font-bold text-foreground">{stage.title}</h1>
           <p className="text-muted-foreground text-base max-w-lg mx-auto">{stage.subtitle}</p>
         </section>
 
-        {/* Section 2 — What We Learned */}
+        {/* Section 2 — Patterns */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">What we discovered about your content</h2>
+          <h2 className="text-lg font-semibold text-foreground">Your content has patterns. We found the ones that matter.</h2>
           <div className="space-y-3">
             {insights.map((text, i) => (
               <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
@@ -178,11 +250,28 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               </div>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground italic">
+            These aren't general best practices. They're specific to your audience.
+          </p>
         </section>
 
-        {/* Section 3 — Content Mix */}
+        {/* Section 3 — Insight */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Your weekly content mix</h2>
+          <h2 className="text-lg font-semibold text-foreground">What this tells us.</h2>
+          <ul className="space-y-2">
+            {stageInsights.map((text, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                <p className="text-sm text-foreground/90">{text}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Section 4 — Prescription */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">This week's strategic shift.</h2>
+          <p className="text-sm text-foreground/80">{PRESCRIPTION_LINES[goalType]}</p>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary">Reach (TOF)</span>
@@ -205,9 +294,10 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           </p>
         </section>
 
-        {/* Section 4 — Week Preview Calendar */}
+        {/* Section 5 — Weekly Plan */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Your first week</h2>
+          <p className="text-sm text-foreground/80">{WEEKLY_PLAN_LINES[goalType]}</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {drafts.map((post, i) => {
               const date = post.scheduled_for ? new Date(post.scheduled_for) : null;
@@ -256,7 +346,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           )}
         </section>
 
-        {/* Section 5 — CTA */}
+        {/* Section 6 — Launch CTA */}
         <section className="space-y-4 pb-8">
           <Button
             size="lg"
@@ -265,9 +355,9 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
             disabled={approving}
           >
             {approving ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Approving…</>
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Launching…</>
             ) : (
-              "Approve & Schedule This Week →"
+              "Launch This Week's Plan →"
             )}
           </Button>
           <p className="text-center">
@@ -275,8 +365,11 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               onClick={() => onNavigate("/queue")}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Review posts individually →
+              Review posts first →
             </button>
+          </p>
+          <p className="text-center text-xs text-muted-foreground">
+            We'll recalibrate next week using your results.
           </p>
         </section>
       </div>
