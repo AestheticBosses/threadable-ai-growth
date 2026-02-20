@@ -9,18 +9,18 @@ import { format, startOfDay, endOfDay } from "date-fns";
 
 const GOAL_ACTIONS: Record<string, string[]> = {
   dm_leads: [
-    "Reply to DM conversations",
+    "Reply meaningfully to all comments",
     "Check for keyword mentions",
-    "Leave a meaningful reply on 5 posts in your niche",
+    "Leave insight on 5 posts in your niche",
   ],
   grow_audience: [
-    "Reply to all comments on recent posts",
-    "Leave a meaningful reply on 10 posts in your niche",
-    "Follow 5 accounts in your niche",
+    "Reply meaningfully to all comments",
+    "Leave insight on 5 posts in your niche",
+    "Share today's post in one other place",
   ],
   drive_traffic: [
     "Check link clicks from yesterday",
-    "Reply to all comments",
+    "Reply meaningfully to all comments",
     "Share today's post in one other place",
   ],
 };
@@ -121,7 +121,7 @@ export function DailyActionBoard() {
           </div>
         ) : (
           <div className="space-y-4">
-            <ul className="space-y-2.5">
+            <ul className="space-y-3.5">
               {actions.map((action) => {
                 const done = !!checked[action.id];
                 return (
@@ -143,7 +143,7 @@ export function DailyActionBoard() {
                           toggle(action.id);
                           navigate(action.link!);
                         }}
-                        className={`text-sm text-left transition-colors ${
+                        className={`text-sm font-medium text-left transition-colors ${
                           done
                             ? "line-through text-muted-foreground"
                             : "text-foreground hover:text-primary"
@@ -154,7 +154,7 @@ export function DailyActionBoard() {
                     ) : (
                       <span
                         onClick={() => toggle(action.id)}
-                        className={`text-sm cursor-pointer select-none transition-colors ${
+                        className={`text-sm font-medium cursor-pointer select-none transition-colors ${
                           done ? "line-through text-muted-foreground" : "text-foreground"
                         }`}
                       >
