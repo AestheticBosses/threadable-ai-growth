@@ -172,7 +172,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const stageInsights = INSIGHT_STATEMENTS[journeyStage]?.[goalType] || INSIGHT_STATEMENTS.getting_started[goalType];
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
     const load = async () => {
       const { data: regressionRow, error: regressionErr } = await supabase
         .from("content_strategies")
@@ -205,7 +205,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
       setLoading(false);
     };
     load();
-  }, [user, goalType]);
+  }, [user?.id, goalType]);
 
   const handleApprove = async () => {
     if (!user) return;
