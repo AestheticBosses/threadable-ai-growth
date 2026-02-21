@@ -174,25 +174,22 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      // Fetch insights
-      const { data: stratRows } = await supabase
+      const { data: regressionRow, error: regressionErr } = await supabase
         .from("content_strategies")
-        .select("strategy_data")
+        .select("regression_insights")
         .eq("user_id", user.id)
-        .eq("strategy_type", "insight")
-        .limit(3);
+        .not("regression_insights", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (stratRows && stratRows.length > 0) {
-        const texts = stratRows
-          .map((r: any) => {
-            const d = r.strategy_data;
-            return typeof d === "string" ? d : d?.insight || d?.text || null;
-          })
-          .filter(Boolean)
-          .slice(0, 3);
-        setInsights(texts.length > 0 ? texts : FALLBACK_INSIGHTS[goalType]);
+      console.log("regressionRow:", regressionRow, "error:", regressionErr);
+
+      const humanInsights = (regressionRow?.regression_insights as any)?.human_readable_insights;
+      if (Array.isArray(humanInsights) && humanInsights.length > 0) {
+        setInsights(humanInsights.slice(0, 3));
       } else {
-        setInsights(FALLBACK_INSIGHTS[goalType]);
+        setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS["drive_traffic"]);
       }
 
       // Fetch drafts
