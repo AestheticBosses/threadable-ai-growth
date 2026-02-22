@@ -77,13 +77,17 @@ export function useSubscription(): SubscriptionData {
     };
   }, [user]);
 
-  const isPaid = plan !== "free" && status === "active";
+  // Admin bypass for specific emails
+  const isAdminBypass = user?.email === "jourdan@aestheticbosses.com";
+
+  const isPaid = isAdminBypass || (plan !== "free" && status === "active");
   // Unlimited plans use 999999 as the limit sentinel
   const canGenerate =
-    !isLoading &&
+    isAdminBypass ||
+    (!isLoading &&
     plan !== "free" &&
     status === "active" &&
-    (aiPostsLimit === 999999 || aiPostsUsed < aiPostsLimit);
+    (aiPostsLimit === 999999 || aiPostsUsed < aiPostsLimit));
 
   console.log("[useSubscription]", { plan, status, aiPostsUsed, aiPostsLimit, isLoading, canGenerate, isPaid });
 
