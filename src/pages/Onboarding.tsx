@@ -21,7 +21,7 @@ interface PipelineStepDef {
 }
 
 const GOAL_OPTIONS: { value: GoalType; emoji: string; title: string; subtitle: string }[] = [
-  { value: "dm_leads", emoji: "💬", title: "Get Clients via DM", subtitle: "Drive conversations that become clients" },
+  { value: "dm_leads", emoji: "💬", title: "Get Comments & Leads", subtitle: "Use comment keywords to start conversations" },
   { value: "grow_audience", emoji: "👥", title: "Grow My Audience", subtitle: "Get more followers, views, and reach" },
   { value: "drive_traffic", emoji: "🔗", title: "Drive Traffic", subtitle: "Send people to your link or landing page" },
 ];
@@ -758,20 +758,20 @@ const Onboarding = () => {
                       {selected && opt.value === "dm_leads" && (
                         <div className="mt-3 ml-12 space-y-3 animate-in slide-in-from-top-2 duration-200">
                           <div>
-                            <label className="text-sm text-muted-foreground block mb-1">What's your DM keyword?</label>
+                            <label className="text-sm text-muted-foreground block mb-1">What's your comment keyword?</label>
                             <Input
                               value={dmKeyword}
                               onChange={(e) => setDmKeyword(e.target.value)}
-                              placeholder="SCALE"
+                              placeholder="e.g. SCALE, FREE, YES"
                               className="h-11 text-base"
                             />
                           </div>
                           <div>
-                            <label className="text-sm text-muted-foreground block mb-1">What do they get when they DM it?</label>
+                            <label className="text-sm text-muted-foreground block mb-1">What do they get when they comment it?</label>
                             <Input
                               value={dmOffer}
                               onChange={(e) => setDmOffer(e.target.value)}
-                              placeholder="My free scaling framework"
+                              placeholder="e.g. My free scaling framework PDF"
                               className="h-11 text-base"
                             />
                           </div>
