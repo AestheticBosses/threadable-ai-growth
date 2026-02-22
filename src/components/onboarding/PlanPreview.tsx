@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Lightbulb, ChevronDown, ChevronUp, Loader2, Lock } from "lucide-react";
+import { PaywallModal } from "@/components/PaywallModal";
 
 type GoalType = "dm_leads" | "grow_audience" | "drive_traffic";
 
@@ -167,7 +168,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const [patternCount, setPatternCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [approving, setApproving] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
 
   const stage = STAGE_HEADINGS[journeyStage] || STAGE_HEADINGS.getting_started;
   const funnel = STAGE_FUNNEL[journeyStage] || STAGE_FUNNEL.getting_started;
@@ -221,7 +222,6 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
 
   const handleApprove = async () => {
     if (!user) return;
-    setApproving(true);
     await supabase
       .from("scheduled_posts")
       .update({ status: "approved" })
@@ -337,48 +337,43 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Your first week</h2>
           <p className="text-sm text-foreground/80">{WEEKLY_PLAN_LINES[goalType]}</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {drafts.map((post, i) => {
-              const date = post.scheduled_for ? new Date(post.scheduled_for) : null;
-              const dayLabel = date ? DAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1] : DAY_LABELS[i % 7];
-              const timeLabel = date
-                ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                : "";
-              const expanded = expandedId === post.id;
+          <div className="relative">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {drafts.map((post, i) => {
+                const date = post.scheduled_for ? new Date(post.scheduled_for) : null;
+                const dayLabel = date ? DAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1] : DAY_LABELS[i % 7];
+                const timeLabel = date
+                  ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                  : "";
 
-              return (
-                <div
-                  key={post.id}
-                  className="rounded-xl border border-border bg-card/50 overflow-hidden"
-                >
-                  <button
-                    onClick={() => setExpandedId(expanded ? null : post.id)}
-                    className="w-full flex items-center gap-3 p-4 text-left"
+                return (
+                  <div
+                    key={post.id}
+                    className="rounded-xl border border-border bg-card/50 overflow-hidden"
                   >
-                    <div className="shrink-0">
-                      <p className="text-sm font-semibold text-foreground">{dayLabel}</p>
-                      {timeLabel && <p className="text-[11px] text-muted-foreground">{timeLabel}</p>}
+                    <div className="w-full flex items-center gap-3 p-4 text-left">
+                      <div className="shrink-0">
+                        <p className="text-sm font-semibold text-foreground">{dayLabel}</p>
+                        {timeLabel && <p className="text-[11px] text-muted-foreground">{timeLabel}</p>}
+                      </div>
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        {funnelPill(post.funnel_stage)}
+                        {post.content_category && (
+                          <span className="text-xs text-muted-foreground truncate">{post.content_category}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1 flex items-center gap-2 min-w-0">
-                      {funnelPill(post.funnel_stage)}
-                      {post.content_category && (
-                        <span className="text-xs text-muted-foreground truncate">{post.content_category}</span>
-                      )}
-                    </div>
-                    {expanded ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                    )}
-                  </button>
-                  {expanded && post.text_content && (
-                    <div className="px-4 pb-4 border-t border-border">
-                      <p className="text-sm text-foreground/80 whitespace-pre-wrap pt-3">{post.text_content}</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
+            {drafts.length > 0 && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-black/60 backdrop-blur-[6px]">
+                <Lock className="h-8 w-8 text-white mb-3" />
+                <p className="text-white font-medium text-base">Your posts are ready.</p>
+                <p className="text-gray-400 text-sm mt-1">Start your free trial to generate and schedule them.</p>
+              </div>
+            )}
           </div>
           {drafts.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">No draft posts were generated. You can create them from the Chat.</p>
@@ -390,27 +385,16 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           <Button
             size="lg"
             className="w-full h-14 text-base font-semibold"
-            onClick={handleApprove}
-            disabled={approving}
+            onClick={() => setPaywallOpen(true)}
           >
-            {approving ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Launching…</>
-            ) : (
-              "Launch This Week's Plan →"
-            )}
+            Start Free Trial — Plans from $49/mo →
           </Button>
-          <p className="text-center">
-            <button
-              onClick={() => onNavigate("/queue")}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Review posts first →
-            </button>
-          </p>
           <p className="text-center text-xs text-muted-foreground">
-            We'll recalibrate next week using your results.
+            7-day free trial · Card required · Cancel anytime.
           </p>
         </section>
+
+        <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       </div>
     </div>
   );
