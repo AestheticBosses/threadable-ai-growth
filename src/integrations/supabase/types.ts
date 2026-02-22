@@ -656,6 +656,8 @@ export type Database = {
       profiles: {
         Row: {
           auto_approve_ai_posts: boolean
+          biggest_challenge: string | null
+          business_model: string | null
           created_at: string
           display_name: string | null
           dm_keyword: string | null
@@ -680,6 +682,8 @@ export type Database = {
           niche: string | null
           onboarding_complete: boolean | null
           posting_cadence: string | null
+          revenue_target: string | null
+          success_metric: string | null
           threads_access_token: string | null
           threads_profile_picture_url: string | null
           threads_token_expires_at: string | null
@@ -691,6 +695,8 @@ export type Database = {
         }
         Insert: {
           auto_approve_ai_posts?: boolean
+          biggest_challenge?: string | null
+          business_model?: string | null
           created_at?: string
           display_name?: string | null
           dm_keyword?: string | null
@@ -715,6 +721,8 @@ export type Database = {
           niche?: string | null
           onboarding_complete?: boolean | null
           posting_cadence?: string | null
+          revenue_target?: string | null
+          success_metric?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null
@@ -726,6 +734,8 @@ export type Database = {
         }
         Update: {
           auto_approve_ai_posts?: boolean
+          biggest_challenge?: string | null
+          business_model?: string | null
           created_at?: string
           display_name?: string | null
           dm_keyword?: string | null
@@ -750,6 +760,8 @@ export type Database = {
           niche?: string | null
           onboarding_complete?: boolean | null
           posting_cadence?: string | null
+          revenue_target?: string | null
+          success_metric?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null
           threads_token_expires_at?: string | null

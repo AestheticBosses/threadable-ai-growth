@@ -337,47 +337,11 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Your first week</h2>
           <p className="text-sm text-foreground/80">{WEEKLY_PLAN_LINES[goalType]}</p>
-          <div className="relative">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {drafts.map((post, i) => {
-                const date = post.scheduled_for ? new Date(post.scheduled_for) : null;
-                const dayLabel = date ? DAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1] : DAY_LABELS[i % 7];
-                const timeLabel = date
-                  ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-                  : "";
-
-                return (
-                  <div
-                    key={post.id}
-                    className="rounded-xl border border-border bg-card/50 overflow-hidden"
-                  >
-                    <div className="w-full flex items-center gap-3 p-4 text-left">
-                      <div className="shrink-0">
-                        <p className="text-sm font-semibold text-foreground">{dayLabel}</p>
-                        {timeLabel && <p className="text-[11px] text-muted-foreground">{timeLabel}</p>}
-                      </div>
-                      <div className="flex-1 flex items-center gap-2 min-w-0">
-                        {funnelPill(post.funnel_stage)}
-                        {post.content_category && (
-                          <span className="text-xs text-muted-foreground truncate">{post.content_category}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {drafts.length > 0 && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xl bg-black/60 backdrop-blur-[6px]">
-                <Lock className="h-8 w-8 text-white mb-3" />
-                <p className="text-white font-medium text-base">Your posts are ready.</p>
-                <p className="text-gray-400 text-sm mt-1">Start your free trial to generate and schedule them.</p>
-              </div>
-            )}
+          <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card/50 py-12">
+            <Lock className="h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-foreground font-medium text-base">Your first week of posts is being prepared.</p>
+            <p className="text-muted-foreground text-sm mt-1">Complete your free trial setup to publish them.</p>
           </div>
-          {drafts.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">No draft posts were generated. You can create them from the Chat.</p>
-          )}
         </section>
 
         {/* Section 6 — Launch CTA */}
