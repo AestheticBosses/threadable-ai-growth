@@ -243,7 +243,14 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
             {insights.map((text, i) => (
               <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
                 <Lightbulb className="h-5 w-5 text-[hsl(38_92%_50%)] shrink-0 mt-0.5" />
-                <p className="text-sm text-foreground/90">{/(\d+)%/.test(text) && parseInt(text.match(/(\d+)%/)![1], 10) > 500 ? "Posts with credibility markers dramatically outperform posts without them." : text}</p>
+                <p className="text-sm text-foreground/90">{(() => {
+                  const m = text.match(/(\d+)%/);
+                  if (m && parseInt(m[1], 10) > 500) {
+                    const multiplier = Math.round(parseInt(m[1], 10) / 100 + 1);
+                    return text.replace(/\d+%\s*(more|higher|greater|better)\s*\w*/, `average ${multiplier}x more views than posts without them`);
+                  }
+                  return text;
+                })()}</p>
               </div>
             ))}
           </div>
