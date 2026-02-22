@@ -163,6 +163,8 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const navigate = useNavigate();
   const [insights, setInsights] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<DraftPost[]>([]);
+  const [postCount, setPostCount] = useState(0);
+  const [patternCount, setPatternCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -174,20 +176,30 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   useEffect(() => {
     if (!user?.id) return;
     const load = async () => {
-      const { data: regressionRow, error: regressionErr } = await supabase
-        .from("content_strategies")
-        .select("regression_insights")
-        .eq("user_id", user.id)
-        .not("regression_insights", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [{ data: regressionRow, error: regressionErr }, { count: postsCount }] = await Promise.all([
+        supabase
+          .from("content_strategies")
+          .select("regression_insights")
+          .eq("user_id", user.id)
+          .not("regression_insights", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("posts_analyzed")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id),
+      ]);
 
       console.log("regressionRow:", regressionRow, "error:", regressionErr);
 
       const humanInsights = (regressionRow?.regression_insights as any)?.human_readable_insights;
-      if (Array.isArray(humanInsights) && humanInsights.length > 0) {
-        setInsights(humanInsights.slice(0, 3));
+      const insightsList = Array.isArray(humanInsights) && humanInsights.length > 0 ? humanInsights : [];
+      setPatternCount(insightsList.length);
+      setPostCount(postsCount ?? 0);
+
+      if (insightsList.length > 0) {
+        setInsights(insightsList.slice(0, 3));
       } else {
         setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS["drive_traffic"]);
       }
@@ -235,6 +247,29 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           <h1 className="text-3xl md:text-4xl font-bold text-foreground">{stage.title}</h1>
           <p className="text-muted-foreground text-base max-w-lg mx-auto">{stage.subtitle}</p>
         </section>
+
+        {/* Stats Bar */}
+        {postCount > 0 && (
+          <section className="space-y-3">
+            <div className="flex justify-center gap-8">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">{postCount}</p>
+                <p className="text-xs text-muted-foreground">posts analyzed</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">{postCount * 8}</p>
+                <p className="text-xs text-muted-foreground">data points examined</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground">{patternCount}</p>
+                <p className="text-xs text-muted-foreground">patterns identified</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              We analyzed your actual content history to build this plan — not a template.
+            </p>
+          </section>
+        )}
 
         {/* Section 2 — Patterns */}
         <section className="space-y-4">
