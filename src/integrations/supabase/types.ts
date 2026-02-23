@@ -1001,6 +1001,7 @@ export type Database = {
           id: string
           plan_data: Json
           plan_type: string
+          profile_snapshot: Json | null
           updated_at: string
           user_id: string
         }
@@ -1009,6 +1010,7 @@ export type Database = {
           id?: string
           plan_data?: Json
           plan_type: string
+          profile_snapshot?: Json | null
           updated_at?: string
           user_id: string
         }
@@ -1017,6 +1019,7 @@ export type Database = {
           id?: string
           plan_data?: Json
           plan_type?: string
+          profile_snapshot?: Json | null
           updated_at?: string
           user_id?: string
         }

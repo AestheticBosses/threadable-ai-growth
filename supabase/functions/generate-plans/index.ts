@@ -292,12 +292,32 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       planData.posts_per_day = postsPerDay;
     }
 
+    // Build profile snapshot fingerprint
+    const profileSnapshot = {
+      goal_type: profile?.goal_type ?? null,
+      dm_keyword: profile?.dm_keyword ?? null,
+      dm_offer: profile?.dm_offer ?? null,
+      max_posts_per_day: profile?.max_posts_per_day ?? 1,
+      traffic_url: profile?.traffic_url ?? null,
+    };
+
+    // Fetch additional fields for snapshot
+    const { data: snapshotProfile } = await admin
+      .from("profiles")
+      .select("niche, mission")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    (profileSnapshot as any).niche = snapshotProfile?.niche ?? null;
+    (profileSnapshot as any).mission = snapshotProfile?.mission ?? null;
+
     // Upsert into user_plans
     const { error: upsertError } = await supabase.from("user_plans").upsert(
       {
         user_id: user.id,
         plan_type,
         plan_data: planData,
+        profile_snapshot: profileSnapshot,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,plan_type" }

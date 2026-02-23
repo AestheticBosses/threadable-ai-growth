@@ -5,6 +5,8 @@ import { toast } from "@/hooks/use-toast";
 
 export type PlanType = "content_plan" | "branding_plan" | "funnel_strategy";
 
+const SNAPSHOT_FIELDS = ["goal_type", "dm_keyword", "dm_offer", "max_posts_per_day", "niche", "traffic_url", "mission"] as const;
+
 function usePlanQuery(planType: PlanType) {
   const { user } = useAuth();
   return useQuery({
@@ -12,15 +14,55 @@ function usePlanQuery(planType: PlanType) {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("user_plans")
-        .select("plan_data, updated_at")
+        .select("plan_data, updated_at, profile_snapshot")
         .eq("user_id", user!.id)
         .eq("plan_type", planType)
         .maybeSingle();
       if (error) throw error;
-      return data as { plan_data: any; updated_at: string } | null;
+      return data as { plan_data: any; updated_at: string; profile_snapshot: Record<string, any> | null } | null;
     },
     enabled: !!user?.id,
   });
+}
+
+export function useStrategyStale() {
+  const { user } = useAuth();
+  const contentPlan = usePlanQuery("content_plan");
+  const funnelStrategy = usePlanQuery("funnel_strategy");
+
+  const profileQuery = useQuery({
+    queryKey: ["profile-snapshot-check", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("goal_type, dm_keyword, dm_offer, max_posts_per_day, niche, traffic_url, mission")
+        .eq("id", user!.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const isStale = (() => {
+    if (!profileQuery.data) return false;
+    const profile = profileQuery.data;
+    const plans = [contentPlan.data, funnelStrategy.data];
+    for (const plan of plans) {
+      if (!plan?.profile_snapshot) continue;
+      const snap = plan.profile_snapshot;
+      for (const field of SNAPSHOT_FIELDS) {
+        const current = (profile as any)[field] ?? null;
+        const saved = snap[field] ?? null;
+        if (String(current) !== String(saved)) return true;
+      }
+    }
+    // If plans exist but have no snapshot, they're from before this feature
+    if (plans.some(p => p && !p.profile_snapshot)) return true;
+    return false;
+  })();
+
+  return { isStale, isLoading: contentPlan.isLoading || funnelStrategy.isLoading || profileQuery.isLoading };
 }
 
 function useGeneratePlan(planType: PlanType) {
