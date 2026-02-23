@@ -18,6 +18,8 @@ Reference the user's sales funnel steps when creating BOF post ideas — use the
 
 The creator's profile includes max_posts_per_day. You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.
 
+Each hook_idea must be 500 characters or less. Threads has a 500 character limit. Write hooks that are punchy and complete within that limit.
+
 Respond ONLY with valid JSON in this format:
 {
   "posts_per_day": number,
@@ -206,7 +208,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 4000,
+        max_tokens: Math.min(4000 + (postsPerDay * 800), 16000),
         system: systemPrompt,
         messages: [{ role: "user", content: creatorSettings + "\n" + userContext }],
       }),
