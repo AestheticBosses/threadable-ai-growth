@@ -6,16 +6,13 @@ import { ContentPreferencesCard } from "@/components/settings/ContentPreferences
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { DangerZoneCard } from "@/components/settings/DangerZoneCard";
 import { SubscriptionCard } from "@/components/settings/SubscriptionCard";
-import { IdentityTab } from "@/components/settings/IdentityTab";
-import { VoiceTab } from "@/components/settings/VoiceTab";
-import { KnowledgeBaseTab } from "@/components/settings/KnowledgeBaseTab";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscription } from "@/hooks/useSubscription";
 import { toast } from "@/hooks/use-toast";
 import { useSearchParams } from "react-router-dom";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 
 interface ProfileData {
   threads_username: string | null;
@@ -74,15 +71,7 @@ const SettingsPage = () => {
           </p>
         </div>
 
-        <Tabs defaultValue="general" className="w-full">
-          <TabsList className="w-full flex flex-wrap h-auto gap-1 bg-muted/50 p-1">
-            <TabsTrigger value="general" className="text-xs sm:text-sm">General</TabsTrigger>
-            <TabsTrigger value="identity" className="text-xs sm:text-sm">Identity</TabsTrigger>
-            <TabsTrigger value="voice" className="text-xs sm:text-sm">Voice</TabsTrigger>
-            <TabsTrigger value="knowledge" className="text-xs sm:text-sm">Knowledge Base</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="general" className="mt-6 space-y-6">
+        <div className="space-y-6">
             <SubscriptionCard
               plan={plan}
               status={status}
@@ -118,20 +107,7 @@ const SettingsPage = () => {
             ) : (
               <p className="text-muted-foreground">Unable to load profile data.</p>
             )}
-          </TabsContent>
-
-          <TabsContent value="identity" className="mt-6">
-            <IdentityTab />
-          </TabsContent>
-
-          <TabsContent value="voice" className="mt-6">
-            <VoiceTab />
-          </TabsContent>
-
-          <TabsContent value="knowledge" className="mt-6">
-            <KnowledgeBaseTab />
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
     </AppLayout>
   );
