@@ -5,6 +5,58 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Sparkles, RefreshCw, ArrowRight } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+
+const GOAL_LABELS: Record<string, string> = {
+  get_comments: "Get comments",
+  drive_traffic: "Drive traffic",
+  grow_audience: "Grow audience",
+};
+
+function GoalDisplay({ plan, onEdit }: { plan: any; onEdit: () => void }) {
+  const { data: profile } = useQuery({
+    queryKey: ["profile-goal-display"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("goal_type, dm_keyword, dm_offer, traffic_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  let goalText = plan.main_goal || "";
+  if (profile?.goal_type) {
+    const label = GOAL_LABELS[profile.goal_type] || profile.goal_type;
+    if (profile.goal_type === "get_comments" && profile.dm_keyword) {
+      goalText = `${label} using keyword '${profile.dm_keyword}'${profile.dm_offer ? ` to deliver: ${profile.dm_offer}` : ""}`;
+    } else if (profile.goal_type === "drive_traffic" && profile.traffic_url) {
+      goalText = `${label} to ${profile.traffic_url}`;
+    } else {
+      goalText = label;
+    }
+  }
+
+  if (!goalText) return null;
+
+  return (
+    <Card className="border-2 border-primary/30">
+      <CardContent className="p-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-xs text-muted-foreground">Your Goal</p>
+          <p className="text-sm font-semibold text-foreground">{goalText}</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onEdit} className="text-xs text-primary">
+          Edit
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 const STAGE_CONFIG: Record<string, { color: string; badge: string; icon: string }> = {
   tof: { color: "border-violet-500/40", badge: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "🌐" },
@@ -66,19 +118,7 @@ export function FunnelStrategyTab() {
       {!isGenerating && plan && (
         <>
           {/* Goal */}
-          {plan.main_goal && (
-            <Card className="border-2 border-primary/30">
-              <CardContent className="p-5 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Your Goal</p>
-                  <p className="text-sm font-semibold text-foreground">{plan.main_goal}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => navigate("/my-story")} className="text-xs text-primary">
-                  Edit
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          <GoalDisplay plan={plan} onEdit={() => navigate("/my-story")} />
 
           {/* Three columns */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
