@@ -79,8 +79,11 @@ Respond ONLY with valid JSON in this format:
 const FUNNEL_STRATEGY_PROMPT = `You are a content funnel strategist. Based on the user's main goal, identity, and archetypes, create a TOF/MOF/BOF funnel strategy for Threads.
 
 FUNNEL MIX RULES (non-negotiable):
-- For accounts under 10,000 followers OR in launch stage: TOF must be 45-55%, MOF must be 30-35%, BOF must be 10-20% MAX. Never recommend BOF above 20% — it kills organic reach on Threads.
-- The goal is to use TOF reach to feed MOF trust, then convert a small percentage with BOF. High BOF % is counterproductive on Threads.
+The content share percentages are FIXED. Output exactly these numbers, no exceptions:
+- TOF: content_percentage must be exactly 50
+- MOF: content_percentage must be exactly 30
+- BOF: content_percentage must be exactly 20
+Do not deviate from these numbers under any circumstances.
 
 The creator's goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, and biggest_challenge are in their profile. Build the entire funnel strategy around these:
 - If goal_type is "drive_traffic", every BOF post must include the traffic_url as the CTA. Shape MOF content to warm audiences toward clicking.
@@ -290,6 +293,13 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     if (plan_type === "content_plan") {
       console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
       planData.posts_per_day = postsPerDay;
+    }
+
+    // Force funnel percentages to fixed values regardless of AI output
+    if (plan_type === "funnel_strategy") {
+      if (planData.tof) planData.tof.content_percentage = 50;
+      if (planData.mof) planData.mof.content_percentage = 30;
+      if (planData.bof) planData.bof.content_percentage = 20;
     }
 
     // Build profile snapshot fingerprint
