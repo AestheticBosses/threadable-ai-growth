@@ -147,9 +147,8 @@ const Onboarding = () => {
   const [dreamClient, setDreamClient] = useState("");
   const [mission, setMission] = useState("");
 
-  // Step 3 — Revenue & Challenge
+  // Step 3 — Revenue
   const [revenueTarget, setRevenueTarget] = useState("");
-  const [biggestChallenge, setBiggestChallenge] = useState("");
 
   // Step 4 — Posts per day
   const [postsPerDay, setPostsPerDay] = useState(3);
@@ -174,7 +173,7 @@ const Onboarding = () => {
       if (!user) return;
       const { data } = await supabase
         .from("profiles")
-        .select("threads_username, dream_client, mission, traffic_url, max_posts_per_day, revenue_target, biggest_challenge")
+        .select("threads_username, dream_client, mission, traffic_url, max_posts_per_day, revenue_target")
         .eq("id", user.id)
         .single();
       if (data?.threads_username) {
@@ -186,7 +185,6 @@ const Onboarding = () => {
       if (data?.mission) setMission(data.mission);
       if (data?.traffic_url) setTrafficUrl(data.traffic_url);
       if (data?.revenue_target) setRevenueTarget(data.revenue_target);
-      if (data?.biggest_challenge) setBiggestChallenge(data.biggest_challenge);
       if (data?.max_posts_per_day) setPostsPerDay(data.max_posts_per_day);
       setProfileLoading(false);
     };
@@ -443,7 +441,6 @@ const Onboarding = () => {
         dm_keyword: dmKeyword.trim() || null,
         dm_offer: dmOffer.trim() || null,
         revenue_target: revenueTarget.trim() || null,
-        biggest_challenge: biggestChallenge.trim() || null,
       } as any).eq("id", user.id);
 
       await refreshProfile();
@@ -883,17 +880,6 @@ const Onboarding = () => {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    What's your biggest challenge right now?
-                  </label>
-                  <Input
-                    value={biggestChallenge}
-                    onChange={(e) => setBiggestChallenge(e.target.value)}
-                    placeholder="e.g. Not enough leads, inconsistent content"
-                    className="h-12 text-base"
-                  />
-                </div>
               </div>
             </div>
           )}
