@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/hooks/useSubscription";
 import { Button } from "@/components/ui/button";
 import { Lightbulb, ChevronDown, ChevronUp, Loader2, Lock } from "lucide-react";
 import { PaywallModal } from "@/components/PaywallModal";
@@ -162,6 +163,7 @@ function funnelPill(stage: string | null) {
 export default function PlanPreview({ journeyStage, goalType, onNavigate }: PlanPreviewProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { isPaid } = useSubscription();
   const [insights, setInsights] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<DraftPost[]>([]);
   const [postCount, setPostCount] = useState(0);
@@ -346,16 +348,28 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
 
         {/* Section 6 — Launch CTA */}
         <section className="space-y-4 pb-8">
-          <Button
-            size="lg"
-            className="w-full h-14 text-base font-semibold"
-            onClick={() => setPaywallOpen(true)}
-          >
-            Start Free Trial — Plans from $49/mo →
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            7-day free trial · Card required · Cancel anytime.
-          </p>
+          {isPaid ? (
+            <Button
+              size="lg"
+              className="w-full h-14 text-base font-semibold"
+              onClick={() => onNavigate("/dashboard")}
+            >
+              Go to Dashboard →
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="lg"
+                className="w-full h-14 text-base font-semibold"
+                onClick={() => setPaywallOpen(true)}
+              >
+                Start Free Trial — Plans from $49/mo →
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                7-day free trial · Card required · Cancel anytime.
+              </p>
+            </>
+          )}
         </section>
 
         <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
