@@ -45,20 +45,6 @@ export function BrandingPlanTab() {
             How to position yourself as an authority based on your identity, story, and audience.
           </p>
         </div>
-        <div className="flex gap-2">
-          {plan && (
-            <Button variant="outline" onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              🔄 Regenerate
-            </Button>
-          )}
-          {!plan && (
-            <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              ✨ Generate Plan
-            </Button>
-          )}
-        </div>
       </div>
 
       {isGenerating && (

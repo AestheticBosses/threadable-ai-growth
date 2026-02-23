@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
@@ -35,14 +36,15 @@ Deno.serve(async (req) => {
 
     console.log("generate-playbook for user:", user.id);
 
-    // 1. Get discovered archetypes
+    // Get archetypes (needed as raw JSON for prompt structure)
     const { data: archetypeRow } = await adminClient
       .from("content_strategies")
       .select("strategy_data")
       .eq("user_id", user.id)
       .eq("strategy_type", "archetype_discovery")
+      .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!archetypeRow?.strategy_data) {
       return new Response(
@@ -51,71 +53,23 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2. Get regression insights (if available)
-    const { data: strategyRow } = await adminClient
-      .from("content_strategies")
-      .select("regression_insights")
-      .eq("user_id", user.id)
-      .eq("strategy_type", "weekly")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const regressionInsights = (strategyRow?.regression_insights as any) || null;
-
-    // 3. Get top 10 posts
-    const { data: topPosts } = await adminClient
-      .from("posts_analyzed")
-      .select("text_content, views, likes, replies, reposts, quotes, engagement_rate")
-      .eq("user_id", user.id)
-      .order("views", { ascending: false })
-      .limit(10);
-
-    // 4. Get voice profile
-    const { data: profileData } = await adminClient
-      .from("profiles")
-      .select("voice_profile, niche, dream_client, end_goal, posting_cadence, traffic_url, goal_type, dm_keyword, dm_offer, posts_per_day")
-      .eq("id", user.id)
-      .single();
-
-    // Get journey stage for funnel optimization
-    const journeyStage = await fetchJourneyStage(adminClient, user.id);
-    const stageConfig = getStageConfig(journeyStage);
-
     const archetypes = archetypeRow.strategy_data;
-    const insightsBullets = regressionInsights?.human_readable_insights
-      ? (regressionInsights.human_readable_insights as string[]).map((i: string) => `• ${i}`).join("\n")
-      : "No regression data available yet.";
 
-    const topPostsText = (topPosts || [])
-      .map(
-        (p: any, i: number) =>
-          `${i + 1}. (${p.views} views, ${p.likes} likes, ${p.replies} replies, ${p.reposts} reposts, ${(p.engagement_rate || 0).toFixed(2)}% eng)\n"${(p.text_content || "").slice(0, 400)}"`
-      )
-      .join("\n\n");
+    // Get full user context (replaces 4 manual queries)
+    const [userContext, journeyStage] = await Promise.all([
+      getUserContext(adminClient, user.id),
+      fetchJourneyStage(adminClient, user.id),
+    ]);
+    const stageConfig = getStageConfig(journeyStage);
 
     const prompt = `You are building a personalized content playbook for a Threads creator.
 
 Here are their discovered content archetypes (from analyzing their top posts):
 ${JSON.stringify(archetypes, null, 2)}
 
-Here is their regression analysis showing what drives engagement:
-${insightsBullets}
+Here is everything you know about this creator:
 
-Here are their top 10 posts with engagement data:
-${topPostsText}
-
-Creator context:
-- Niche: ${profileData?.niche || "Not specified"}
-- Dream client: ${profileData?.dream_client || "Not specified"}
-- End goal: ${profileData?.end_goal || "Not specified"}
-- Goal type: ${profileData?.goal_type || "Not set"}
-- Posting cadence: ${profileData?.posting_cadence || "Not set"}
-- Posts per day: ${profileData?.posts_per_day || "Not set"}
-- Traffic URL (for BOF/CTA posts): ${profileData?.traffic_url || "Not set"}
-- DM keyword: ${profileData?.dm_keyword || "Not set"}
-- DM offer: ${profileData?.dm_offer || "Not set"}
-- Voice profile: ${profileData?.voice_profile ? JSON.stringify(profileData.voice_profile) : "Not set"}
+${userContext}
 
 Journey stage optimization:
 ${stageConfig.promptBlock}

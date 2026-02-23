@@ -1,7 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import Stripe from "https://esm.sh/stripe@14?target=deno";
 
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
+const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
+const stripe = new Stripe(STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" });
 
 const PLAN_LIMITS: Record<string, number> = {
   consistency: 150,
@@ -25,7 +28,27 @@ serve(async (req) => {
 
   try {
     const body = await req.text();
-    const event = JSON.parse(body);
+    const sig = req.headers.get("stripe-signature");
+
+    if (!sig || !STRIPE_WEBHOOK_SECRET) {
+      console.error("[stripe-webhook] Missing signature or webhook secret");
+      return new Response(JSON.stringify({ error: "Missing signature" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let event: Stripe.Event;
+    try {
+      event = await stripe.webhooks.constructEventAsync(body, sig, STRIPE_WEBHOOK_SECRET);
+    } catch (err: any) {
+      console.error("[stripe-webhook] Signature verification failed:", err.message);
+      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     console.log("[stripe-webhook] Event type:", event.type);
 
     const supabase = createClient(
@@ -59,6 +82,25 @@ serve(async (req) => {
         }, { onConflict: "user_id" });
 
         console.log(`[stripe-webhook] Activated ${plan} for user ${userId}`);
+
+        // Trigger post generation for the new subscriber
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+        try {
+          const genResp = await fetch(`${supabaseUrl}/functions/v1/generate-week-posts`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+            },
+            body: JSON.stringify({ user_id: userId }),
+          });
+          const genResult = await genResp.json();
+          console.log(`[stripe-webhook] generate-week-posts result:`, genResult);
+        } catch (genErr: any) {
+          console.error(`[stripe-webhook] generate-week-posts failed:`, genErr.message);
+        }
+
         break;
       }
 

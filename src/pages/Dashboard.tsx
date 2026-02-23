@@ -7,6 +7,7 @@ import { DailyActionBoard } from "@/components/dashboard/DailyActionBoard";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
+import { WeeklyApprovalGate } from "@/components/dashboard/WeeklyApprovalGate";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { BarChart3, RefreshCw, Brain, Loader2, User } from "lucide-react";
@@ -217,6 +218,9 @@ const Dashboard = () => {
 
             {/* ── Section 1: Plan Health Hero ── */}
             <PlanHealthHero />
+
+            {/* ── Weekly Approval Gate (self-hides when no drafts) ── */}
+            <WeeklyApprovalGate />
 
             {/* ── Milestone Card ── */}
             <MilestoneCard />

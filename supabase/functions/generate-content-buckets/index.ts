@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,50 +32,8 @@ serve(async (req) => {
     const userId = user.id;
     console.log("[generate-content-buckets] Auth OK, userId:", userId);
 
-    // Fetch data in parallel
-    const [{ data: profile }, { data: identity }, { data: posts }] = await Promise.all([
-      adminClient
-        .from("profiles")
-        .select("niche, dream_client, end_goal, mission, display_name, full_name")
-        .eq("id", userId)
-        .single(),
-      adminClient
-        .from("user_identity")
-        .select("about_you, desired_perception")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      adminClient
-        .from("posts_analyzed")
-        .select("text_content, views, likes, replies, engagement_rate")
-        .eq("user_id", userId)
-        .eq("source", "own")
-        .not("text_content", "is", null)
-        .order("views", { ascending: false })
-        .limit(30),
-    ]);
-
-    console.log("[generate-content-buckets] Data fetched — profile:", !!profile, "posts:", posts?.length || 0);
-
-    const niche = profile?.niche || profile?.dream_client || "general";
-
-    // Build context for AI
-    const profileContext = [
-      `Niche: ${niche}`,
-      `Dream Client: ${profile.dream_client || "Not specified"}`,
-      `End Goal: ${profile.end_goal || "Not specified"}`,
-      `Mission: ${profile.mission || "Not specified"}`,
-      `Name: ${profile.display_name || profile.full_name || "Not specified"}`,
-    ].join("\n");
-
-    const identityContext = identity
-      ? `About: ${identity.about_you || "Not set"}\nDesired Perception: ${identity.desired_perception || "Not set"}`
-      : "No identity data yet.";
-
-    const postsContext = posts && posts.length > 0
-      ? posts.slice(0, 15).map((p: any, i: number) =>
-          `Post ${i + 1} (${p.views ?? 0} views, ${p.likes ?? 0} likes, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}):\n${(p.text_content || "").slice(0, 200)}`
-        ).join("\n\n")
-      : "No posts yet.";
+    // Get full user context (replaces 3 manual queries: profile, identity, posts)
+    const userContext = await getUserContext(adminClient, userId);
 
     const systemPrompt = `You are a content strategist who identifies audience segments for social media creators. You analyze a creator's niche, goals, identity, and top-performing content to determine the 2-3 distinct audience segments they should create content for.
 
@@ -89,14 +48,9 @@ Examples of good bucket structures:
 - A SaaS marketer might have: "Startup founders doing their own marketing", "Marketing managers at mid-size companies", "Agency owners scaling client work"
 - A career coach might have: "Mid-career professionals feeling stuck", "New graduates entering the workforce", "Executives transitioning industries"`;
 
-    const userMessage = `Creator profile:
-${profileContext}
+    const userMessage = `Here is everything you know about this creator:
 
-Identity:
-${identityContext}
-
-Their top-performing posts (to understand what resonates):
-${postsContext}
+${userContext}
 
 Based on this creator's niche, goals, identity, and content performance, generate 2-3 content buckets (audience segments).
 

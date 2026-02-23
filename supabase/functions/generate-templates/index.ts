@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,49 +35,31 @@ serve(async (req) => {
       });
     }
 
-    // Fetch archetypes
-    const { data: strategyRow } = await adminClient
+    // Fetch archetypes (use maybeSingle + order to handle multiple rows)
+    const { data: strategyRow, error: strategyErr } = await adminClient
       .from("content_strategies")
       .select("strategy_data")
       .eq("user_id", user.id)
       .eq("strategy_type", "archetype_discovery")
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (strategyErr) {
+      console.error("Failed to fetch content_strategies:", strategyErr);
+    }
 
     const archetypes = (strategyRow?.strategy_data as any)?.archetypes;
     if (!archetypes || !Array.isArray(archetypes) || archetypes.length === 0) {
-      return new Response(JSON.stringify({ error: "No archetypes found. Run archetype discovery first." }), {
-        status: 400,
+      console.error("No archetypes found for user:", user.id);
+      return new Response(JSON.stringify({ success: false, error: "No archetypes found. Run archetype discovery first." }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Fetch user profile for niche context
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("niche, end_goal, dream_client, voice_profile")
-      .eq("id", user.id)
-      .single();
-
-    // Fetch identity for voice context
-    const { data: identity } = await adminClient
-      .from("user_identity")
-      .select("about_you")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    // Fetch stories and personal info so templates reference real experiences
-    const [{ data: storyVault }, { data: personalInfo }] = await Promise.all([
-      adminClient
-        .from("user_story_vault")
-        .select("data")
-        .eq("user_id", user.id)
-        .eq("section", "stories")
-        .maybeSingle(),
-      adminClient
-        .from("user_personal_info")
-        .select("content")
-        .eq("user_id", user.id),
-    ]);
+    // Get full user context (replaces 4 manual queries: profile, identity, storyVault, personalInfo)
+    const userContext = await getUserContext(adminClient, user.id);
 
     // Build the archetype descriptions for the prompt
     const archetypeDescriptions = archetypes
@@ -87,40 +70,14 @@ serve(async (req) => {
    - Existing template: ${a.template || "N/A"}`)
       .join("\n\n");
 
-    const profileContext = profile
-      ? `Niche: ${profile.niche || "general"}\nGoal: ${profile.end_goal || "grow audience"}\nDream client: ${profile.dream_client || "not specified"}`
-      : "";
-
-    const identityContext = identity?.about_you
-      ? `About the creator: ${identity.about_you}`
-      : "";
-
-    // Build voice context from profile
-    const voiceContext = profile?.voice_profile
-      ? `\nVOICE PROFILE:\n- Tone: ${(profile.voice_profile as any).tone?.join(", ") || "N/A"}\n- Sentence style: ${(profile.voice_profile as any).sentence_style || "N/A"}\n- Vocabulary: ${(profile.voice_profile as any).vocabulary_level || "N/A"}\n- Common phrases: ${(profile.voice_profile as any).common_phrases?.join(", ") || "N/A"}\n- Opening style: ${(profile.voice_profile as any).opening_style || "N/A"}\n- Unique quirks: ${(profile.voice_profile as any).unique_quirks?.join(", ") || "N/A"}\n`
-      : "";
-
-    // Build stories context
-    const stories = (storyVault?.data as any[]) || [];
-    const storiesContext = stories.length > 0
-      ? `\nSTORIES & EXPERIENCES (use these in example fills):\n${stories.slice(0, 5).map((s: any) => `- ${s.title}: ${s.story?.slice(0, 150) || ""}${s.lesson ? ` (Lesson: ${s.lesson})` : ""}`).join("\n")}\n`
-      : "";
-
-    // Build personal info context
-    const personalFacts = (personalInfo || []).map((p: any) => p.content).filter(Boolean);
-    const personalContext = personalFacts.length > 0
-      ? `\nPERSONAL FACTS (reference in examples):\n${personalFacts.slice(0, 10).map((f: string) => `- ${f}`).join("\n")}\n`
-      : "";
-
     const systemPrompt = `${CONTENT_GENERATION_RULES}
 
 EXCEPTION FOR THIS TASK: Brackets ARE allowed in template_text fields since these are fill-in-the-blank templates. But example_text fields must have NO brackets — fill everything in with real data.
 
 You are a content strategist creating fill-in-the-blank post templates for a Threads creator.
 
-${profileContext}
-${identityContext}
-${voiceContext}${storiesContext}${personalContext}
+${userContext}
+
 Here are their discovered content archetypes:
 
 ${archetypeDescriptions}
@@ -169,8 +126,8 @@ Rules:
     if (!claudeResponse.ok) {
       const errText = await claudeResponse.text();
       console.error("Claude API error:", claudeResponse.status, errText);
-      return new Response(JSON.stringify({ error: "AI template generation failed" }), {
-        status: 500,
+      return new Response(JSON.stringify({ success: false, error: "AI template generation failed" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -183,17 +140,18 @@ Rules:
       const cleanJson = rawText.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
       parsed = JSON.parse(cleanJson);
     } catch {
-      console.error("JSON parse failed, raw:", rawText);
-      return new Response(JSON.stringify({ error: "Failed to parse AI response" }), {
-        status: 500,
+      console.error("JSON parse failed, raw:", rawText.slice(0, 500));
+      return new Response(JSON.stringify({ success: false, error: "Failed to parse AI response" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const templates = parsed.templates;
     if (!Array.isArray(templates) || templates.length === 0) {
-      return new Response(JSON.stringify({ error: "No templates in AI response" }), {
-        status: 500,
+      console.error("No templates array in parsed response:", JSON.stringify(parsed).slice(0, 300));
+      return new Response(JSON.stringify({ success: false, error: "No templates in AI response" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -221,8 +179,8 @@ Rules:
 
     if (insertError) {
       console.error("Insert error:", insertError);
-      return new Response(JSON.stringify({ error: "Failed to save templates" }), {
-        status: 500,
+      return new Response(JSON.stringify({ success: false, error: "Failed to save templates", details: insertError.message }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -234,8 +192,8 @@ Rules:
     });
   } catch (err) {
     console.error("generate-templates error:", err);
-    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }), {
-      status: 500,
+    return new Response(JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

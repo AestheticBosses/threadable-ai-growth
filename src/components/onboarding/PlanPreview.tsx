@@ -195,14 +195,14 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
       ]);
 
       console.log("regressionRow:", regressionRow, "error:", regressionErr);
-
-      const humanInsights = (regressionRow?.regression_insights as any)?.human_readable_insights;
-      const insightsList = Array.isArray(humanInsights) && humanInsights.length > 0 ? humanInsights : [];
-      setPatternCount(insightsList.length);
       setPostCount(postsCount ?? 0);
 
-      if (insightsList.length > 0) {
-        setInsights(insightsList.slice(0, 3));
+      const regressionData = regressionRow?.regression_insights as any;
+      const humanInsights = regressionData?.human_readable_insights;
+      if (Array.isArray(humanInsights) && humanInsights.length > 0) {
+        const selected = humanInsights.slice(0, 3);
+        setPatternCount(selected.length);
+        setInsights(selected);
       } else {
         setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS["drive_traffic"]);
       }

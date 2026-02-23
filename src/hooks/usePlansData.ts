@@ -40,7 +40,15 @@ function useGeneratePlan(planType: PlanType) {
       if (res.error) throw new Error(res.error.message || "Generation failed");
       return res.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Immediately update cache with returned plan data so UI never shows stale content
+      if (data?.plan_data) {
+        queryClient.setQueryData(
+          ["user-plan", user?.id, planType],
+          { plan_data: data.plan_data, updated_at: new Date().toISOString() }
+        );
+      }
+      // Also invalidate to force a background refetch from DB
       queryClient.invalidateQueries({ queryKey: ["user-plan", user?.id, planType] });
     },
     onError: (e: Error) => {

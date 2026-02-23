@@ -8,6 +8,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Mountain Time targets: 10:00, 12:00, 17:00, 20:00 → stored as UTC
 const TIME_SLOTS_UTC = ["17:00", "19:00", "00:00", "03:00"];
 
 function funnelInstruction(
@@ -61,14 +62,19 @@ Deno.serve(async (req) => {
       data: { user },
       error: userError,
     } = await adminClient.auth.getUser(jwt);
-    if (userError || !user) {
+
+    // Parse body early so we can use body.user_id as fallback for service-role calls
+    const body = await req.json().catch(() => ({}));
+
+    // Allow service-role callers (e.g. stripe-webhook) to pass user_id in the body
+    const userId = user?.id || body.user_id;
+    if (!userId) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const userId = user.id;
     console.log("generate-week-posts for user:", userId);
 
     // 1. Fetch next 7 content_plan_items where post_id IS NULL, scheduled_date >= today
@@ -137,7 +143,20 @@ Deno.serve(async (req) => {
     const dmKeyword = profileRes.data?.dm_keyword || "";
     const dmOffer = profileRes.data?.dm_offer || "";
 
-    // 4. Generate each post sequentially to avoid rate limits
+    // 4. Delete existing drafts to avoid duplicates on re-run
+    const { error: deleteErr } = await adminClient
+      .from("scheduled_posts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("status", "draft");
+
+    if (deleteErr) {
+      console.error("Failed to delete old drafts:", deleteErr);
+    } else {
+      console.log("Cleared existing draft posts");
+    }
+
+    // 5. Generate each post sequentially to avoid rate limits
     const results: any[] = [];
 
     for (let i = 0; i < planItems.length; i++) {
@@ -151,6 +170,8 @@ Deno.serve(async (req) => {
       const systemPrompt = `${CONTENT_GENERATION_RULES}
 
 You are Threadable — a data-driven Threads content writer. You write posts backed by regression analysis of this user's actual performance data.
+
+CRITICAL: Every post MUST be under 480 characters total. Count every character including spaces and line breaks. Do not exceed 480 characters.
 
 Here is everything you know about this user:
 
@@ -195,7 +216,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
         }
 
         const aiData = await aiResp.json();
-        const text = (aiData.content?.[0]?.text || "").trim();
+        let text = (aiData.content?.[0]?.text || "").trim();
 
         if (!text) {
           console.error(`Empty response for item ${item.id}`);
@@ -203,9 +224,30 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
           continue;
         }
 
-        // 5. Insert into scheduled_posts
-        const timeSlot = TIME_SLOTS_UTC[i % TIME_SLOTS_UTC.length];
-        const scheduledFor = `${item.scheduled_date}T${timeSlot}:00`;
+        // Safety trim: cut to last complete sentence under 500 chars
+        if (text.length > 500) {
+          const trimmed = text.slice(0, 500);
+          const lastSentenceEnd = Math.max(
+            trimmed.lastIndexOf(". "),
+            trimmed.lastIndexOf(".\n"),
+            trimmed.lastIndexOf("!"),
+            trimmed.lastIndexOf("?")
+          );
+          text = lastSentenceEnd > 0 ? trimmed.slice(0, lastSentenceEnd + 1) : trimmed;
+          console.log(`Trimmed post from ${aiData.content[0].text.trim().length} to ${text.length} chars`);
+        }
+
+        // Insert into scheduled_posts
+        const utcTime = TIME_SLOTS_UTC[i % TIME_SLOTS_UTC.length];
+        // 00:00 and 03:00 UTC fall on the next calendar day
+        const needsNextDay = utcTime === "00:00" || utcTime === "03:00";
+        let dateForTimestamp = item.scheduled_date;
+        if (needsNextDay) {
+          const d = new Date(item.scheduled_date + "T00:00:00Z");
+          d.setUTCDate(d.getUTCDate() + 1);
+          dateForTimestamp = d.toISOString().split("T")[0];
+        }
+        const scheduledFor = `${dateForTimestamp}T${utcTime}:00Z`;
 
         const { data: inserted, error: insertErr } = await adminClient
           .from("scheduled_posts")
@@ -228,7 +270,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
           continue;
         }
 
-        // 6. Update content_plan_items: link post_id and set status to "drafted"
+        // 7. Update content_plan_items: link post_id and set status to "drafted"
         const { error: updateErr } = await adminClient
           .from("content_plan_items")
           .update({ post_id: inserted.id, status: "drafted" })

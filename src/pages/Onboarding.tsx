@@ -44,6 +44,8 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
   { id: "analysis", label: "Analyzing what works…", status: "waiting" },
   { id: "regression", label: "Running regression analysis…", status: "waiting" },
   { id: "archetypes", label: "Discovering your content archetypes…", status: "waiting" },
+  { id: "niche_accounts", label: "Discovering niche accounts to study…", status: "waiting" },
+  { id: "competitor_posts", label: "Fetching competitor content…", status: "waiting" },
   { id: "identity", label: "Extracting your identity…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
@@ -58,6 +60,8 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
 const NEW_PIPELINE: PipelineStepDef[] = [
   { id: "fetch", label: "Checking your Threads account…", status: "waiting" },
   { id: "archetypes", label: "Identifying winning content patterns…", status: "waiting" },
+  { id: "niche_accounts", label: "Discovering niche accounts to study…", status: "waiting" },
+  { id: "competitor_posts", label: "Fetching competitor content…", status: "waiting" },
   { id: "identity", label: "Building your starter identity…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
@@ -131,7 +135,7 @@ const Onboarding = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, refreshProfile } = useAuth();
 
-  // Step state (0–3)
+  // Step state (0–4)
   const [step, setStep] = useState(0);
   const [profileLoading, setProfileLoading] = useState(true);
 
@@ -149,7 +153,11 @@ const Onboarding = () => {
   const [dreamClient, setDreamClient] = useState("");
   const [mission, setMission] = useState("");
 
-  // Step 3 — Posts per day
+  // Step 3 — Revenue & Challenge
+  const [revenueTarget, setRevenueTarget] = useState("");
+  const [biggestChallenge, setBiggestChallenge] = useState("");
+
+  // Step 4 — Posts per day
   const [postsPerDay, setPostsPerDay] = useState(3);
 
   // Pipeline
@@ -172,7 +180,7 @@ const Onboarding = () => {
       if (!user) return;
       const { data } = await supabase
         .from("profiles")
-        .select("threads_username, dream_client, mission, traffic_url, max_posts_per_day")
+        .select("threads_username, dream_client, mission, traffic_url, max_posts_per_day, revenue_target, biggest_challenge")
         .eq("id", user.id)
         .single();
       if (data?.threads_username) {
@@ -183,6 +191,8 @@ const Onboarding = () => {
       if (data?.dream_client) setDreamClient(data.dream_client);
       if (data?.mission) setMission(data.mission);
       if (data?.traffic_url) setTrafficUrl(data.traffic_url);
+      if (data?.revenue_target) setRevenueTarget(data.revenue_target);
+      if (data?.biggest_challenge) setBiggestChallenge(data.biggest_challenge);
       if (data?.max_posts_per_day) setPostsPerDay(data.max_posts_per_day);
       setProfileLoading(false);
     };
@@ -307,6 +317,25 @@ const Onboarding = () => {
       getAuthHeaders().then((h) => supabase.functions.invoke("categorize-posts", { headers: h }).catch(() => {}));
     }
 
+    // Discover niche accounts, then fetch their posts for competitor analysis
+    const nicheOk = await invokeStep("niche_accounts", "discover-niche-accounts", {});
+    if (nicheOk) {
+      // Read the usernames that discover-niche-accounts just wrote
+      const { data: compAccounts } = await supabase
+        .from("competitor_accounts")
+        .select("threads_username")
+        .eq("user_id", user.id)
+        .limit(5);
+      const usernames = (compAccounts || []).map((a: any) => a.threads_username).filter(Boolean);
+      if (usernames.length > 0) {
+        await invokeStep("competitor_posts", "fetch-competitor-posts", { usernames });
+      } else {
+        updateStep("competitor_posts", "done");
+      }
+    } else {
+      updateStep("competitor_posts", "error");
+    }
+
     await invokeStep("identity", "extract-identity", { user_id: user.id });
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
 
@@ -330,11 +359,8 @@ const Onboarding = () => {
       updateStep("plan30", "error");
     }
 
-    if (pillarsOk) {
-      await invokeStep("weekposts", "generate-week-posts", {});
-    } else {
-      updateStep("weekposts", "error");
-    }
+    // Week posts are now generated after payment via stripe-webhook
+    updateStep("weekposts", "done");
 
     updateStep("plans", "active");
     try {
@@ -364,6 +390,24 @@ const Onboarding = () => {
 
     getAuthHeaders().then((h) => supabase.functions.invoke("categorize-posts", { headers: h }).catch(() => {}));
 
+    // Discover niche accounts, then fetch their posts for competitor analysis
+    const nicheOk = await invokeStep("niche_accounts", "discover-niche-accounts", {});
+    if (nicheOk) {
+      const { data: compAccounts } = await supabase
+        .from("competitor_accounts")
+        .select("threads_username")
+        .eq("user_id", user.id)
+        .limit(5);
+      const usernames = (compAccounts || []).map((a: any) => a.threads_username).filter(Boolean);
+      if (usernames.length > 0) {
+        await invokeStep("competitor_posts", "fetch-competitor-posts", { usernames });
+      } else {
+        updateStep("competitor_posts", "done");
+      }
+    } else {
+      updateStep("competitor_posts", "error");
+    }
+
     await invokeStep("identity", "extract-identity", {});
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
     await invokeStep("playbook", "generate-playbook", { user_id: user.id });
@@ -382,11 +426,8 @@ const Onboarding = () => {
       updateStep("plan30", "error");
     }
 
-    if (pillarsOk) {
-      await invokeStep("weekposts", "generate-week-posts", {});
-    } else {
-      updateStep("weekposts", "error");
-    }
+    // Week posts are now generated after payment via stripe-webhook
+    updateStep("weekposts", "done");
 
     updateStep("plans", "active");
     try {
@@ -419,6 +460,8 @@ const Onboarding = () => {
         goal_type: goalType,
         dm_keyword: dmKeyword.trim() || null,
         dm_offer: dmOffer.trim() || null,
+        revenue_target: revenueTarget.trim() || null,
+        biggest_challenge: biggestChallenge.trim() || null,
       } as any).eq("id", user.id);
 
       await refreshProfile();
@@ -532,7 +575,8 @@ const Onboarding = () => {
       case 0: return true; // can proceed connected or not
       case 1: return goalType !== null;
       case 2: return dreamClient.trim().length > 0 && mission.trim().length > 0;
-      case 3: return true;
+      case 3: return true; // optional fields
+      case 4: return true;
       default: return false;
     }
   };
@@ -543,7 +587,7 @@ const Onboarding = () => {
       setStep(1);
       return;
     }
-    if (step < 3) {
+    if (step < 4) {
       setStep((s) => s + 1);
     } else {
       handleBuildPlan();
@@ -590,13 +634,14 @@ const Onboarding = () => {
         analysis: { fn: "run-analysis", body: { user_id: user.id } },
         regression: { fn: "run-regression", body: { user_id: user.id } },
         archetypes: { fn: "discover-archetypes", body: { user_id: user.id, niche: dreamClient.trim(), goals: mission.trim() } },
+        niche_accounts: { fn: "discover-niche-accounts", body: {} },
+        competitor_posts: { fn: "fetch-competitor-posts", body: {} },
         identity: { fn: "extract-identity", body: { user_id: user.id } },
         voice: { fn: "analyze-voice", body: { user_id: user.id } },
         playbook: { fn: "generate-playbook", body: { user_id: user.id } },
         buckets: { fn: "generate-content-buckets", body: {} },
         pillars: { fn: "generate-content-pillars", body: {} },
         plan30: { fn: "generate-30day-plan", body: {} },
-        weekposts: { fn: "generate-week-posts", body: {} },
         templates: { fn: "generate-templates", body: {} },
       };
       const mapping = retryMap[stepId];
@@ -839,8 +884,43 @@ const Onboarding = () => {
             </div>
           )}
 
-          {/* ── Step 3: Posting Commitment ── */}
+          {/* ── Step 3: Revenue & Challenge (optional) ── */}
           {step === 3 && (
+            <div className="space-y-6">
+              <h1 className="text-3xl md:text-4xl font-bold text-foreground text-center">
+                Two more things (optional)
+              </h1>
+
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    What's your revenue target in the next 90 days?
+                  </label>
+                  <Input
+                    value={revenueTarget}
+                    onChange={(e) => setRevenueTarget(e.target.value)}
+                    placeholder="e.g. $10K/month, $50K total"
+                    className="h-12 text-base"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">
+                    What's your biggest challenge right now?
+                  </label>
+                  <Input
+                    value={biggestChallenge}
+                    onChange={(e) => setBiggestChallenge(e.target.value)}
+                    placeholder="e.g. Not enough leads, inconsistent content"
+                    className="h-12 text-base"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 4: Posting Commitment ── */}
+          {step === 4 && (
             <div className="space-y-8">
               <h1 className="text-3xl md:text-4xl font-bold text-foreground text-center">
                 How aggressive do you want to grow?
@@ -882,8 +962,10 @@ const Onboarding = () => {
         >
           {step === 0
             ? "Continue →"
-            : step === 3
+            : step === 4
             ? "Build My Plan →"
+            : step === 3
+            ? "Skip / Next →"
             : "Next →"
           }
         </Button>

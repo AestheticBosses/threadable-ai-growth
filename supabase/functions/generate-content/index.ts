@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CONTENT_GENERATION_RULES } from "../_shared/contentRules.ts";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -256,25 +257,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    const anonClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user }, error: userError } = await adminClient.auth.getUser(token);
+    if (userError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claimsData.claims.sub as string;
+    const userId = user.id;
 
     const body = await req.json().catch(() => ({}));
     const postsCount = body.posts_count || 21;
     const regeneratePostId = body.regenerate_post_id;
     const regenerateCategory = body.regenerate_category;
     const rescoreText = body.rescore_text;
-
-    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     if (rescoreText) {
       const result = await callScorePost(rescoreText, authHeader, SUPABASE_URL);
@@ -283,11 +280,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch profile + strategy + top posts + playbook + vault data
-    const [profileRes, strategyRes, postsRes, playbookRes, vaultRes, salesFunnelRes] = await Promise.all([
-      adminClient.from("profiles").select("niche, dream_client, end_goal, voice_profile, funnel_goal, funnel_tof_pct, funnel_mof_pct, funnel_bof_pct").eq("id", userId).single(),
+    // Full user context for AI prompt (replaces manual profile/strategy/posts queries)
+    // Plus structured data needed for vault parsing, funnel mix, playbook schedule, and strategy ID
+    const [userContext, profileRes, strategyRes, playbookRes, vaultRes, salesFunnelRes] = await Promise.all([
+      getUserContext(adminClient, userId),
+      adminClient.from("profiles").select("funnel_tof_pct, funnel_mof_pct, funnel_bof_pct, niche, dream_client, end_goal").eq("id", userId).maybeSingle(),
       adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      adminClient.from("posts_analyzed").select("text_content, engagement_rate, views").eq("user_id", userId).order("engagement_rate", { ascending: false }).limit(5),
       adminClient.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").limit(1).maybeSingle(),
       adminClient.from("user_story_vault").select("section, data").eq("user_id", userId),
       adminClient.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
@@ -295,14 +293,7 @@ Deno.serve(async (req) => {
 
     const profile = profileRes.data as any;
     const strategy = strategyRes.data;
-    const topPosts = postsRes.data || [];
     const playbookData = (playbookRes.data?.strategy_data as any) || null;
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     // Parse vault data
     const vaultSections: Record<string, any> = {};
@@ -390,24 +381,7 @@ RULES FOR FUNNEL STAGES:
 4. Each post MUST include a funnel_stage field: "TOF", "MOF", or "BOF".`;
 
     const strategyId = strategy?.id || null;
-    const voiceProfile = profile.voice_profile as any;
-    const insights = strategy?.regression_insights as any;
     const strategyJson = strategy?.strategy_json as any;
-
-    const insightsBullets = (insights?.human_readable_insights || []).map((i: string) => `• ${i}`).join("\n");
-    const topPostsRef = topPosts.map((p: any, i: number) => `${i + 1}. "${(p.text_content || "").slice(0, 300)}"`).join("\n");
-
-    const voiceText = voiceProfile
-      ? `Tone: ${(voiceProfile.tone || []).join(", ")}
-Sentence style: ${voiceProfile.sentence_style || "N/A"}
-Vocabulary: ${voiceProfile.vocabulary_level || "N/A"}
-Emoji usage: ${voiceProfile.emoji_usage || "N/A"}
-Formatting: ${voiceProfile.formatting_patterns || "N/A"}
-Opening style: ${voiceProfile.opening_style || "N/A"}
-Closing style: ${voiceProfile.closing_style || "N/A"}
-Quirks: ${(voiceProfile.unique_quirks || []).join(", ")}
-Summary: ${voiceProfile.overall_summary || "N/A"}`
-      : "No voice profile available — write in a natural, conversational tone.";
 
     let playbookContext = "";
     let checklistContext = "";
@@ -475,6 +449,16 @@ CRITICAL RULES — FOLLOW THESE ABSOLUTELY:
 
 You are a Threads ghostwriter. You write in the user's EXACT voice — matching their tone, sentence structure, vocabulary, and quirks perfectly.
 
+Here is everything you know about this creator:
+
+${userContext}
+${vaultContext}
+
+CONTENT STRATEGY:
+${strategyJson ? JSON.stringify(strategyJson, null, 2) : "No weekly strategy available."}
+${playbookContext}
+${funnelContext}
+
 CRITICAL RULES FOR VARIETY:
 - NEVER repeat the same hook pattern twice. Every post must open with a completely different first line.
 - NEVER use the same statistic or number in more than 2 posts out of the entire batch.
@@ -483,14 +467,6 @@ CRITICAL RULES FOR VARIETY:
 - Vary structure: mix one-liners (1 sentence), short posts (2-3 sentences), and multi-paragraph posts (4+ sentences).
 - Vary tone: mix serious, humorous, vulnerable, provocative, and inspirational across the batch.
 - If generating 10+ posts, ensure at least 5 different stories/data points from the vault are referenced across the batch.
-
-VOICE PROFILE:
-${voiceText}
-
-NICHE: ${profile.niche || "Not specified"}
-DREAM CLIENT: ${profile.dream_client || "Not specified"}
-END GOAL: ${profile.end_goal || "Not specified"}
-${vaultContext}
 
 VARIETY CHECKLIST — before returning your posts, verify ALL of these:
 □ No two posts start with a similar opening pattern
@@ -507,17 +483,6 @@ VARIETY CHECKLIST — before returning your posts, verify ALL of these:
 □ If you've used the origin story, use a different personal story next
 □ Mine the FULL vault: stories, numbers, offers, knowledge base, audience insights — not just the most dramatic data points
 If any check fails, rewrite the offending posts before returning.
-
-WHAT PERFORMS BEST (from data analysis):
-${insightsBullets || "No data available yet"}
-
-CONTENT STRATEGY:
-${strategyJson ? JSON.stringify(strategyJson, null, 2) : "No weekly strategy available."}
-${playbookContext}
-${funnelContext}
-
-STYLE REFERENCE (their actual top posts):
-${topPostsRef || "No posts available"}
 
 PATTERN REPLICATION RULES:
 - For each post you generate, pick one of the user's top-performing posts above and use its emotional trigger + structure as a blueprint.

@@ -41,7 +41,7 @@ export function useKnowledgeBase() {
     mutationFn: async (item: Pick<KnowledgeItem, "title" | "type" | "content" | "file_path" | "tags">) => {
       const { data, error } = await supabase
         .from("knowledge_base" as any)
-        .insert({ ...item, user_id: user!.id } as any)
+        .insert({ ...item, user_id: user!.id, processed: true } as any)
         .select("id")
         .single();
       if (error) throw error;

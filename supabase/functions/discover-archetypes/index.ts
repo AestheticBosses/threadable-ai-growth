@@ -216,6 +216,46 @@ Respond ONLY in this exact JSON format with no other text:
 
     console.log("=== ARCHETYPES DISCOVERED ===", analysis.archetypes?.length)
 
+    // Seed knowledge_base with archetypes
+    const archetypes = analysis.archetypes || [];
+    if (archetypes.length > 0) {
+      const kbEntries = archetypes.map((a: any) => ({
+        user_id: user.id, type: "framework", title: a.name,
+        content: a.description || `${a.name}: ${a.drives || "engagement"}`,
+        processed: true, tags: [],
+      }));
+      await adminClient.from("knowledge_base").upsert(kbEntries, {
+        onConflict: "user_id,title",
+      }).then(({ error }) => {
+        if (error) console.error("KB archetype seed error:", error);
+        else console.log(`KB seeded: ${kbEntries.length} archetypes`);
+      });
+    }
+
+    // Seed knowledge_base with regression insights (if available)
+    const { data: regressionRow } = await adminClient
+      .from("content_strategies")
+      .select("regression_insights")
+      .eq("user_id", user.id)
+      .not("regression_insights", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const humanInsights = (regressionRow?.regression_insights as any)?.human_readable_insights;
+    if (Array.isArray(humanInsights) && humanInsights.length > 0) {
+      const insightEntries = humanInsights.map((text: string) => ({
+        user_id: user.id, type: "proof", title: text.slice(0, 60),
+        content: text, processed: true, tags: [],
+      }));
+      await adminClient.from("knowledge_base").upsert(insightEntries, {
+        onConflict: "user_id,title",
+      }).then(({ error }) => {
+        if (error) console.error("KB insight seed error:", error);
+        else console.log(`KB seeded: ${insightEntries.length} insights`);
+      });
+    }
+
     return new Response(JSON.stringify({ success: true, analysis }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

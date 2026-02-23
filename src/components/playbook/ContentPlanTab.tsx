@@ -33,22 +33,6 @@ export function ContentPlanTab() {
   const { data: hasIdentity } = useHasIdentity();
   const isGenerating = generate.isPending;
 
-  // Get max posts per day from profile
-  const { data: maxPostsPerDay } = useQuery({
-    queryKey: ["max-posts-per-day", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("max_posts_per_day")
-        .eq("id", user!.id)
-        .single();
-      return data?.max_posts_per_day ?? 5;
-    },
-    enabled: !!user?.id,
-  });
-
-  const postsPerDay = maxPostsPerDay ?? 5;
-
   // Defensive parsing — plan_data may be a string or malformed
   let plan: any = null;
   try {
@@ -68,6 +52,11 @@ export function ContentPlanTab() {
   } catch {
     plan = null;
   }
+
+  console.log("[ContentPlanTab] full plan JSON:", JSON.stringify(plan, null, 2));
+
+  // Read posts_per_day from the plan data itself (set by AI based on profile.max_posts_per_day)
+  const postsPerDay = plan?.posts_per_day ?? 1;
 
   const [confirmWeek, setConfirmWeek] = useState(false);
   const [generatingWeek, setGeneratingWeek] = useState(false);
@@ -287,30 +276,16 @@ export function ContentPlanTab() {
             Your data-backed content strategy based on your archetypes, identity, and audience.
           </p>
         </div>
-        <div className="flex gap-2">
-          {plan && (
-            <>
-              <Button
-                onClick={() => setConfirmWeek(true)}
-                disabled={generatingWeek || isGenerating}
-                className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
-              >
-                {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                ✨ Generate Week of Posts
-              </Button>
-              <Button variant="outline" onClick={() => generate.mutate()} disabled={isGenerating || generatingWeek} className="gap-2">
-                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                🔄 Regenerate
-              </Button>
-            </>
-          )}
-          {!plan && (
-            <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              ✨ Generate Plan
-            </Button>
-          )}
-        </div>
+        {plan && (
+          <Button
+            onClick={() => setConfirmWeek(true)}
+            disabled={generatingWeek || isGenerating}
+            className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
+          >
+            {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            ✨ Generate Week of Posts
+          </Button>
+        )}
       </div>
 
       {/* Week generation progress */}

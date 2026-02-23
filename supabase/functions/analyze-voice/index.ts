@@ -165,6 +165,18 @@ Deno.serve(async (req) => {
       console.error("Failed to save voice profile:", updateErr);
     }
 
+    // Upsert voice summary to user_writing_style so getUserContext includes it
+    if (voiceProfile.overall_summary) {
+      const { error: styleErr } = await adminClient
+        .from("user_writing_style")
+        .upsert(
+          { user_id: userId, custom_style_description: voiceProfile.overall_summary },
+          { onConflict: "user_id" }
+        );
+      if (styleErr) console.error("Failed to upsert user_writing_style:", styleErr);
+      else console.log("user_writing_style upserted for user:", userId);
+    }
+
     return new Response(JSON.stringify(voiceProfile), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -49,20 +49,6 @@ export function FunnelStrategyTab() {
             A TOF → MOF → BOF content plan to achieve your main goal.
           </p>
         </div>
-        <div className="flex gap-2">
-          {plan && (
-            <Button variant="outline" onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              🔄 Regenerate
-            </Button>
-          )}
-          {!plan && (
-            <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              ✨ Generate Strategy
-            </Button>
-          )}
-        </div>
       </div>
 
       {isGenerating && (

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,57 +32,16 @@ serve(async (req) => {
     const userId = user.id;
     console.log("[generate-content-pillars] Auth OK, userId:", userId);
 
-    // Fetch all data in parallel
-    const [
-      { data: profile },
-      { data: buckets },
-      { data: archetypeStrategy },
-      { data: posts },
-      { data: competitorAccounts },
-      { data: competitorPosts },
-    ] = await Promise.all([
-      adminClient
-        .from("profiles")
-        .select("niche, dream_client, end_goal, mission")
-        .eq("id", userId)
-        .single(),
+    // Get full user context + buckets (buckets needed as structured data for ID mapping after generation)
+    const [userContext, { data: buckets }] = await Promise.all([
+      getUserContext(adminClient, userId),
       adminClient
         .from("content_buckets")
         .select("id, name, description, audience_persona, business_connection, priority")
         .eq("user_id", userId)
         .eq("is_active", true)
         .order("priority"),
-      adminClient
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", userId)
-        .eq("strategy_type", "archetype_discovery")
-        .maybeSingle(),
-      adminClient
-        .from("posts_analyzed")
-        .select("text_content, views, likes, engagement_rate, content_category")
-        .eq("user_id", userId)
-        .eq("source", "own")
-        .not("text_content", "is", null)
-        .order("views", { ascending: false })
-        .limit(30),
-      adminClient
-        .from("competitor_accounts")
-        .select("threads_username, niche_tags")
-        .eq("user_id", userId)
-        .limit(10),
-      adminClient
-        .from("posts_analyzed")
-        .select("text_content, views, engagement_rate, source_username")
-        .eq("user_id", userId)
-        .eq("source", "competitor")
-        .not("text_content", "is", null)
-        .order("engagement_rate", { ascending: false })
-        .limit(15),
     ]);
-
-    const niche = profile?.niche || profile?.dream_client || "general";
-    console.log("[generate-content-pillars] Data fetched — niche:", niche, "buckets:", buckets?.length || 0, "posts:", posts?.length || 0);
 
     if (!buckets || buckets.length === 0) {
       return new Response(JSON.stringify({ error: "No content buckets found. Generate buckets first." }), {
@@ -89,42 +49,9 @@ serve(async (req) => {
       });
     }
 
-    // Build context sections
-    const profileContext = [
-      `Niche: ${niche}`,
-      `Dream Client: ${profile.dream_client || "Not specified"}`,
-      `End Goal: ${profile.end_goal || "Not specified"}`,
-      `Mission: ${profile.mission || "Not specified"}`,
-    ].join("\n");
-
     const bucketsContext = buckets.map((b: any) =>
       `Bucket "${b.name}" (Priority ${b.priority}): ${b.description}\n  Persona: ${b.audience_persona}\n  Business Connection: ${b.business_connection}`
     ).join("\n\n");
-
-    const archetypeData = archetypeStrategy?.strategy_data as any;
-    const archetypes = archetypeData?.archetypes || [];
-    const archetypesContext = archetypes.length > 0
-      ? archetypes.map((a: any) => `- ${a.name}: ${a.description || ""}`).join("\n")
-      : "No archetypes discovered yet.";
-
-    const postsContext = posts && posts.length > 0
-      ? posts.slice(0, 20).map((p: any, i: number) =>
-          `${i + 1}. [${p.content_category || "uncategorized"}] (${p.views ?? 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}) "${(p.text_content || "").slice(0, 150)}"`
-        ).join("\n")
-      : "No posts yet.";
-
-    let competitorContext = "No competitor data available.";
-    if (competitorPosts && competitorPosts.length > 0) {
-      const parts: string[] = [];
-      if (competitorAccounts && competitorAccounts.length > 0) {
-        parts.push("Accounts studied: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
-      }
-      parts.push("Top competitor posts by engagement:");
-      competitorPosts.slice(0, 10).forEach((p: any, i: number) => {
-        parts.push(`${i + 1}. [@${p.source_username || "unknown"}] (ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}) "${(p.text_content || "").slice(0, 150)}"`);
-      });
-      competitorContext = parts.join("\n");
-    }
 
     const bucketNames = buckets.map((b: any) => `"${b.name}"`).join(", ");
 
@@ -145,20 +72,12 @@ Good connected topics are:
 - Include a hook angle that suggests how to open the post
 - Varied in emotional register (some vulnerable, some authoritative, some contrarian)`;
 
-    const userMessage = `Creator profile:
-${profileContext}
+    const userMessage = `Here is everything you know about this creator:
+
+${userContext}
 
 Content buckets (audience segments):
 ${bucketsContext}
-
-Discovered archetypes:
-${archetypesContext}
-
-Their top-performing posts:
-${postsContext}
-
-Competitor insights:
-${competitorContext}
 
 Generate 3-5 content pillars with 5-8 connected topics each. Each pillar must map to at least one of these buckets: ${bucketNames}.
 

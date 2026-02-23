@@ -15,6 +15,8 @@ Use the regression insights to determine archetype distribution — weight arche
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
 
+The creator's profile includes max_posts_per_day. You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.
+
 Respond ONLY with valid JSON in this format:
 {
   "posts_per_day": number,
@@ -62,6 +64,13 @@ Respond ONLY with valid JSON in this format:
 }`;
 
 const FUNNEL_STRATEGY_PROMPT = `You are a content funnel strategist. Based on the user's main goal, identity, and archetypes, create a TOF/MOF/BOF funnel strategy for Threads.
+
+The creator's goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, and biggest_challenge are in their profile. Build the entire funnel strategy around these:
+- If goal_type is "drive_traffic", every BOF post must include the traffic_url as the CTA. Shape MOF content to warm audiences toward clicking.
+- If goal_type is "dm_leads", every BOF post must use the dm_keyword and dm_offer (e.g. "DM me [keyword] to get [offer]"). Shape MOF content to build trust toward DMing.
+- If goal_type is "grow_audience", BOF focuses on comments, shares, and saves — optimize for algorithmic reach over direct conversion.
+- Use revenue_target to calibrate how aggressive the BOF percentage should be.
+- Use biggest_challenge to inform what MOF content should address to overcome objections.
 
 Respond ONLY with valid JSON in this format:
 {
@@ -135,16 +144,45 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const userContext = await getUserContext(admin, user.id);
+    // Fetch getUserContext, profile settings, and journey stage in parallel
+    const [userContext, { data: profile }, journeyStage] = await Promise.all([
+      getUserContext(admin, user.id),
+      admin
+        .from("profiles")
+        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, biggest_challenge")
+        .eq("id", user.id)
+        .maybeSingle(),
+      fetchJourneyStage(admin, user.id),
+    ]);
 
-    // Get journey stage for funnel optimization
-    const journeyStage = await fetchJourneyStage(admin, user.id);
     const stageConfig = getStageConfig(journeyStage);
     const stageBlock = `\n\n=== JOURNEY STAGE OPTIMIZATION ===\n${stageConfig.promptBlock}`;
 
+    // Build explicit creator settings block for prompt injection
+    const creatorSettings = `=== CREATOR SETTINGS (use these exactly) ===
+- Posts per day: ${profile?.max_posts_per_day ?? 1}
+- Goal type: ${profile?.goal_type ?? "not set"}
+- Traffic URL: ${profile?.traffic_url ?? "not set"}
+- DM keyword: ${profile?.dm_keyword ?? "not set"}
+- DM offer: ${profile?.dm_offer ?? "not set"}
+- Revenue target: ${profile?.revenue_target ?? "not set"}
+- Biggest challenge: ${profile?.biggest_challenge ?? "not set"}
+`;
+
+    const postsPerDay = profile?.max_posts_per_day ?? 1;
+    console.log("[generate-plans] postsPerDay:", postsPerDay, "plan_type:", plan_type);
+
+    // Hardcode the actual posts_per_day value into the JSON schema so the AI can't ignore it
+    const contentPlanPrompt = CONTENT_PLAN_PROMPT
+      .replace('"posts_per_day": number', `"posts_per_day": ${postsPerDay}`)
+      .replace(
+        'You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.',
+        `You MUST output "posts_per_day": ${postsPerDay}. Each day in daily_plan MUST have exactly ${postsPerDay} posts. This is non-negotiable.`
+      );
+
     const basePrompt =
       plan_type === "content_plan"
-        ? CONTENT_PLAN_PROMPT
+        ? contentPlanPrompt
         : plan_type === "branding_plan"
         ? BRANDING_PLAN_PROMPT
         : FUNNEL_STRATEGY_PROMPT;
@@ -169,7 +207,7 @@ serve(async (req) => {
         model: "claude-sonnet-4-20250514",
         max_tokens: 4000,
         system: systemPrompt,
-        messages: [{ role: "user", content: userContext }],
+        messages: [{ role: "user", content: creatorSettings + "\n" + userContext }],
       }),
     });
 
@@ -198,6 +236,12 @@ serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Force posts_per_day to match profile even if AI hallucinated a different value
+    if (plan_type === "content_plan") {
+      console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
+      planData.posts_per_day = postsPerDay;
     }
 
     // Upsert into user_plans

@@ -89,8 +89,6 @@ export function useSubscription(): SubscriptionData {
     status === "active" &&
     (aiPostsLimit === 999999 || aiPostsUsed < aiPostsLimit));
 
-  console.log("[useSubscription]", { plan, status, aiPostsUsed, aiPostsLimit, isLoading, canGenerate, isPaid });
-
   return {
     plan,
     status,
