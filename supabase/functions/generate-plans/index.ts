@@ -26,6 +26,10 @@ The creator's profile includes max_posts_per_day. You MUST use this exact number
 
 Each hook_idea must be 500 characters or less. Threads has a 500 character limit. Write hooks that are punchy and complete within that limit.
 
+FUNNEL MIX RULES for daily schedule:
+- BOF posts should be 1-2 per day maximum regardless of posts_per_day setting. Never over-index on BOF — it kills organic reach on Threads.
+- Maintain roughly TOF 45-55%, MOF 30-35%, BOF 10-20% across the weekly plan.
+
 Respond ONLY with valid JSON in this format:
 {
   "posts_per_day": number,
@@ -73,6 +77,10 @@ Respond ONLY with valid JSON in this format:
 }`;
 
 const FUNNEL_STRATEGY_PROMPT = `You are a content funnel strategist. Based on the user's main goal, identity, and archetypes, create a TOF/MOF/BOF funnel strategy for Threads.
+
+FUNNEL MIX RULES (non-negotiable):
+- For accounts under 10,000 followers OR in launch stage: TOF must be 45-55%, MOF must be 30-35%, BOF must be 10-20% MAX. Never recommend BOF above 20% — it kills organic reach on Threads.
+- The goal is to use TOF reach to feed MOF trust, then convert a small percentage with BOF. High BOF % is counterproductive on Threads.
 
 The creator's goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, and biggest_challenge are in their profile. Build the entire funnel strategy around these:
 - If goal_type is "drive_traffic", every BOF post must include the traffic_url as the CTA. Shape MOF content to warm audiences toward clicking.
