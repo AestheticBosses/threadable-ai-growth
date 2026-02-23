@@ -1,0 +1,1 @@
+ALTER TABLE public.user_plans ADD COLUMN profile_snapshot jsonb;

@@ -20,7 +20,8 @@ import {
   useConnectedTopics, useJourneyStage,
 } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
-import { useHasIdentity } from "@/hooks/usePlansData";
+import { useHasIdentity, useStrategyStale } from "@/hooks/usePlansData";
+import { AlertTriangle } from "lucide-react";
 
 import { ContentPlanTab } from "@/components/playbook/ContentPlanTab";
 import { BrandingPlanTab } from "@/components/playbook/BrandingPlanTab";
@@ -73,6 +74,7 @@ const Playbook = () => {
   const { data: playbook, isLoading: playbookLoading } = usePlaybookData();
   const { data: archetypeDiscovery } = useArchetypeDiscovery();
   const { data: hasIdentity } = useHasIdentity();
+  const { isStale: isStrategyStale } = useStrategyStale();
 
   // V2 strategy data
   const { data: profileStrategy, isLoading: profileLoading } = useProfileStrategy();
@@ -375,6 +377,26 @@ const Playbook = () => {
             </div>
           );
         })()}
+
+        {/* ── Stale Strategy Banner ── */}
+        {isStrategyStale && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-3 flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">Your profile settings have changed.</p>
+              <p className="text-xs text-muted-foreground">Regenerate your strategy to reflect your current goal.</p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setShowRegenConfirm(true)}
+              disabled={generatingStrategy}
+              className="shrink-0 gap-1.5"
+            >
+              {generatingStrategy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Regenerate Now
+            </Button>
+          </div>
+        )}
 
         {/* ── Mission Banner ── */}
         {profileStrategy?.mission && (
