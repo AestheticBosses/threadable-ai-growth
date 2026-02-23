@@ -7,8 +7,6 @@ import { AudiencesSection } from "@/components/identity/AudiencesSection";
 import { PersonalInfoSection } from "@/components/identity/PersonalInfoSection";
 import { NumbersSection } from "@/components/identity/NumbersSection";
 import { StoriesSection } from "@/components/identity/StoriesSection";
-import { DesiredPerceptionSection, MainGoalSection } from "@/components/identity/ExtendedIdentitySections";
-import { SalesFunnelSection } from "@/components/identity/SalesFunnelSection";
 import { IdentityReviewModal } from "@/components/identity/IdentityReviewModal";
 import { useExtractIdentity } from "@/hooks/useExtractIdentity";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
@@ -158,9 +156,6 @@ const MyStory = () => {
         <div id="offers"><OffersSection /></div>
         <div id="audiences"><AudiencesSection /></div>
         <div id="personal-info"><PersonalInfoSection /></div>
-        <div id="perception"><DesiredPerceptionSection /></div>
-        <div id="goal"><MainGoalSection /></div>
-        <div id="funnel"><SalesFunnelSection /></div>
       </div>
 
       {extractedData && (
