@@ -8,6 +8,9 @@ import {
   LogOut,
   MoreHorizontal,
   PenSquare,
+  UserCircle,
+  Mic,
+  BookMarked,
 } from "lucide-react";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
@@ -40,6 +43,9 @@ const navSections = [
   {
     label: "CONFIGURE",
     items: [
+      { title: "Identity", path: "/identity", icon: UserCircle },
+      { title: "Voice", path: "/voice", icon: Mic },
+      { title: "Knowledge Base", path: "/knowledge-base", icon: BookMarked },
       { title: "Settings", path: "/settings", icon: Settings },
     ],
   },
@@ -54,6 +60,9 @@ const mobileTabItems = [
 const moreItems = [
   { title: "Chat", path: "/chat", icon: PenSquare },
   { title: "Playbook", path: "/playbook", icon: Zap },
+  { title: "Identity", path: "/identity", icon: UserCircle },
+  { title: "Voice", path: "/voice", icon: Mic },
+  { title: "Knowledge Base", path: "/knowledge-base", icon: BookMarked },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 
