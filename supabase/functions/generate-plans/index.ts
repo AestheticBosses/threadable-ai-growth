@@ -85,12 +85,11 @@ The content share percentages are FIXED. Output exactly these numbers, no except
 - BOF: content_percentage must be exactly 20
 Do not deviate from these numbers under any circumstances.
 
-The creator's goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, and biggest_challenge are in their profile. Build the entire funnel strategy around these:
+The creator's goal_type, traffic_url, dm_keyword, dm_offer, and revenue_target are in their profile. Build the entire funnel strategy around these:
 - If goal_type is "drive_traffic", every BOF post must include the traffic_url as the CTA. Shape MOF content to warm audiences toward clicking.
 - If goal_type is "get_comments", every BOF post must use the dm_keyword and dm_offer (e.g. "COMMENT [keyword] to get [offer]"). Shape MOF content to build trust toward commenting.
 - If goal_type is "grow_audience", BOF focuses on comments, shares, and saves — optimize for algorithmic reach over direct conversion.
 - Use revenue_target to calibrate how aggressive the BOF percentage should be.
-- Use biggest_challenge to inform what MOF content should address to overcome objections.
 
 Respond ONLY with valid JSON in this format:
 {
@@ -169,7 +168,7 @@ serve(async (req) => {
       getUserContext(admin, user.id),
       admin
         .from("profiles")
-        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, biggest_challenge")
+        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target")
         .eq("id", user.id)
         .maybeSingle(),
       fetchJourneyStage(admin, user.id),
@@ -186,7 +185,6 @@ serve(async (req) => {
 - DM keyword: ${profile?.dm_keyword ?? "not set"}
 - DM offer: ${profile?.dm_offer ?? "not set"}
 - Revenue target: ${profile?.revenue_target ?? "not set"}
-- Biggest challenge: ${profile?.biggest_challenge ?? "not set"}
 `;
 
     // If content_plan requests sibling plans, fetch them from user_plans
