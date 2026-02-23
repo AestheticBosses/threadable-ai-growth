@@ -216,6 +216,18 @@ serve(async (req) => {
         : FUNNEL_STRATEGY_PROMPT;
     const systemPrompt = basePrompt + stageBlock;
 
+    // Build goal-based CTA rules block
+    const goalType = profile?.goal_type ?? "not set";
+    const dmKeyword = profile?.dm_keyword ?? "";
+    const dmOffer = profile?.dm_offer ?? "";
+    const trafficUrl = profile?.traffic_url ?? "";
+    const goalCtaRules = `\n=== GOAL-BASED CTA RULES (follow these exactly) ===
+- If Goal Type is "get_comments": ALL conversion CTAs must tell readers to COMMENT the word "${dmKeyword}" to receive "${dmOffer}". Never use "DM me" or "click the link" as the BOF CTA. BOF posts are comment-bait posts designed to trigger the keyword. The conversion path ends with: comment the keyword → they get the offer.
+- If Goal Type is "drive_traffic": ALL BOF CTAs must drive clicks to ${trafficUrl}. Use "link in bio" or direct URL CTAs only.
+- If Goal Type is "grow_audience": BOF posts focus on follow triggers and shareable content. CTAs are "follow for more" or "share this."
+
+Apply this to every BOF post idea, the conversion path section, and any CTA language generated.\n`;
+
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     if (!ANTHROPIC_API_KEY) {
       return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), {
@@ -235,7 +247,7 @@ serve(async (req) => {
         model: "claude-sonnet-4-20250514",
         max_tokens: Math.min(4000 + (postsPerDay * 800), 16000),
         system: systemPrompt,
-        messages: [{ role: "user", content: siblingPlansContext + creatorSettings + "\n" + userContext }],
+        messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
       }),
     });
 
