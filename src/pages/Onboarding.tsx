@@ -11,7 +11,7 @@ import { Check, ArrowLeft, AtSign, Loader2 } from "lucide-react";
 import PlanPreview from "@/components/onboarding/PlanPreview";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-type GoalType = "dm_leads" | "grow_audience" | "drive_traffic";
+type GoalType = "get_comments" | "grow_audience" | "drive_traffic";
 
 interface PipelineStepDef {
   id: string;
@@ -21,7 +21,7 @@ interface PipelineStepDef {
 }
 
 const GOAL_OPTIONS: { value: GoalType; emoji: string; title: string; subtitle: string }[] = [
-  { value: "dm_leads", emoji: "💬", title: "Get Comments & Leads", subtitle: "Use comment keywords to start conversations" },
+  { value: "get_comments", emoji: "💬", title: "Get Comments & Leads", subtitle: "Use comment keywords to start conversations" },
   { value: "grow_audience", emoji: "👥", title: "Grow My Audience", subtitle: "Get more followers, views, and reach" },
   { value: "drive_traffic", emoji: "🔗", title: "Drive Traffic", subtitle: "Send people to your link or landing page" },
 ];
@@ -116,7 +116,7 @@ const STAGE_FUNNEL: Record<string, { tof: number; mof: number; bof: number }> = 
 };
 
 const GOAL_LABELS: Record<GoalType, string> = {
-  dm_leads: "DM leads",
+  get_comments: "comments & leads",
   grow_audience: "audience growth",
   drive_traffic: "traffic",
 };
@@ -495,7 +495,7 @@ const Onboarding = () => {
         }) || [];
         const ctaRatio = ctaPosts.length / postCount;
 
-        if (goalType === "dm_leads" && ctaRatio > 0.05) {
+        if (goalType === "get_comments" && ctaRatio > 0.05) {
           journeyStage = "monetizing";
         } else if (ctaRatio > 0.1) {
           journeyStage = "monetizing";
@@ -779,7 +779,7 @@ const Onboarding = () => {
                       </button>
 
                       {/* Expanded fields for DM Leads */}
-                      {selected && opt.value === "dm_leads" && (
+                      {selected && opt.value === "get_comments" && (
                         <div className="mt-3 ml-12 space-y-3 animate-in slide-in-from-top-2 duration-200">
                           <div>
                             <label className="text-sm text-muted-foreground block mb-1">What's your comment keyword?</label>

@@ -23,9 +23,9 @@ const FUNNEL_COLORS: Record<string, { bg: string; text: string; hex: string; lab
 
 // ── Static fallback insights by goal type ───────────────────────────────────
 const FALLBACK_INSIGHTS: Record<string, string[]> = {
-  dm_leads: [
-    "BOF posts with a DM keyword get 3x more replies on average",
-    "Posts that open with a personal story drive the most DM conversations",
+  get_comments: [
+    "BOF posts with a comment keyword get 3x more replies on average",
+    "Posts that open with a personal story drive the most conversations",
     "Posting between 10 AM–12 PM tends to generate the highest reply rates",
   ],
   grow_audience: [

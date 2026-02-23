@@ -1,0 +1,1 @@
+UPDATE profiles SET goal_type = 'get_comments' WHERE goal_type = 'dm_leads';

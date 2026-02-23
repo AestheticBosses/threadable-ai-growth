@@ -87,7 +87,7 @@ Do not deviate from these numbers under any circumstances.
 
 The creator's goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, and biggest_challenge are in their profile. Build the entire funnel strategy around these:
 - If goal_type is "drive_traffic", every BOF post must include the traffic_url as the CTA. Shape MOF content to warm audiences toward clicking.
-- If goal_type is "dm_leads", every BOF post must use the dm_keyword and dm_offer (e.g. "DM me [keyword] to get [offer]"). Shape MOF content to build trust toward DMing.
+- If goal_type is "get_comments", every BOF post must use the dm_keyword and dm_offer (e.g. "COMMENT [keyword] to get [offer]"). Shape MOF content to build trust toward commenting.
 - If goal_type is "grow_audience", BOF focuses on comments, shares, and saves — optimize for algorithmic reach over direct conversion.
 - Use revenue_target to calibrate how aggressive the BOF percentage should be.
 - Use biggest_challenge to inform what MOF content should address to overcome objections.

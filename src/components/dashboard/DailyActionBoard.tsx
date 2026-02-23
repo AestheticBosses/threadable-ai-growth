@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { format, startOfDay, endOfDay } from "date-fns";
 
 const GOAL_ACTIONS: Record<string, string[]> = {
-  dm_leads: [
+  get_comments: [
     "Reply meaningfully to all comments",
     "Check for keyword mentions",
     "Leave insight on 5 posts in your niche",
@@ -26,7 +26,7 @@ const GOAL_ACTIONS: Record<string, string[]> = {
 };
 
 const GOAL_FOCUS: Record<string, string> = {
-  dm_leads: "Today's focus: Start conversations, not broadcasts.",
+  get_comments: "Today's focus: Start conversations, not broadcasts.",
   grow_audience: "Today's focus: Give before you ask.",
   drive_traffic: "Today's focus: Every post is a doorway.",
 };
