@@ -16,6 +16,12 @@ Use the regression insights to determine archetype distribution — weight arche
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
 
+If a BRANDING PLAN and FUNNEL STRATEGY are provided in the context, you MUST use them as direct input:
+- Align daily post topics with the brand pillars from the branding plan
+- Use the funnel strategy's TOF/MOF/BOF percentages and post ideas to shape funnel_stage distribution
+- Reference the branding plan's voice_summary for tone consistency
+- Use the funnel strategy's conversion_path to ensure the week builds toward conversion
+
 The creator's profile includes max_posts_per_day. You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.
 
 Each hook_idea must be 500 characters or less. Threads has a 500 character limit. Write hooks that are punchy and complete within that limit.
@@ -133,7 +139,7 @@ serve(async (req) => {
       });
     }
 
-    const { plan_type } = await req.json();
+    const { plan_type, include_plans } = await req.json();
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
@@ -171,6 +177,25 @@ serve(async (req) => {
 - Revenue target: ${profile?.revenue_target ?? "not set"}
 - Biggest challenge: ${profile?.biggest_challenge ?? "not set"}
 `;
+
+    // If content_plan requests sibling plans, fetch them from user_plans
+    let siblingPlansContext = "";
+    if (plan_type === "content_plan" && Array.isArray(include_plans) && include_plans.length > 0) {
+      const { data: siblingRows } = await admin
+        .from("user_plans")
+        .select("plan_type, plan_data")
+        .eq("user_id", user.id)
+        .in("plan_type", include_plans);
+
+      if (siblingRows && siblingRows.length > 0) {
+        const blocks = siblingRows.map((row: any) => {
+          const label = row.plan_type === "branding_plan" ? "BRANDING PLAN" : "FUNNEL STRATEGY";
+          return `=== ${label} (already generated — use this as input) ===\n${JSON.stringify(row.plan_data, null, 2)}`;
+        });
+        siblingPlansContext = blocks.join("\n\n") + "\n\n";
+        console.log("[generate-plans] injecting sibling plans:", include_plans);
+      }
+    }
 
     const postsPerDay = profile?.max_posts_per_day ?? 1;
     console.log("[generate-plans] postsPerDay:", postsPerDay, "plan_type:", plan_type);
@@ -210,7 +235,7 @@ serve(async (req) => {
         model: "claude-sonnet-4-20250514",
         max_tokens: Math.min(4000 + (postsPerDay * 800), 16000),
         system: systemPrompt,
-        messages: [{ role: "user", content: creatorSettings + "\n" + userContext }],
+        messages: [{ role: "user", content: siblingPlansContext + creatorSettings + "\n" + userContext }],
       }),
     });
 

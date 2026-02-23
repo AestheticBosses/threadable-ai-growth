@@ -165,7 +165,37 @@ const Playbook = () => {
       queryClient.invalidateQueries({ queryKey: ["content-pillars"] });
       queryClient.invalidateQueries({ queryKey: ["connected-topics"] });
 
-      // Step 3: 30-Day Plan
+      // Step 3: Branding Plan
+      console.log("[Playbook] step: branding_plan");
+      setStrategyProgress(p => ({ ...p, aiPlans: "generating" }));
+      const brandingPlanRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "branding_plan" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] branding_plan result:", { data: brandingPlanRes.data, error: brandingPlanRes.error });
+      if (brandingPlanRes.error) throw new Error("Branding Plan: " + brandingPlanRes.error.message);
+
+      // Step 4: Funnel Strategy
+      console.log("[Playbook] step: funnel_strategy");
+      const funnelRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "funnel_strategy" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] funnel_strategy result:", { data: funnelRes.data, error: funnelRes.error });
+      if (funnelRes.error) throw new Error("Funnel Strategy: " + funnelRes.error.message);
+
+      // Step 5: Content Plan (uses branding + funnel as input)
+      console.log("[Playbook] step: content_plan (with branding + funnel context)");
+      const contentPlanRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] content_plan result:", { data: contentPlanRes.data, error: contentPlanRes.error });
+      if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
+      setStrategyProgress(p => ({ ...p, aiPlans: "done" }));
+      queryClient.invalidateQueries({ queryKey: ["user-plan"] });
+
+      // Step 6: 30-Day Plan
       console.log("[Playbook] step: 30day-plan");
       setStrategyProgress(p => ({ ...p, plan: "generating" }));
       const planRes = await supabase.functions.invoke("generate-30day-plan", {
@@ -175,34 +205,6 @@ const Playbook = () => {
       if (planRes.error) throw new Error("Plan: " + planRes.error.message);
       setStrategyProgress(p => ({ ...p, plan: "done" }));
       queryClient.invalidateQueries({ queryKey: ["content-plan-items"] });
-
-      // Step 4: AI Plans (content plan, branding plan, funnel strategy) — run in parallel
-      console.log("[Playbook] step: aiPlans (3x generate-plans in parallel)");
-      setStrategyProgress(p => ({ ...p, aiPlans: "generating" }));
-      const [contentPlanRes, brandingPlanRes, funnelRes] = await Promise.all([
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "content_plan" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "branding_plan" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "funnel_strategy" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-      ]);
-      console.log("[Playbook] generate-plans results:", {
-        contentPlan: { data: contentPlanRes.data, error: contentPlanRes.error },
-        brandingPlan: { data: brandingPlanRes.data, error: brandingPlanRes.error },
-        funnel: { data: funnelRes.data, error: funnelRes.error },
-      });
-      if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
-      if (brandingPlanRes.error) throw new Error("Branding Plan: " + brandingPlanRes.error.message);
-      if (funnelRes.error) throw new Error("Funnel Strategy: " + funnelRes.error.message);
-      setStrategyProgress(p => ({ ...p, aiPlans: "done" }));
-      queryClient.invalidateQueries({ queryKey: ["user-plan"] });
 
       console.log("[Playbook] pipeline complete, all steps done");
       toast({ title: "Content strategy generated!" });

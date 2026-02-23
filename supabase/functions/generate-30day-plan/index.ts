@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
@@ -116,18 +117,20 @@ serve(async (req) => {
     const userId = user.id;
     console.log("[generate-30day-plan] Auth OK, userId:", userId);
 
-    // Fetch all data in parallel
+    // Fetch all data in parallel (including getUserContext and content_plan)
     const [
       { data: profile },
       { data: pillars },
       { data: topics },
       { data: archetypeStrategy },
+      { data: contentPlanRow },
+      _userContext,
     ] = await Promise.all([
       adminClient
         .from("profiles")
         .select("posting_cadence, end_goal, journey_stage, posts_per_day")
         .eq("id", userId)
-        .single(),
+        .maybeSingle(),
       adminClient
         .from("content_pillars")
         .select("id, name, percentage, purpose")
@@ -145,9 +148,18 @@ serve(async (req) => {
         .eq("user_id", userId)
         .eq("strategy_type", "archetype_discovery")
         .maybeSingle(),
+      adminClient
+        .from("user_plans")
+        .select("plan_data")
+        .eq("user_id", userId)
+        .eq("plan_type", "content_plan")
+        .maybeSingle(),
+      getUserContext(adminClient, userId),
     ]);
 
-    console.log("[generate-30day-plan] Data fetched — pillars:", pillars?.length || 0, "topics:", topics?.length || 0, "archetypes:", !!archetypeStrategy, "postsPerDay:", profile?.posts_per_day, "cadence:", profile?.posting_cadence);
+    // Parse content_plan if available — use its weekly pattern as template
+    const contentPlan = contentPlanRow?.plan_data as any;
+    console.log("[generate-30day-plan] Data fetched — pillars:", pillars?.length || 0, "topics:", topics?.length || 0, "archetypes:", !!archetypeStrategy, "contentPlan:", !!contentPlan, "postsPerDay:", profile?.posts_per_day, "cadence:", profile?.posting_cadence);
 
     if (!pillars || pillars.length === 0) {
       return new Response(JSON.stringify({ error: "No content pillars found. Generate pillars first." }), {
@@ -186,33 +198,62 @@ serve(async (req) => {
     // Track topic index per pillar for rotation
     const topicIndex: Record<string, number> = {};
 
-    // Build archetype rotation
-    const archetypeData = archetypeStrategy?.strategy_data as any;
-    const archetypes = archetypeData?.archetypes || [];
-    let archetypeSchedule: string[];
-    if (archetypes.length > 0) {
-      // Use archetype weights if available, otherwise equal
-      archetypeSchedule = weightedRoundRobin(
-        archetypes.map((a: any) => ({
-          name: a.name,
-          weight: a.percentage || Math.round(100 / archetypes.length),
-        })),
-        totalPosts
-      ).map((a: any) => a.name);
-    } else {
-      archetypeSchedule = new Array(totalPosts).fill("General");
+    // Extract weekly pattern from content_plan if available
+    // Flatten the 7-day daily_plan into a repeatable sequence of { archetype, funnel_stage }
+    let weeklyPattern: { archetype: string; funnel_stage: string }[] = [];
+    if (contentPlan?.daily_plan && Array.isArray(contentPlan.daily_plan)) {
+      for (const day of contentPlan.daily_plan) {
+        if (Array.isArray(day.posts)) {
+          for (const post of day.posts) {
+            weeklyPattern.push({
+              archetype: post.archetype || "General",
+              funnel_stage: post.funnel_stage || "TOF",
+            });
+          }
+        }
+      }
+      console.log("[generate-30day-plan] Using content_plan weekly pattern:", weeklyPattern.length, "posts/week");
     }
 
-    // Funnel stage distribution based on journey stage
-    const stageConfig = getStageConfig(profile?.journey_stage);
-    const funnelDistribution = weightedRoundRobin(
-      [
-        { stage: "TOF", weight: stageConfig.funnelMix.tof },
-        { stage: "MOF", weight: stageConfig.funnelMix.mof },
-        { stage: "BOF", weight: stageConfig.funnelMix.bof },
-      ],
-      totalPosts
-    ).map((f: any) => f.stage);
+    // Build archetype rotation — prefer content_plan pattern, fall back to weighted round-robin
+    let archetypeSchedule: string[];
+    let funnelDistribution: string[];
+
+    if (weeklyPattern.length > 0) {
+      // Repeat the weekly pattern across all posts
+      archetypeSchedule = [];
+      funnelDistribution = [];
+      for (let i = 0; i < totalPosts; i++) {
+        const slot = weeklyPattern[i % weeklyPattern.length];
+        archetypeSchedule.push(slot.archetype);
+        funnelDistribution.push(slot.funnel_stage);
+      }
+    } else {
+      // Fallback: independent weighted round-robin
+      const archetypeData = archetypeStrategy?.strategy_data as any;
+      const archetypes = archetypeData?.archetypes || [];
+      if (archetypes.length > 0) {
+        archetypeSchedule = weightedRoundRobin(
+          archetypes.map((a: any) => ({
+            name: a.name,
+            weight: a.percentage || Math.round(100 / archetypes.length),
+          })),
+          totalPosts
+        ).map((a: any) => a.name);
+      } else {
+        archetypeSchedule = new Array(totalPosts).fill("General");
+      }
+
+      const stageConfig = getStageConfig(profile?.journey_stage);
+      funnelDistribution = weightedRoundRobin(
+        [
+          { stage: "TOF", weight: stageConfig.funnelMix.tof },
+          { stage: "MOF", weight: stageConfig.funnelMix.mof },
+          { stage: "BOF", weight: stageConfig.funnelMix.bof },
+        ],
+        totalPosts
+      ).map((f: any) => f.stage);
+    }
 
     // Determine test slots (20% of posts, spread evenly)
     const testSlotCount = Math.max(1, Math.round(totalPosts * 0.2));
