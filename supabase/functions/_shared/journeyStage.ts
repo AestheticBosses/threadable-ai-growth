@@ -1,6 +1,6 @@
 /**
  * Journey stage definitions and helpers.
- * Used by generate-strategy, generate-playbook, generate-30day-plan, generate-plans, and getUserContext.
+ * Used by generate-strategy, generate-playbook, generate-plans, and getUserContext.
  */
 
 export type JourneyStage = "getting_started" | "growing" | "monetizing";

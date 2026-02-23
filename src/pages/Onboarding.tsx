@@ -51,7 +51,6 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Creating content buckets…", status: "waiting" },
   { id: "pillars", label: "Building content pillars…", status: "waiting" },
-  { id: "plan30", label: "Generating your growth map…", status: "waiting" },
   { id: "weekposts", label: "Generating your first week of posts…", status: "waiting" },
   { id: "plans", label: "Creating content, branding & funnel plans…", status: "waiting" },
   { id: "templates", label: "Building content templates…", status: "waiting" },
@@ -67,7 +66,6 @@ const NEW_PIPELINE: PipelineStepDef[] = [
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Creating content buckets…", status: "waiting" },
   { id: "pillars", label: "Building content pillars…", status: "waiting" },
-  { id: "plan30", label: "Generating your growth map…", status: "waiting" },
   { id: "weekposts", label: "Generating your first week of posts…", status: "waiting" },
   { id: "plans", label: "Creating your content strategy…", status: "waiting" },
   { id: "templates", label: "Building starter templates…", status: "waiting" },
@@ -353,12 +351,6 @@ const Onboarding = () => {
       updateStep("pillars", "error");
     }
 
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
-    }
-
     // Week posts are now generated after payment via stripe-webhook
     updateStep("weekposts", "done");
 
@@ -418,12 +410,6 @@ const Onboarding = () => {
       pillarsOk = await invokeStep("pillars", "generate-content-pillars", {});
     } else {
       updateStep("pillars", "error");
-    }
-
-    if (pillarsOk) {
-      await invokeStep("plan30", "generate-30day-plan", {});
-    } else {
-      updateStep("plan30", "error");
     }
 
     // Week posts are now generated after payment via stripe-webhook
@@ -641,7 +627,6 @@ const Onboarding = () => {
         playbook: { fn: "generate-playbook", body: { user_id: user.id } },
         buckets: { fn: "generate-content-buckets", body: {} },
         pillars: { fn: "generate-content-pillars", body: {} },
-        plan30: { fn: "generate-30day-plan", body: {} },
         templates: { fn: "generate-templates", body: {} },
       };
       const mapping = retryMap[stepId];
