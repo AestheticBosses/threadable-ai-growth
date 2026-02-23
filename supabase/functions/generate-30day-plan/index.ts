@@ -1,7 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getUserContext } from "../_shared/getUserContext.ts";
-import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,89 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const CADENCE_MAP: Record<string, { total: number; daysPerWeek: number }> = {
-  "7x_week": { total: 30, daysPerWeek: 7 },
-  "5x_week": { total: 22, daysPerWeek: 5 },
-  "3x_week": { total: 13, daysPerWeek: 3 },
-  "2x_week": { total: 9, daysPerWeek: 2 },
-};
-
-// Weekday indices for cadences that skip days
-const WEEKDAY_SCHEDULES: Record<string, number[]> = {
-  "7x_week": [0, 1, 2, 3, 4, 5, 6], // Sun-Sat
-  "5x_week": [1, 2, 3, 4, 5],         // Mon-Fri
-  "3x_week": [1, 3, 5],               // Mon, Wed, Fri
-  "2x_week": [2, 5],                  // Tue, Fri
-};
-
-function getPostingDates(cadence: string, startDate: Date, totalPosts: number): Date[] {
-  const allowedDays = WEEKDAY_SCHEDULES[cadence] || WEEKDAY_SCHEDULES["7x_week"];
-  const dates: Date[] = [];
-  const current = new Date(startDate);
-
-  while (dates.length < totalPosts) {
-    if (allowedDays.includes(current.getDay())) {
-      dates.push(new Date(current));
-    }
-    current.setDate(current.getDate() + 1);
-  }
-
-  return dates;
-}
-
-function weightedRoundRobin<T extends { weight: number }>(items: T[], count: number): T[] {
-  if (items.length === 0) return [];
-
-  // Normalize weights to get slot counts
-  const totalWeight = items.reduce((sum, i) => sum + i.weight, 0);
-  if (totalWeight === 0) {
-    // Equal distribution if no weights
-    const result: T[] = [];
-    for (let i = 0; i < count; i++) {
-      result.push(items[i % items.length]);
-    }
-    return result;
-  }
-
-  // Calculate slots per item
-  const slots = items.map((item) => ({
-    item,
-    target: Math.max(1, Math.round((item.weight / totalWeight) * count)),
-    assigned: 0,
-  }));
-
-  // Adjust to match exact count
-  let totalSlots = slots.reduce((sum, s) => sum + s.target, 0);
-  while (totalSlots > count) {
-    // Remove from highest over-target
-    const maxSlot = slots.reduce((a, b) => a.target > b.target ? a : b);
-    maxSlot.target--;
-    totalSlots--;
-  }
-  while (totalSlots < count) {
-    // Add to lowest under-target
-    const minSlot = slots.reduce((a, b) => a.target < b.target ? a : b);
-    minSlot.target++;
-    totalSlots++;
-  }
-
-  // Interleave: distribute evenly across the timeline
-  const result: T[] = [];
-  while (result.length < count) {
-    let added = false;
-    for (const slot of slots) {
-      if (slot.assigned < slot.target) {
-        result.push(slot.item);
-        slot.assigned++;
-        added = true;
-        if (result.length >= count) break;
-      }
-    }
-    if (!added) break;
-  }
-
-  return result;
-}
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -117,183 +33,75 @@ serve(async (req) => {
     const userId = user.id;
     console.log("[generate-30day-plan] Auth OK, userId:", userId);
 
-    // Fetch all data in parallel (including getUserContext and content_plan)
-    const [
-      { data: profile },
-      { data: pillars },
-      { data: topics },
-      { data: archetypeStrategy },
-      { data: contentPlanRow },
-      _userContext,
-    ] = await Promise.all([
-      adminClient
-        .from("profiles")
-        .select("posting_cadence, end_goal, journey_stage, posts_per_day")
-        .eq("id", userId)
-        .maybeSingle(),
-      adminClient
-        .from("content_pillars")
-        .select("id, name, percentage, purpose")
-        .eq("user_id", userId)
-        .eq("is_active", true),
-      adminClient
-        .from("connected_topics")
-        .select("id, pillar_id, name, hook_angle, used_count")
-        .eq("user_id", userId)
-        .eq("is_active", true)
-        .order("used_count", { ascending: true }),
-      adminClient
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", userId)
-        .eq("strategy_type", "archetype_discovery")
-        .maybeSingle(),
-      adminClient
-        .from("user_plans")
-        .select("plan_data")
-        .eq("user_id", userId)
-        .eq("plan_type", "content_plan")
-        .maybeSingle(),
-      getUserContext(adminClient, userId),
-    ]);
+    // Fetch content_plan from user_plans — this is the single source of truth
+    const { data: contentPlanRow } = await adminClient
+      .from("user_plans")
+      .select("plan_data")
+      .eq("user_id", userId)
+      .eq("plan_type", "content_plan")
+      .maybeSingle();
 
-    // Parse content_plan if available — use its weekly pattern as template
     const contentPlan = contentPlanRow?.plan_data as any;
-    console.log("[generate-30day-plan] Data fetched — pillars:", pillars?.length || 0, "topics:", topics?.length || 0, "archetypes:", !!archetypeStrategy, "contentPlan:", !!contentPlan, "postsPerDay:", profile?.posts_per_day, "cadence:", profile?.posting_cadence);
-
-    if (!pillars || pillars.length === 0) {
-      return new Response(JSON.stringify({ error: "No content pillars found. Generate pillars first." }), {
+    if (!contentPlan?.daily_plan || !Array.isArray(contentPlan.daily_plan)) {
+      return new Response(JSON.stringify({ error: "No content plan found. Generate your content plan first." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const postsPerDay = profile?.posts_per_day || null;
-    const cadence = profile?.posting_cadence || "7x_week";
-    const cadenceConfig = CADENCE_MAP[cadence] || CADENCE_MAP["7x_week"];
+    // Build a day-of-week → posts lookup from the content_plan
+    // content_plan.daily_plan = [{ day: "Monday", posts: [{ archetype, funnel_stage, topic, hook_idea }] }, ...]
+    const dayPostsMap: Record<string, any[]> = {};
+    for (const day of contentPlan.daily_plan) {
+      dayPostsMap[day.day] = (day.posts || []).map((p: any) => ({
+        archetype: p.archetype || "General",
+        funnel_stage: p.funnel_stage || "TOF",
+        topic: p.topic || "",
+      }));
+    }
 
-    // Use posts_per_day if set (new onboarding), otherwise fall back to cadence map
-    const totalPosts = postsPerDay ? postsPerDay * 30 : cadenceConfig.total;
-    const effectiveDaysPerWeek = postsPerDay ? 7 : cadenceConfig.daysPerWeek;
+    const postsPerDay = contentPlan.posts_per_day || 1;
+    console.log("[generate-30day-plan] Mapping content_plan to 30 days, postsPerDay:", postsPerDay);
 
-    // Build posting dates starting from tomorrow
+    // Generate 30 calendar days starting from tomorrow
     const startDate = new Date();
     startDate.setDate(startDate.getDate() + 1);
     startDate.setHours(0, 0, 0, 0);
-    // When using posts_per_day, post every day; otherwise use cadence schedule
-    const postingDates = postsPerDay
-      ? getPostingDates("7x_week", startDate, totalPosts)
-      : getPostingDates(cadence, startDate, totalPosts);
 
-    // Distribute posts across pillars by percentage
-    const pillarSchedule = weightedRoundRobin(
-      pillars.map((p: any) => ({ ...p, weight: p.percentage || Math.round(100 / pillars.length) })),
-      totalPosts
-    );
-
-    // Group topics by pillar_id for round-robin assignment
-    const topicsByPillar: Record<string, any[]> = {};
-    for (const t of (topics || [])) {
-      (topicsByPillar[t.pillar_id] = topicsByPillar[t.pillar_id] || []).push(t);
-    }
-    // Track topic index per pillar for rotation
-    const topicIndex: Record<string, number> = {};
-
-    // Extract weekly pattern from content_plan if available
-    // Flatten the 7-day daily_plan into a repeatable sequence of { archetype, funnel_stage }
-    let weeklyPattern: { archetype: string; funnel_stage: string }[] = [];
-    if (contentPlan?.daily_plan && Array.isArray(contentPlan.daily_plan)) {
-      for (const day of contentPlan.daily_plan) {
-        if (Array.isArray(day.posts)) {
-          for (const post of day.posts) {
-            weeklyPattern.push({
-              archetype: post.archetype || "General",
-              funnel_stage: post.funnel_stage || "TOF",
-            });
-          }
-        }
-      }
-      console.log("[generate-30day-plan] Using content_plan weekly pattern:", weeklyPattern.length, "posts/week");
-    }
-
-    // Build archetype rotation — prefer content_plan pattern, fall back to weighted round-robin
-    let archetypeSchedule: string[];
-    let funnelDistribution: string[];
-
-    if (weeklyPattern.length > 0) {
-      // Repeat the weekly pattern across all posts
-      archetypeSchedule = [];
-      funnelDistribution = [];
-      for (let i = 0; i < totalPosts; i++) {
-        const slot = weeklyPattern[i % weeklyPattern.length];
-        archetypeSchedule.push(slot.archetype);
-        funnelDistribution.push(slot.funnel_stage);
-      }
-    } else {
-      // Fallback: independent weighted round-robin
-      const archetypeData = archetypeStrategy?.strategy_data as any;
-      const archetypes = archetypeData?.archetypes || [];
-      if (archetypes.length > 0) {
-        archetypeSchedule = weightedRoundRobin(
-          archetypes.map((a: any) => ({
-            name: a.name,
-            weight: a.percentage || Math.round(100 / archetypes.length),
-          })),
-          totalPosts
-        ).map((a: any) => a.name);
-      } else {
-        archetypeSchedule = new Array(totalPosts).fill("General");
-      }
-
-      const stageConfig = getStageConfig(profile?.journey_stage);
-      funnelDistribution = weightedRoundRobin(
-        [
-          { stage: "TOF", weight: stageConfig.funnelMix.tof },
-          { stage: "MOF", weight: stageConfig.funnelMix.mof },
-          { stage: "BOF", weight: stageConfig.funnelMix.bof },
-        ],
-        totalPosts
-      ).map((f: any) => f.stage);
-    }
-
-    // Determine test slots (20% of posts, spread evenly)
-    const testSlotCount = Math.max(1, Math.round(totalPosts * 0.2));
-    const testSlotInterval = Math.floor(totalPosts / testSlotCount);
-    const testSlotIndices = new Set<number>();
-    for (let i = 0; i < testSlotCount; i++) {
-      testSlotIndices.add(Math.min(i * testSlotInterval + (testSlotInterval - 1), totalPosts - 1));
-    }
-
-    // Build plan items
     const planItems: any[] = [];
-    for (let i = 0; i < totalPosts; i++) {
-      const pillar = pillarSchedule[i];
-      const date = postingDates[i];
-      const week = Math.floor(i / effectiveDaysPerWeek) + 1;
-      const dayInWeek = (i % effectiveDaysPerWeek) + 1;
+    let globalSlot = 0;
 
-      // Pick topic from this pillar (round-robin, least-used first since topics are pre-sorted)
-      const pillarTopics = topicsByPillar[pillar.id] || [];
-      let topic = null;
-      if (pillarTopics.length > 0) {
-        const idx = (topicIndex[pillar.id] || 0) % pillarTopics.length;
-        topic = pillarTopics[idx];
-        topicIndex[pillar.id] = idx + 1;
+    for (let d = 0; d < 30; d++) {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + d);
+      const dayName = DAY_NAMES[date.getDay()];
+      const dateStr = date.toISOString().split("T")[0];
+      const week = Math.floor(d / 7) + 1;
+      const dayInWeek = (d % 7) + 1;
+
+      // Get the posts for this day-of-week from the content plan
+      const dayPosts = dayPostsMap[dayName] || [];
+
+      // If the content plan has posts for this day, map them directly
+      // If not (shouldn't happen for a 7-day plan), create empty slots
+      const slotsForDay = dayPosts.length > 0 ? dayPosts : Array(postsPerDay).fill({ archetype: "General", funnel_stage: "TOF", topic: "" });
+
+      for (let s = 0; s < slotsForDay.length; s++) {
+        const slot = slotsForDay[s];
+        planItems.push({
+          user_id: userId,
+          plan_week: week,
+          plan_day: dayInWeek,
+          scheduled_date: dateStr,
+          archetype: slot.archetype,
+          funnel_stage: slot.funnel_stage,
+          status: "planned",
+          // topic stored in archetype field note: topic_id and pillar_id are left null
+          // since the content_plan topics are free-text, not FK references
+          pillar_id: null,
+          topic_id: null,
+        });
+        globalSlot++;
       }
-
-      const isTest = testSlotIndices.has(i);
-
-      planItems.push({
-        user_id: userId,
-        plan_week: week,
-        plan_day: dayInWeek,
-        scheduled_date: date.toISOString().split("T")[0],
-        pillar_id: pillar.id,
-        topic_id: topic?.id || null,
-        archetype: archetypeSchedule[i],
-        funnel_stage: funnelDistribution[i],
-        is_test_slot: isTest,
-        status: "planned",
-      });
     }
 
     // Clear existing plan and insert new one
@@ -310,31 +118,28 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Generated 30-day plan: ${planItems.length} posts for user: ${userId} (${postsPerDay ? `${postsPerDay}/day` : `cadence: ${cadence}`})`);
+    console.log(`[generate-30day-plan] Mapped ${planItems.length} slots across 30 days (${postsPerDay}/day)`);
 
-    // Return summary with readable plan
+    // Return summary grouped by date for the UI
     const summary = planItems.map((p) => ({
       week: p.plan_week,
       day: p.plan_day,
       date: p.scheduled_date,
-      pillar: pillarSchedule[planItems.indexOf(p)]?.name,
-      topic: (topics || []).find((t: any) => t.id === p.topic_id)?.name || null,
       archetype: p.archetype,
       funnel_stage: p.funnel_stage,
-      is_test: p.is_test_slot,
     }));
+
+    const funnelCounts = { TOF: 0, MOF: 0, BOF: 0 };
+    for (const p of planItems) {
+      if (p.funnel_stage in funnelCounts) funnelCounts[p.funnel_stage as keyof typeof funnelCounts]++;
+    }
 
     return new Response(JSON.stringify({
       data: summary,
       total_posts: planItems.length,
-      cadence,
-      weeks: Math.ceil(planItems.length / effectiveDaysPerWeek),
-      funnel_split: {
-        TOF: funnelDistribution.filter((f) => f === "TOF").length,
-        MOF: funnelDistribution.filter((f) => f === "MOF").length,
-        BOF: funnelDistribution.filter((f) => f === "BOF").length,
-      },
-      test_slots: testSlotCount,
+      posts_per_day: postsPerDay,
+      days: 30,
+      funnel_split: funnelCounts,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

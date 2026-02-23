@@ -20,7 +20,7 @@ import {
   useConnectedTopics, useContentPlanItems, useJourneyStage,
 } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
-import { useHasIdentity } from "@/hooks/usePlansData";
+import { useHasIdentity, useContentPlan } from "@/hooks/usePlansData";
 
 import { ContentPlanTab } from "@/components/playbook/ContentPlanTab";
 import { BrandingPlanTab } from "@/components/playbook/BrandingPlanTab";
@@ -107,7 +107,39 @@ const Playbook = () => {
     }
   }
 
-  // Group plan items by week
+  // Content plan (for topic text overlay on 30-day calendar)
+  const { query: contentPlanQuery } = useContentPlan();
+  const contentPlanData = (() => {
+    try {
+      const raw = contentPlanQuery.data?.plan_data;
+      if (typeof raw === "string") return JSON.parse(raw);
+      if (raw && typeof raw === "object") return raw;
+    } catch { /* ignore */ }
+    return null;
+  })() as any;
+
+  // Build day-of-week → topics lookup from content_plan
+  const dayTopicsMap: Record<string, { archetype: string; funnel_stage: string; topic: string }[]> = {};
+  if (contentPlanData?.daily_plan) {
+    for (const day of contentPlanData.daily_plan) {
+      dayTopicsMap[day.day] = (day.posts || []).map((p: any) => ({
+        archetype: p.archetype || "",
+        funnel_stage: p.funnel_stage || "TOF",
+        topic: p.topic || "",
+      }));
+    }
+  }
+
+  // Group plan items by date (for calendar view)
+  const planByDate: Record<string, typeof planItems> = {};
+  if (planItems) {
+    for (const item of planItems) {
+      const date = item.scheduled_date || "";
+      (planByDate[date] = planByDate[date] || []).push(item);
+    }
+  }
+
+  // Group plan items by week (legacy)
   const planByWeek: Record<number, typeof planItems> = {};
   if (planItems) {
     for (const item of planItems) {
@@ -794,89 +826,97 @@ const Playbook = () => {
             </div>
           </TabsContent>
 
-          {/* ═══ Tab: 30-Day Plan ═══ */}
+          {/* ═══ Tab: 30-Day Calendar ═══ */}
           <TabsContent value="plan">
             <div className="space-y-6 mt-4">
-              {planItems && planItems.length > 0 ? (
-                <>
-                  {/* Summary bar */}
-                  <div className="flex flex-wrap gap-3">
-                    <Badge variant="outline" className="text-xs">
-                      {planItems.length} posts planned
-                    </Badge>
-                    <Badge className={`text-xs ${FUNNEL_BADGE.TOF}`}>
-                      TOF: {planItems.filter(p => p.funnel_stage === "TOF").length}
-                    </Badge>
-                    <Badge className={`text-xs ${FUNNEL_BADGE.MOF}`}>
-                      MOF: {planItems.filter(p => p.funnel_stage === "MOF").length}
-                    </Badge>
-                    <Badge className={`text-xs ${FUNNEL_BADGE.BOF}`}>
-                      BOF: {planItems.filter(p => p.funnel_stage === "BOF").length}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs text-yellow-400 border-yellow-500/30">
-                      Test slots: {planItems.filter(p => p.is_test_slot).length}
-                    </Badge>
-                  </div>
+              {planItems && planItems.length > 0 ? (() => {
+                const sortedDates = Object.keys(planByDate).sort();
+                const today = new Date().toISOString().split("T")[0];
+                return (
+                  <>
+                    {/* Summary bar */}
+                    <div className="flex flex-wrap gap-3">
+                      <Badge variant="outline" className="text-xs">
+                        {sortedDates.length} days &middot; {planItems.length} slots
+                      </Badge>
+                      <Badge className={`text-xs ${FUNNEL_BADGE.TOF}`}>
+                        TOF: {planItems.filter(p => p.funnel_stage === "TOF").length}
+                      </Badge>
+                      <Badge className={`text-xs ${FUNNEL_BADGE.MOF}`}>
+                        MOF: {planItems.filter(p => p.funnel_stage === "MOF").length}
+                      </Badge>
+                      <Badge className={`text-xs ${FUNNEL_BADGE.BOF}`}>
+                        BOF: {planItems.filter(p => p.funnel_stage === "BOF").length}
+                      </Badge>
+                    </div>
 
-                  {/* Week-by-week breakdown */}
-                  {Object.entries(planByWeek)
-                    .sort(([a], [b]) => Number(a) - Number(b))
-                    .map(([week, items]) => (
-                      <section key={week} className="space-y-3">
-                        <h3 className="text-sm font-semibold text-foreground">Week {week}</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {items!.map((item) => {
-                            const dateObj = new Date(item.scheduled_date + "T00:00:00");
-                            const dayLabel = dateObj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-                            const isPast = dateObj < new Date(new Date().toISOString().split("T")[0] + "T00:00:00");
-                            return (
-                              <Card
-                                key={item.id}
-                                className={`border ${isPast ? "opacity-50" : ""} ${item.is_test_slot ? "border-yellow-500/30" : "border-border"}`}
-                              >
-                                <CardContent className="p-3 space-y-2">
-                                  {/* Date + test badge */}
-                                  <div className="flex items-center justify-between">
-                                    <p className="text-xs font-medium text-foreground">{dayLabel}</p>
-                                    {item.is_test_slot && (
-                                      <Badge className="text-[9px] bg-yellow-500/15 text-yellow-400 border-yellow-500/30">TEST</Badge>
-                                    )}
-                                  </div>
+                    {/* Week sections */}
+                    {Object.entries(planByWeek)
+                      .sort(([a], [b]) => Number(a) - Number(b))
+                      .map(([week, _weekItems]) => {
+                        // Get unique dates for this week, sorted
+                        const weekDates = [...new Set(_weekItems!.map(i => i.scheduled_date || ""))].sort();
+                        return (
+                          <section key={week} className="space-y-3">
+                            <h3 className="text-sm font-semibold text-foreground">Week {week}</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                              {weekDates.map((dateStr) => {
+                                const dateObj = new Date(dateStr + "T00:00:00");
+                                const dayName = dateObj.toLocaleDateString("en-US", { weekday: "short" });
+                                const dateLabel = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                                const isPast = dateStr < today;
+                                const daySlots = planByDate[dateStr] || [];
+                                // Get topic text from content plan for this day-of-week
+                                const fullDayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
+                                const topicSlots = dayTopicsMap[fullDayName] || [];
 
-                                  {/* Pillar */}
-                                  <p className="text-xs font-semibold text-foreground/90">
-                                    {pillarMap[item.pillar_id || ""] || "—"}
-                                  </p>
+                                return (
+                                  <Card key={dateStr} className={`border ${isPast ? "opacity-40" : "border-border"}`}>
+                                    <CardContent className="p-2 space-y-1.5">
+                                      {/* Day header */}
+                                      <div className="text-center border-b border-border pb-1">
+                                        <p className="text-[10px] font-bold text-foreground uppercase">{dayName}</p>
+                                        <p className="text-[9px] text-muted-foreground">{dateLabel}</p>
+                                      </div>
 
-                                  {/* Topic */}
-                                  {item.topic_id && topicMap[item.topic_id] && (
-                                    <p className="text-[11px] text-muted-foreground leading-snug">
-                                      {topicMap[item.topic_id]}
-                                    </p>
-                                  )}
-
-                                  {/* Metadata badges */}
-                                  <div className="flex flex-wrap gap-1">
-                                    {item.archetype && (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                                        {item.archetype}
-                                      </span>
-                                    )}
-                                    {item.funnel_stage && (
-                                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${FUNNEL_BADGE[item.funnel_stage] || ""}`}>
-                                        {item.funnel_stage}
-                                      </span>
-                                    )}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            );
-                          })}
-                        </div>
-                      </section>
-                    ))}
-                </>
-              ) : (
+                                      {/* Stacked post slots */}
+                                      <div className="space-y-1">
+                                        {daySlots.map((slot, idx) => {
+                                          const topicText = topicSlots[idx]?.topic || "";
+                                          return (
+                                            <div key={slot.id} className="rounded border border-border/50 p-1.5 space-y-0.5">
+                                              <div className="flex gap-1 flex-wrap">
+                                                {slot.funnel_stage && (
+                                                  <span className={`text-[8px] px-1 py-0 rounded border ${FUNNEL_BADGE[slot.funnel_stage] || ""}`}>
+                                                    {slot.funnel_stage}
+                                                  </span>
+                                                )}
+                                                {slot.archetype && (
+                                                  <span className="text-[8px] px-1 py-0 rounded bg-primary/10 text-primary border border-primary/20">
+                                                    {slot.archetype}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {topicText && (
+                                                <p className="text-[9px] text-muted-foreground leading-tight line-clamp-2">
+                                                  {topicText}
+                                                </p>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        );
+                      })}
+                  </>
+                );
+              })() : (
                 <Card className="border-dashed">
                   <CardContent className="py-16 flex flex-col items-center justify-center text-center space-y-3">
                     <Calendar className="h-8 w-8 text-muted-foreground" />
