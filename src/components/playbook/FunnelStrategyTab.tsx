@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 
 const GOAL_LABELS: Record<string, string> = {
   get_comments: "Get Comments & Leads",
-  dm_leads: "Get DM Leads",
+  
   drive_traffic: "Drive Traffic",
   grow_audience: "Grow My Audience",
 };
@@ -33,7 +33,7 @@ function GoalDisplay({ plan, onEdit }: { plan: any; onEdit: () => void }) {
   let goalText = plan.main_goal || "";
     if (profile?.goal_type) {
     const label = GOAL_LABELS[profile.goal_type] || profile.goal_type;
-    if ((profile.goal_type === "get_comments" || profile.goal_type === "dm_leads") && profile.dm_keyword) {
+    if (profile.goal_type === "get_comments" && profile.dm_keyword) {
       goalText = `${label} — keyword: '${profile.dm_keyword}'${profile.dm_offer ? ` → ${profile.dm_offer}` : ""}`;
     } else if (profile.goal_type === "drive_traffic" && profile.traffic_url) {
       goalText = `${label} → ${profile.traffic_url}`;

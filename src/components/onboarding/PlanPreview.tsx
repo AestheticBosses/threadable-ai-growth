@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Lightbulb, ChevronDown, ChevronUp, Loader2, Lock } from "lucide-react";
 import { PaywallModal } from "@/components/PaywallModal";
 
-type GoalType = "dm_leads" | "grow_audience" | "drive_traffic";
+type GoalType = "get_comments" | "grow_audience" | "drive_traffic";
 
 interface PlanPreviewProps {
   journeyStage: string;
@@ -38,14 +38,14 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const GOAL_LABELS: Record<GoalType, string> = {
-  dm_leads: "DM leads",
+  get_comments: "comments & leads",
   grow_audience: "audience growth",
   drive_traffic: "traffic",
 };
 
 /* ── Section 2 — Patterns (fallback insights) ── */
 const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
-  dm_leads: [
+  get_comments: [
     "Trust posts drive the most DM momentum.",
     "Specificity converts — vague hooks lose readers in the first line.",
     "Consistent posting at your cadence trains your audience to expect you.",
@@ -70,7 +70,7 @@ const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
       "Authority framing expands reach faster than neutral advice.",
       "Specific proof earns trust. Generic advice doesn't.",
     ],
-    dm_leads: [
+    get_comments: [
       "Conversation starts with belief, not pitches.",
       "Your best posts create curiosity before the ask.",
       "Trust posts drive the most DM momentum.",
@@ -87,7 +87,7 @@ const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
       "Specific proof points outperform generic advice.",
       "Reach comes from hooks that create tension.",
     ],
-    dm_leads: [
+    get_comments: [
       "Belief-driven posts start more conversations than pitches.",
       "Curiosity hooks pull people in before the ask.",
       "Trust posts drive the most DM momentum.",
@@ -104,7 +104,7 @@ const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
       "Proof-based trust posts prime clicks before the link.",
       "Authority framing keeps traffic quality high.",
     ],
-    dm_leads: [
+    get_comments: [
       "Your audience already trusts you — curiosity pulls DMs.",
       "Belief-building posts create the warmest conversations.",
       "Trust posts drive the most DM momentum.",
@@ -120,14 +120,14 @@ const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
 /* ── Section 4 — Prescription ── */
 const PRESCRIPTION_LINES: Record<GoalType, string> = {
   drive_traffic: "TOF: lead with authority hooks. MOF: build trust through specific proof. BOF: convert with embedded links.",
-  dm_leads: "TOF: curiosity. MOF: belief-building. BOF: natural keyword introduction.",
+  get_comments: "TOF: curiosity. MOF: belief-building. BOF: natural keyword introduction.",
   grow_audience: "TOF: contrarian hooks. MOF: personal stories. BOF: consistency signals.",
 };
 
 /* ── Section 5 — Weekly Plan ── */
 const WEEKLY_PLAN_LINES: Record<GoalType, string> = {
   drive_traffic: "Designed to earn the click, validate fast, and send traffic with intent.",
-  dm_leads: "Designed to start conversations, earn replies, and pull DMs inbound.",
+  get_comments: "Designed to start conversations, earn replies, and pull DMs inbound.",
   grow_audience: "Designed to get shared, earn follows, and compound consistency.",
 };
 
