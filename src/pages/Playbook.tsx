@@ -108,7 +108,7 @@ const Playbook = () => {
     console.log("[Playbook] session OK, starting pipeline");
 
     setGeneratingStrategy(true);
-    setStrategyProgress({ archetypes: "pending", buckets: "pending", pillars: "pending", branding: "pending", funnel: "pending", contentPlan: "pending", calendar: "pending" });
+    setStrategyProgress({ archetypes: "pending", buckets: "pending", pillars: "pending", branding: "pending", funnel: "pending", contentPlan: "pending" });
 
     try {
       // Step 1: Archetypes
@@ -178,17 +178,6 @@ const Playbook = () => {
       if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
       setStrategyProgress(p => ({ ...p, contentPlan: "done" }));
       queryClient.invalidateQueries({ queryKey: ["user-plan"] });
-
-      // Step 7: 30-Day Calendar
-      console.log("[Playbook] step: 30day-calendar");
-      setStrategyProgress(p => ({ ...p, calendar: "generating" }));
-      const planRes = await supabase.functions.invoke("generate-30day-plan", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      console.log("[Playbook] 30day-calendar result:", { data: planRes.data, error: planRes.error });
-      if (planRes.error) throw new Error("30-Day Calendar: " + planRes.error.message);
-      setStrategyProgress(p => ({ ...p, calendar: "done" }));
-      queryClient.invalidateQueries({ queryKey: ["content-plan-items"] });
 
       console.log("[Playbook] pipeline complete, all steps done");
       toast({ title: "Content strategy generated!" });
@@ -283,7 +272,6 @@ const Playbook = () => {
       { key: "branding", label: "Branding Plan" },
       { key: "funnel", label: "Funnel Strategy" },
       { key: "contentPlan", label: "Content Plan" },
-      { key: "calendar", label: "30-Day Calendar" },
     ];
     return (
       <Card className="mt-4">
