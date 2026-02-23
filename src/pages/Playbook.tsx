@@ -108,10 +108,21 @@ const Playbook = () => {
     console.log("[Playbook] session OK, starting pipeline");
 
     setGeneratingStrategy(true);
-    setStrategyProgress({ buckets: "pending", pillars: "pending", aiPlans: "pending" });
+    setStrategyProgress({ archetypes: "pending", buckets: "pending", pillars: "pending", branding: "pending", funnel: "pending", contentPlan: "pending", calendar: "pending" });
 
     try {
-      // Step 1: Buckets
+      // Step 1: Archetypes
+      console.log("[Playbook] step: archetypes");
+      setStrategyProgress(p => ({ ...p, archetypes: "generating" }));
+      const archetypesRes = await supabase.functions.invoke("discover-archetypes", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] archetypes result:", { data: archetypesRes.data, error: archetypesRes.error });
+      if (archetypesRes.error) throw new Error("Archetypes: " + archetypesRes.error.message);
+      setStrategyProgress(p => ({ ...p, archetypes: "done" }));
+      queryClient.invalidateQueries({ queryKey: ["archetype-discovery"] });
+
+      // Step 2: Buckets
       console.log("[Playbook] step: buckets");
       setStrategyProgress(p => ({ ...p, buckets: "generating" }));
       const bucketsRes = await supabase.functions.invoke("generate-content-buckets", {
@@ -122,7 +133,7 @@ const Playbook = () => {
       setStrategyProgress(p => ({ ...p, buckets: "done" }));
       queryClient.invalidateQueries({ queryKey: ["content-buckets"] });
 
-      // Step 2: Pillars
+      // Step 3: Pillars
       console.log("[Playbook] step: pillars");
       setStrategyProgress(p => ({ ...p, pillars: "generating" }));
       const pillarsRes = await supabase.functions.invoke("generate-content-pillars", {
@@ -134,33 +145,50 @@ const Playbook = () => {
       queryClient.invalidateQueries({ queryKey: ["content-pillars"] });
       queryClient.invalidateQueries({ queryKey: ["connected-topics"] });
 
-      // Step 3: AI Plans (content plan, branding plan, funnel strategy) — run in parallel
-      console.log("[Playbook] step: aiPlans (3x generate-plans in parallel)");
-      setStrategyProgress(p => ({ ...p, aiPlans: "generating" }));
-      const [contentPlanRes, brandingPlanRes, funnelRes] = await Promise.all([
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "content_plan" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "branding_plan" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-        supabase.functions.invoke("generate-plans", {
-          body: { plan_type: "funnel_strategy" },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }),
-      ]);
-      console.log("[Playbook] generate-plans results:", {
-        contentPlan: { data: contentPlanRes.data, error: contentPlanRes.error },
-        brandingPlan: { data: brandingPlanRes.data, error: brandingPlanRes.error },
-        funnel: { data: funnelRes.data, error: funnelRes.error },
+      // Step 4: Branding Plan
+      console.log("[Playbook] step: branding_plan");
+      setStrategyProgress(p => ({ ...p, branding: "generating" }));
+      const brandingPlanRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "branding_plan" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
+      console.log("[Playbook] branding_plan result:", { data: brandingPlanRes.data, error: brandingPlanRes.error });
       if (brandingPlanRes.error) throw new Error("Branding Plan: " + brandingPlanRes.error.message);
+      setStrategyProgress(p => ({ ...p, branding: "done" }));
+
+      // Step 5: Funnel Strategy
+      console.log("[Playbook] step: funnel_strategy");
+      setStrategyProgress(p => ({ ...p, funnel: "generating" }));
+      const funnelRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "funnel_strategy" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] funnel_strategy result:", { data: funnelRes.data, error: funnelRes.error });
       if (funnelRes.error) throw new Error("Funnel Strategy: " + funnelRes.error.message);
-      setStrategyProgress(p => ({ ...p, aiPlans: "done" }));
+      setStrategyProgress(p => ({ ...p, funnel: "done" }));
+
+      // Step 6: Content Plan (uses branding + funnel as input)
+      console.log("[Playbook] step: content_plan (with branding + funnel context)");
+      setStrategyProgress(p => ({ ...p, contentPlan: "generating" }));
+      const contentPlanRes = await supabase.functions.invoke("generate-plans", {
+        body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] content_plan result:", { data: contentPlanRes.data, error: contentPlanRes.error });
+      if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
+      setStrategyProgress(p => ({ ...p, contentPlan: "done" }));
       queryClient.invalidateQueries({ queryKey: ["user-plan"] });
+
+      // Step 7: 30-Day Calendar
+      console.log("[Playbook] step: 30day-calendar");
+      setStrategyProgress(p => ({ ...p, calendar: "generating" }));
+      const planRes = await supabase.functions.invoke("generate-30day-plan", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      console.log("[Playbook] 30day-calendar result:", { data: planRes.data, error: planRes.error });
+      if (planRes.error) throw new Error("30-Day Calendar: " + planRes.error.message);
+      setStrategyProgress(p => ({ ...p, calendar: "done" }));
+      queryClient.invalidateQueries({ queryKey: ["content-plan-items"] });
 
       console.log("[Playbook] pipeline complete, all steps done");
       toast({ title: "Content strategy generated!" });
@@ -249,9 +277,13 @@ const Playbook = () => {
   const renderStrategyProgress = () => {
     if (!generatingStrategy) return null;
     const steps = [
+      { key: "archetypes", label: "Archetypes" },
       { key: "buckets", label: "Audience Segments" },
-      { key: "pillars", label: "Content Pillars & Topics" },
-      { key: "aiPlans", label: "Content Plan, Branding & Funnel Strategy" },
+      { key: "pillars", label: "Content Pillars" },
+      { key: "branding", label: "Branding Plan" },
+      { key: "funnel", label: "Funnel Strategy" },
+      { key: "contentPlan", label: "Content Plan" },
+      { key: "calendar", label: "30-Day Calendar" },
     ];
     return (
       <Card className="mt-4">
