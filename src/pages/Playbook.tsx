@@ -13,14 +13,14 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb } from "lucide-react";
+import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb, FileText, Palette, GitBranch } from "lucide-react";
 import {
   usePlaybookData, useArchetypeDiscovery,
   useProfileStrategy, useContentBuckets, useContentPillars,
-  useConnectedTopics, useContentPlanItems, useJourneyStage,
+  useConnectedTopics, useJourneyStage,
 } from "@/hooks/useStrategyData";
 import { useQueryClient } from "@tanstack/react-query";
-import { useHasIdentity, useContentPlan } from "@/hooks/usePlansData";
+import { useHasIdentity } from "@/hooks/usePlansData";
 
 import { ContentPlanTab } from "@/components/playbook/ContentPlanTab";
 import { BrandingPlanTab } from "@/components/playbook/BrandingPlanTab";
@@ -48,12 +48,6 @@ const PILLAR_COLORS = [
   { border: "border-blue-500/40", badge: "bg-blue-500/15 text-blue-400 border-blue-500/30", bg: "bg-blue-500/5" },
   { border: "border-rose-500/40", badge: "bg-rose-500/15 text-rose-400 border-rose-500/30", bg: "bg-rose-500/5" },
 ];
-
-const FUNNEL_BADGE: Record<string, string> = {
-  TOF: "bg-violet-500/15 text-violet-300 border-violet-500/30",
-  MOF: "bg-blue-500/15 text-blue-300 border-blue-500/30",
-  BOF: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-};
 
 const PURPOSE_ICONS: Record<string, string> = {
   inspire: "✨",
@@ -85,7 +79,6 @@ const Playbook = () => {
   const { data: buckets, isLoading: bucketsLoading } = useContentBuckets();
   const { data: pillars, isLoading: pillarsLoading } = useContentPillars();
   const { data: topics } = useConnectedTopics();
-  const { data: planItems, isLoading: planLoading } = useContentPlanItems();
   const { data: journeyStage } = useJourneyStage();
 
   // State
@@ -96,7 +89,7 @@ const Playbook = () => {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
 
-  const isLoading = playbookLoading || profileLoading || bucketsLoading || pillarsLoading || planLoading;
+  const isLoading = playbookLoading || profileLoading || bucketsLoading || pillarsLoading;
   const hasV2Strategy = (buckets && buckets.length > 0) || (pillars && pillars.length > 0);
 
   // Group topics by pillar
@@ -107,63 +100,7 @@ const Playbook = () => {
     }
   }
 
-  // Content plan (for topic text overlay on 30-day calendar)
-  const { query: contentPlanQuery } = useContentPlan();
-  const contentPlanData = (() => {
-    try {
-      const raw = contentPlanQuery.data?.plan_data;
-      if (typeof raw === "string") return JSON.parse(raw);
-      if (raw && typeof raw === "object") return raw;
-    } catch { /* ignore */ }
-    return null;
-  })() as any;
-
-  // Build day-of-week → topics lookup from content_plan
-  const dayTopicsMap: Record<string, { archetype: string; funnel_stage: string; topic: string }[]> = {};
-  if (contentPlanData?.daily_plan) {
-    for (const day of contentPlanData.daily_plan) {
-      dayTopicsMap[day.day] = (day.posts || []).map((p: any) => ({
-        archetype: p.archetype || "",
-        funnel_stage: p.funnel_stage || "TOF",
-        topic: p.topic || "",
-      }));
-    }
-  }
-
-  // Group plan items by date (for calendar view)
-  const planByDate: Record<string, typeof planItems> = {};
-  if (planItems) {
-    for (const item of planItems) {
-      const date = item.scheduled_date || "";
-      (planByDate[date] = planByDate[date] || []).push(item);
-    }
-  }
-
-  // Group plan items by week (legacy)
-  const planByWeek: Record<number, typeof planItems> = {};
-  if (planItems) {
-    for (const item of planItems) {
-      (planByWeek[item.plan_week] = planByWeek[item.plan_week] || []).push(item);
-    }
-  }
-
-  // Build pillar name lookup
-  const pillarMap: Record<string, string> = {};
-  if (pillars) {
-    for (const p of pillars) {
-      pillarMap[p.id] = p.name;
-    }
-  }
-
-  // Build topic name lookup
-  const topicMap: Record<string, string> = {};
-  if (topics) {
-    for (const t of topics) {
-      topicMap[t.id] = t.name;
-    }
-  }
-
-  // ── Generate Strategy (buckets → pillars → 30-day plan) ──
+  // ── Generate Strategy (buckets → pillars → AI plans) ──
   const handleGenerateStrategy = async () => {
     console.log("[Playbook] handleGenerateStrategy called");
     const { data: { session } } = await supabase.auth.getSession();
@@ -171,7 +108,7 @@ const Playbook = () => {
     console.log("[Playbook] session OK, starting pipeline");
 
     setGeneratingStrategy(true);
-    setStrategyProgress({ buckets: "pending", pillars: "pending", plan: "pending", aiPlans: "pending" });
+    setStrategyProgress({ buckets: "pending", pillars: "pending", aiPlans: "pending" });
 
     try {
       // Step 1: Buckets
@@ -197,46 +134,33 @@ const Playbook = () => {
       queryClient.invalidateQueries({ queryKey: ["content-pillars"] });
       queryClient.invalidateQueries({ queryKey: ["connected-topics"] });
 
-      // Step 3: Branding Plan
-      console.log("[Playbook] step: branding_plan");
+      // Step 3: AI Plans (content plan, branding plan, funnel strategy) — run in parallel
+      console.log("[Playbook] step: aiPlans (3x generate-plans in parallel)");
       setStrategyProgress(p => ({ ...p, aiPlans: "generating" }));
-      const brandingPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan" },
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const [contentPlanRes, brandingPlanRes, funnelRes] = await Promise.all([
+        supabase.functions.invoke("generate-plans", {
+          body: { plan_type: "content_plan" },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
+        supabase.functions.invoke("generate-plans", {
+          body: { plan_type: "branding_plan" },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
+        supabase.functions.invoke("generate-plans", {
+          body: { plan_type: "funnel_strategy" },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }),
+      ]);
+      console.log("[Playbook] generate-plans results:", {
+        contentPlan: { data: contentPlanRes.data, error: contentPlanRes.error },
+        brandingPlan: { data: brandingPlanRes.data, error: brandingPlanRes.error },
+        funnel: { data: funnelRes.data, error: funnelRes.error },
       });
-      console.log("[Playbook] branding_plan result:", { data: brandingPlanRes.data, error: brandingPlanRes.error });
-      if (brandingPlanRes.error) throw new Error("Branding Plan: " + brandingPlanRes.error.message);
-
-      // Step 4: Funnel Strategy
-      console.log("[Playbook] step: funnel_strategy");
-      const funnelRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy" },
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      console.log("[Playbook] funnel_strategy result:", { data: funnelRes.data, error: funnelRes.error });
-      if (funnelRes.error) throw new Error("Funnel Strategy: " + funnelRes.error.message);
-
-      // Step 5: Content Plan (uses branding + funnel as input)
-      console.log("[Playbook] step: content_plan (with branding + funnel context)");
-      const contentPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      console.log("[Playbook] content_plan result:", { data: contentPlanRes.data, error: contentPlanRes.error });
       if (contentPlanRes.error) throw new Error("Content Plan: " + contentPlanRes.error.message);
+      if (brandingPlanRes.error) throw new Error("Branding Plan: " + brandingPlanRes.error.message);
+      if (funnelRes.error) throw new Error("Funnel Strategy: " + funnelRes.error.message);
       setStrategyProgress(p => ({ ...p, aiPlans: "done" }));
       queryClient.invalidateQueries({ queryKey: ["user-plan"] });
-
-      // Step 6: 30-Day Plan
-      console.log("[Playbook] step: 30day-plan");
-      setStrategyProgress(p => ({ ...p, plan: "generating" }));
-      const planRes = await supabase.functions.invoke("generate-30day-plan", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      console.log("[Playbook] 30day-plan result:", { data: planRes.data, error: planRes.error });
-      if (planRes.error) throw new Error("Plan: " + planRes.error.message);
-      setStrategyProgress(p => ({ ...p, plan: "done" }));
-      queryClient.invalidateQueries({ queryKey: ["content-plan-items"] });
 
       console.log("[Playbook] pipeline complete, all steps done");
       toast({ title: "Content strategy generated!" });
@@ -327,7 +251,6 @@ const Playbook = () => {
     const steps = [
       { key: "buckets", label: "Audience Segments" },
       { key: "pillars", label: "Content Pillars & Topics" },
-      { key: "plan", label: "30-Day Plan" },
       { key: "aiPlans", label: "Content Plan, Branding & Funnel Strategy" },
     ];
     return (
@@ -361,7 +284,7 @@ const Playbook = () => {
             <Target className="h-12 w-12 text-primary" />
             <h1 className="text-2xl font-bold text-foreground">Your Content Strategy</h1>
             <p className="text-muted-foreground max-w-md">
-              Generate a personalized content strategy with audience segments, content pillars, and a 30-day posting plan.
+              Generate a personalized content strategy with audience segments, content pillars, and posting plans.
             </p>
             <div className="flex flex-wrap gap-3 justify-center">
               {hasIdentity === false ? (
@@ -485,11 +408,14 @@ const Playbook = () => {
             <TabsTrigger value="archetypes" className="gap-1.5">
               <Brain className="h-3.5 w-3.5" /> Archetypes
             </TabsTrigger>
-            <TabsTrigger value="plan" className="gap-1.5">
-              <Calendar className="h-3.5 w-3.5" /> 30-Day Plan
+            <TabsTrigger value="content_plan" className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Content Plan
             </TabsTrigger>
-            <TabsTrigger value="ai_plans" className="gap-1.5">
-              <Lightbulb className="h-3.5 w-3.5" /> AI Plans
+            <TabsTrigger value="branding_plan" className="gap-1.5">
+              <Palette className="h-3.5 w-3.5" /> Branding Plan
+            </TabsTrigger>
+            <TabsTrigger value="funnel_strategy" className="gap-1.5">
+              <GitBranch className="h-3.5 w-3.5" /> Funnel Strategy
             </TabsTrigger>
           </TabsList>
 
@@ -826,129 +752,19 @@ const Playbook = () => {
             </div>
           </TabsContent>
 
-          {/* ═══ Tab: 30-Day Calendar ═══ */}
-          <TabsContent value="plan">
-            <div className="space-y-6 mt-4">
-              {planItems && planItems.length > 0 ? (() => {
-                const sortedDates = Object.keys(planByDate).sort();
-                const today = new Date().toISOString().split("T")[0];
-                return (
-                  <>
-                    {/* Summary bar */}
-                    <div className="flex flex-wrap gap-3">
-                      <Badge variant="outline" className="text-xs">
-                        {sortedDates.length} days &middot; {planItems.length} slots
-                      </Badge>
-                      <Badge className={`text-xs ${FUNNEL_BADGE.TOF}`}>
-                        TOF: {planItems.filter(p => p.funnel_stage === "TOF").length}
-                      </Badge>
-                      <Badge className={`text-xs ${FUNNEL_BADGE.MOF}`}>
-                        MOF: {planItems.filter(p => p.funnel_stage === "MOF").length}
-                      </Badge>
-                      <Badge className={`text-xs ${FUNNEL_BADGE.BOF}`}>
-                        BOF: {planItems.filter(p => p.funnel_stage === "BOF").length}
-                      </Badge>
-                    </div>
-
-                    {/* Week sections */}
-                    {Object.entries(planByWeek)
-                      .sort(([a], [b]) => Number(a) - Number(b))
-                      .map(([week, _weekItems]) => {
-                        // Get unique dates for this week, sorted
-                        const weekDates = [...new Set(_weekItems!.map(i => i.scheduled_date || ""))].sort();
-                        return (
-                          <section key={week} className="space-y-3">
-                            <h3 className="text-sm font-semibold text-foreground">Week {week}</h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                              {weekDates.map((dateStr) => {
-                                const dateObj = new Date(dateStr + "T00:00:00");
-                                const dayName = dateObj.toLocaleDateString("en-US", { weekday: "short" });
-                                const dateLabel = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                                const isPast = dateStr < today;
-                                const daySlots = planByDate[dateStr] || [];
-                                // Get topic text from content plan for this day-of-week
-                                const fullDayName = dateObj.toLocaleDateString("en-US", { weekday: "long" });
-                                const topicSlots = dayTopicsMap[fullDayName] || [];
-
-                                return (
-                                  <Card key={dateStr} className={`border ${isPast ? "opacity-40" : "border-border"}`}>
-                                    <CardContent className="p-2 space-y-1.5">
-                                      {/* Day header */}
-                                      <div className="text-center border-b border-border pb-1">
-                                        <p className="text-[10px] font-bold text-foreground uppercase">{dayName}</p>
-                                        <p className="text-[9px] text-muted-foreground">{dateLabel}</p>
-                                      </div>
-
-                                      {/* Stacked post slots */}
-                                      <div className="space-y-1">
-                                        {daySlots.map((slot, idx) => {
-                                          const topicText = topicSlots[idx]?.topic || "";
-                                          return (
-                                            <div key={slot.id} className="rounded border border-border/50 p-1.5 space-y-0.5">
-                                              <div className="flex gap-1 flex-wrap">
-                                                {slot.funnel_stage && (
-                                                  <span className={`text-[8px] px-1 py-0 rounded border ${FUNNEL_BADGE[slot.funnel_stage] || ""}`}>
-                                                    {slot.funnel_stage}
-                                                  </span>
-                                                )}
-                                                {slot.archetype && (
-                                                  <span className="text-[8px] px-1 py-0 rounded bg-primary/10 text-primary border border-primary/20">
-                                                    {slot.archetype}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              {topicText && (
-                                                <p className="text-[9px] text-muted-foreground leading-tight line-clamp-2">
-                                                  {topicText}
-                                                </p>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                );
-                              })}
-                            </div>
-                          </section>
-                        );
-                      })}
-                  </>
-                );
-              })() : (
-                <Card className="border-dashed">
-                  <CardContent className="py-16 flex flex-col items-center justify-center text-center space-y-3">
-                    <Calendar className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No 30-day plan yet. Generate your content strategy to create one.</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowRegenConfirm(true)}
-                      disabled={generatingStrategy}
-                    >
-                      Generate Strategy
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+          {/* ═══ Tab: Content Plan ═══ */}
+          <TabsContent value="content_plan">
+            <ContentPlanTab />
           </TabsContent>
 
-          {/* ═══ Tab: AI Plans ═══ */}
-          <TabsContent value="ai_plans">
-            <div className="space-y-6 mt-4">
-              <Tabs defaultValue="content_plan">
-                <TabsList className="w-full justify-start">
-                  <TabsTrigger value="content_plan">Content Plan</TabsTrigger>
-                  <TabsTrigger value="branding_plan">Branding Plan</TabsTrigger>
-                  <TabsTrigger value="funnel_strategy">Funnel Strategy</TabsTrigger>
-                </TabsList>
-                <TabsContent value="content_plan"><ContentPlanTab /></TabsContent>
-                <TabsContent value="branding_plan"><BrandingPlanTab /></TabsContent>
-                <TabsContent value="funnel_strategy"><FunnelStrategyTab /></TabsContent>
-              </Tabs>
-            </div>
+          {/* ═══ Tab: Branding Plan ═══ */}
+          <TabsContent value="branding_plan">
+            <BrandingPlanTab />
+          </TabsContent>
+
+          {/* ═══ Tab: Funnel Strategy ═══ */}
+          <TabsContent value="funnel_strategy">
+            <FunnelStrategyTab />
           </TabsContent>
         </Tabs>
 
@@ -959,8 +775,8 @@ const Playbook = () => {
               <AlertDialogTitle>{hasV2Strategy ? "Regenerate Content Strategy?" : "Generate Content Strategy?"}</AlertDialogTitle>
               <AlertDialogDescription>
                 {hasV2Strategy
-                  ? "This will regenerate your audience segments, content pillars, and 30-day plan. Existing strategy data will be replaced."
-                  : "Generate audience segments, content pillars with topic angles, and a 30-day posting plan based on your profile and content data."}
+                  ? "This will regenerate your audience segments, content pillars, and plans. Existing strategy data will be replaced."
+                  : "Generate audience segments, content pillars with topic angles, and posting plans based on your profile and content data."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
