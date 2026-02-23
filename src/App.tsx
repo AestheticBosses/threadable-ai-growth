@@ -69,6 +69,7 @@ const App = () => (
             <Route path="/strategy" element={<Navigate to="/dashboard" replace />} />
             <Route path="/queue" element={<ProtectedRoute><Queue /></ProtectedRoute>} />
             <Route path="/my-story" element={<ProtectedRoute><MyStory /></ProtectedRoute>} />
+            <Route path="/identity" element={<ProtectedRoute><MyStory /></ProtectedRoute>} />
             <Route path="/voice" element={<ProtectedRoute><Voice /></ProtectedRoute>} />
             <Route path="/knowledge-base" element={<ProtectedRoute><KnowledgeBase /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
