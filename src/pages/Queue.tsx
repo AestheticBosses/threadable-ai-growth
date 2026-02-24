@@ -54,8 +54,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PostStatusIndicator } from "@/components/queue/PostStatusIndicator";
 import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
+import { LogResultsModal } from "@/components/queue/LogResultsModal";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info } from "lucide-react";
+import { Info, BarChart3 } from "lucide-react";
 
 type Post = {
   id: string;
@@ -128,6 +129,23 @@ const Queue = () => {
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [scoringId, setScoringId] = useState<string | null>(null);
+  const [logResultsPostId, setLogResultsPostId] = useState<string | null>(null);
+  const [postResults, setPostResults] = useState<Record<string, { id: string; comments_received: number | null; link_clicks: number | null; dm_replies: number | null; is_estimated: boolean }>>({});
+
+  const loadPostResults = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("post_results")
+      .select("id, post_id, comments_received, link_clicks, dm_replies, is_estimated")
+      .eq("user_id", user.id);
+    if (data) {
+      const map: typeof postResults = {};
+      for (const r of data) {
+        map[r.post_id] = r;
+      }
+      setPostResults(map);
+    }
+  }, [user]);
 
   const loadPosts = useCallback(async () => {
     if (!user) return;
@@ -155,7 +173,8 @@ const Queue = () => {
 
   useEffect(() => {
     loadPosts();
-  }, [loadPosts]);
+    loadPostResults();
+  }, [loadPosts, loadPostResults]);
 
   const drafts = posts.filter((p) => p.status === "draft");
   const approved = posts.filter((p) => p.status === "approved" || p.status === "scheduled");
@@ -530,6 +549,8 @@ const Queue = () => {
                 threadsUsername={threadsUsername}
                 truncate={truncate}
                 isDraft
+                postResult={postResults[post.id] || null}
+                onLogResults={(id) => setLogResultsPostId(id)}
               />
             ))}
           </div>
@@ -567,6 +588,8 @@ const Queue = () => {
                 threadsUsername={threadsUsername}
                 truncate={truncate}
                 isDraft={false}
+                postResult={postResults[post.id] || null}
+                onLogResults={(id) => setLogResultsPostId(id)}
               />
             ))}
           </div>
@@ -632,6 +655,18 @@ const Queue = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Log Results Modal */}
+      {logResultsPostId && user && (
+        <LogResultsModal
+          open={!!logResultsPostId}
+          onOpenChange={(open) => { if (!open) setLogResultsPostId(null); }}
+          postId={logResultsPostId}
+          userId={user.id}
+          existingResult={postResults[logResultsPostId] || null}
+          onSaved={loadPostResults}
+        />
+      )}
     </AppLayout>
   );
 };
@@ -662,6 +697,8 @@ interface PostCardProps {
   threadsUsername: string | null;
   truncate: (text: string | null, len?: number) => string;
   isDraft: boolean;
+  postResult: { id: string; comments_received: number | null; link_clicks: number | null; dm_replies: number | null; is_estimated: boolean } | null;
+  onLogResults: (id: string) => void;
 }
 
 function PostCard({
@@ -688,8 +725,17 @@ function PostCard({
   threadsUsername,
   truncate,
   isDraft,
+  postResult,
+  onLogResults,
 }: PostCardProps) {
   const isEditing = editingId === post.id;
+
+  // Result status dot
+  const resultDot = postResult
+    ? postResult.is_estimated
+      ? { color: "bg-yellow-500", label: "Estimated results" }
+      : { color: "bg-emerald-500", label: "Results logged" }
+    : { color: "bg-muted-foreground/40", label: "No results logged" };
 
   return (
     <Card className={cn(
@@ -700,12 +746,20 @@ function PostCard({
         {/* Collapsed header — always visible */}
         <CollapsibleTrigger asChild>
           <button className="w-full text-left p-4 flex items-start gap-3 hover:bg-accent/30 transition-colors">
-            <div className="mt-0.5">
+            <div className="mt-0.5 relative">
               {isDraft ? (
                 <Clock className="h-4 w-4 text-muted-foreground" />
               ) : (
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               )}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={cn("absolute -bottom-1 -right-1 h-2 w-2 rounded-full border border-background", resultDot.color)} />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs">{resultDot.label}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               {/* Top row: date/time + badges */}
@@ -921,6 +975,15 @@ function PostCard({
                 >
                   {publishingId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   🚀 Post Now
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onLogResults(post.id)}
+                  className="gap-1 h-7 text-xs"
+                >
+                  <BarChart3 className="h-3 w-3" />
+                  Log Results
                 </Button>
                 <Button
                   size="sm"

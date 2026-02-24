@@ -504,6 +504,54 @@ export type Database = {
         }
         Relationships: []
       }
+      post_results: {
+        Row: {
+          comments_received: number | null
+          dm_replies: number | null
+          id: string
+          is_estimated: boolean
+          link_clicks: number | null
+          logged_at: string
+          post_id: string
+          user_id: string
+        }
+        Insert: {
+          comments_received?: number | null
+          dm_replies?: number | null
+          id?: string
+          is_estimated?: boolean
+          link_clicks?: number | null
+          logged_at?: string
+          post_id: string
+          user_id: string
+        }
+        Update: {
+          comments_received?: number | null
+          dm_replies?: number | null
+          id?: string
+          is_estimated?: boolean
+          link_clicks?: number | null
+          logged_at?: string
+          post_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_results_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts_analyzed: {
         Row: {
           archetype: string | null
