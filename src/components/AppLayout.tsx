@@ -15,6 +15,7 @@ import {
 import threadableIcon from "@/assets/threadable-icon.png";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { NotificationBell } from "@/components/NotificationBell";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -90,11 +91,14 @@ export function AppLayout({ children }: AppSidebarProps) {
   const sidebarContent = (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2 px-4 border-b border-sidebar-border">
-        <img src={threadableIcon} alt="Threadable.ai" className="h-7 w-7 rounded-md" />
-        <span className="text-sm font-semibold text-foreground tracking-tight">
-          Threadable.ai
-        </span>
+      <div className="flex h-14 items-center justify-between px-4 border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <img src={threadableIcon} alt="Threadable.ai" className="h-7 w-7 rounded-md" />
+          <span className="text-sm font-semibold text-foreground tracking-tight">
+            Threadable.ai
+          </span>
+        </div>
+        <NotificationBell />
       </div>
 
       {/* Nav */}
@@ -159,11 +163,12 @@ export function AppLayout({ children }: AppSidebarProps) {
 
       <div className="flex flex-1 flex-col min-w-0">
         {/* Mobile top header */}
-        <header className="flex h-14 items-center border-b border-border px-4 md:hidden">
+        <header className="flex h-14 items-center justify-between border-b border-border px-4 md:hidden">
           <div className="flex items-center gap-2">
             <img src={threadableIcon} alt="Threadable.ai" className="h-6 w-6 rounded-md" />
             <span className="text-sm font-semibold tracking-tight text-foreground">Threadable.ai</span>
           </div>
+          <NotificationBell />
         </header>
 
         <main className="flex-1 overflow-auto bg-background pb-20 md:pb-0">
