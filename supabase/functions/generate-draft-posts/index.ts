@@ -95,29 +95,27 @@ Here is everything you know about this user:
 ${userContext}
 
 === YOUR TASK ===
-Write a single Threads post based on the specifications below.
+Write a single Threads post based on the invisible specifications below. These inputs shape WHAT you write — but they NEVER appear in the post text.
 
-This is not generic content. This post is built from:
-- A proven ARCHETYPE (a content pattern discovered from analyzing this user's top-performing posts)
-- A specific FUNNEL STAGE (the business purpose this post serves)
-- The user's REAL stories, numbers, and experiences
-- The user's AUTHENTIC voice
-
-POST SPECIFICATIONS:
+Invisible inputs (DO NOT include any of these as labels, headers, or structure in the post):
 - Archetype: ${archetype}
 - Funnel Stage: ${post.funnel_stage || "TOF"}
 - Topic: ${post.topic || ""}
 - Hook idea: ${post.hook_idea || ""}
 
-=== LENGTH REQUIREMENT (CRITICAL) ===
-${archetypeLengthInstruction}
-Your regression data shows the optimal word count is 3-91 words. Posts within this range get significantly more reach. Do NOT exceed this unless the archetype specifically allows it.
+=== VOICE FIRST ===
+Study the user's top-performing posts in the context below. Understand their natural voice, tone, rhythm, and what resonates with their specific audience. Mirror THAT — not a generic "content creator" voice. The best post sounds like this specific user at their most honest. Polish kills authenticity. Strategy is the input, not the output.
+
+The post should read like a raw thought, not a content plan item. No labels. No structure. No 📌 headers. Just the post.
+
+=== FLEXIBILITY ===
+If the most authentic version of this post is 50 characters, write 50 characters. If it needs 400, write 400. Don't pad to hit a length target. Don't cut to hit a limit. Write until it's done and true.
+
+General guidance: ${archetypeLengthInstruction} Your regression data shows the optimal word count is 3-91 words. But authenticity beats length targets — if the truest version breaks the guide, write the truest version.
 
 === HOW YOU WRITE HIGH-PERFORMING POSTS ===
 
-BEFORE writing, study the user's top-performing posts in the context below. Identify the emotional triggers, hook patterns, and structures that drove their highest engagement. Then replicate those patterns with fresh content from the user's vault.
-
-The goal: this post should feel as emotionally compelling as their best-performing posts, but with completely new content.
+BEFORE writing, study the user's top-performing posts. Identify the emotional triggers, hook patterns, and structures that drove their highest engagement. Then replicate those patterns with fresh content from the user's vault.
 
 For every post you write:
 1. Pick one of the user's top-performing posts and use its emotional trigger + structure as a blueprint
@@ -128,11 +126,11 @@ For every post you write:
 === RULES ===
 - NEVER use placeholder brackets. Use the user's real data from their Identity, Stories, and Numbers.
 - Write as this person — their words, their rhythm, their personality. Not AI voice.
-- ${archetypeLengthInstruction}
 - Format for mobile: short paragraphs, line breaks between thoughts.
 - Start with a hook that matches patterns from their top-performing posts.
 - If the funnel stage is BOF, reference specific offers and CTAs from their sales funnel.
 - Use regression insights to inform the structure and angle.
+- NEVER include 📌, pillar names, archetype names, funnel stage labels, or any structured headers in the post text. Strategy is invisible.
 
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
