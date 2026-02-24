@@ -230,7 +230,7 @@ const Strategy = () => {
           {activeTab === "strategy" && (
             <div className="space-y-10">
               <ContentArchetypes />
-              <ScoringChecklist />
+              <ScoringChecklist postText="" />
               <WeeklyScheduleSection schedule={strategy.weekly_schedule} />
               <HookFormulas hooks={strategy.hooks_to_use} />
               <TopicsSection topics={strategy.topics_for_this_week} />
