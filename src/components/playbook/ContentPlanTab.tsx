@@ -398,7 +398,7 @@ export function ContentPlanTab() {
     </div>
   );
 
-  const totalPlanPosts = getAllPlanPosts().length;
+  const totalPlanPosts = postsPerDay * 7;
   return (
     <div className="space-y-6 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -415,7 +415,7 @@ export function ContentPlanTab() {
             className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
           >
             {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            ✨ Generate Week of Posts
+            ✦ Draft Full Week
           </Button>
         )}
       </div>
@@ -714,9 +714,9 @@ export function ContentPlanTab() {
       <AlertDialog open={confirmWeek} onOpenChange={setConfirmWeek}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Generate Week of Posts?</AlertDialogTitle>
+            <AlertDialogTitle>Draft Full Week of Posts?</AlertDialogTitle>
             <AlertDialogDescription>
-              Generate draft posts for all {totalPlanPosts} planned slots this week? They'll appear in your Content Queue as drafts for review.
+              Generate draft posts for all {totalPlanPosts} planned slots this week. They'll appear in your Content Queue for review and approval before posting.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
