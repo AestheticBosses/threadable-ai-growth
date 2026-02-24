@@ -193,7 +193,7 @@ Respond ONLY in this exact JSON format with no other text:
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-opus-4-6',
         max_tokens: 4000,
         messages: [{
           role: 'user',

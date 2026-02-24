@@ -106,7 +106,7 @@ The array MUST have exactly ${batch.length} elements, one for each post. Use the
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-5",
+          model: "claude-opus-4-6",
           max_tokens: 2000,
           messages: [{ role: "user", content: prompt }],
         }),
