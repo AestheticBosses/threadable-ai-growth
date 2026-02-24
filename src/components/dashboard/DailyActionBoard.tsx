@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, Circle, ListChecks } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
 const GOAL_ACTIONS: Record<string, string[]> = {
   get_comments: [
@@ -31,6 +31,29 @@ const GOAL_FOCUS: Record<string, string> = {
   drive_traffic: "Today's focus: Every post is a doorway.",
 };
 
+function getFirstAction(goalType: string, yesterdayResults: any): string {
+  const comments = yesterdayResults?.comments_received ?? null;
+  const clicks = yesterdayResults?.link_clicks ?? null;
+  const isEstimated = yesterdayResults?.is_estimated ?? true;
+
+  if (goalType === "get_comments") {
+    if (comments === null || isEstimated) return "Reply to every comment on yesterday's post with a follow-up question to drive thread depth";
+    if (comments === 0) return "Yesterday's post got no replies — open today's post with a direct question to invite responses";
+    if (comments >= 5) return `Yesterday got ${comments} comments — strong signal. Reply to each one to compound engagement`;
+    return "Reply to yesterday's comments with follow-up questions to keep the thread alive";
+  }
+  if (goalType === "drive_traffic") {
+    if (clicks === null || isEstimated) return "Check yesterday's link clicks and update your bio CTA if CTR feels low";
+    if (clicks === 0) return "No link clicks logged yesterday — consider moving your CTA earlier in today's post";
+    if (clicks >= 10) return `${clicks} clicks yesterday — strong. Repurpose that post angle into today's content`;
+    return "Log yesterday's link clicks below to keep your regression data accurate";
+  }
+  if (goalType === "grow_audience") {
+    return "Share today's post to one other platform or community to compound your reach beyond Threads";
+  }
+  return "Reply meaningfully to all comments on yesterday's post";
+}
+
 export function DailyActionBoard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +68,7 @@ export function DailyActionBoard() {
       const todayStart = startOfDay(new Date()).toISOString();
       const todayEnd = endOfDay(new Date()).toISOString();
 
-      const [profileRes, todayPostRes] = await Promise.all([
+      const [profileRes, todayPostRes, yesterdayResultsRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("goal_type")
@@ -59,11 +82,19 @@ export function DailyActionBoard() {
           .gte("scheduled_for", todayStart)
           .lte("scheduled_for", todayEnd)
           .limit(1),
+        supabase
+          .from("post_results")
+          .select("comments_received, link_clicks, dm_replies, is_estimated")
+          .eq("user_id", user.id)
+          .order("logged_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       return {
         goalType: profileRes.data?.goal_type ?? "grow_audience",
         hasTodayPost: (todayPostRes.data?.length ?? 0) > 0,
+        yesterdayResults: yesterdayResultsRes.data ?? null,
       };
     },
     enabled: !!user?.id,
@@ -78,8 +109,14 @@ export function DailyActionBoard() {
     actions.push({ id: "review_post", label: "Review today's post →", link: "/queue" });
   }
 
+  // Dynamic first action based on goal + yesterday's results (#5)
+  const dynamicFirst = getFirstAction(goalType, data?.yesterdayResults);
+  actions.push({ id: "dynamic_first", label: dynamicFirst });
+
   for (const action of goalActions) {
     if (actions.length >= 4) break;
+    // Skip duplicates with dynamic first
+    if (action.toLowerCase().includes("reply") && dynamicFirst.toLowerCase().includes("reply")) continue;
     actions.push({ id: action, label: action });
   }
 

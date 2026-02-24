@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PlanHealthHero } from "@/components/dashboard/PlanHealthHero";
 import { WeeklyPipeline } from "@/components/dashboard/WeeklyPipeline";
 import { DailyActionBoard } from "@/components/dashboard/DailyActionBoard";
+import { LogResultCard } from "@/components/dashboard/LogResultCard";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
@@ -227,6 +228,9 @@ const Dashboard = () => {
 
             {/* ── Daily Action Board ── */}
             <DailyActionBoard />
+
+            {/* ── Log Results Card (#3) ── */}
+            <LogResultCard />
 
             {/* ── Section 2: This Week's Pipeline ── */}
             <WeeklyPipeline />

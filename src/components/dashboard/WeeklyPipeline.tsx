@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { startOfWeek, endOfWeek, addDays, format, isSameDay, isAfter, startOfDay } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Clock, FileText, Sparkles, Minus } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Sparkles, Minus, TrendingUp } from "lucide-react";
 
 const PILLAR_COLORS = [
   { bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/20", dot: "bg-blue-500" },
@@ -57,6 +57,23 @@ function StatusBadge({ status }: { status: DayStatus }) {
   }
 }
 
+function buildChangeMessage(regressionData: any): string | null {
+  if (!regressionData) return null;
+  const credLift = regressionData?.views_insights?.boolean_feature_lifts?.has_credibility_marker;
+  const topNegative = regressionData?.views_insights?.top_negative_predictors?.[0];
+
+  let msg = "";
+  if (credLift?.with_avg && credLift?.without_avg) {
+    const multiplier = Math.round(credLift.with_avg / credLift.without_avg);
+    msg = `Your credibility-signal posts average ${credLift.with_avg.toLocaleString()} views vs ${credLift.without_avg.toLocaleString()} without — this week's plan is weighted toward them.`;
+  }
+  if (topNegative?.feature === "has_hashtag" && topNegative?.correlation) {
+    const pct = Math.abs(topNegative.correlation * 100).toFixed(0);
+    msg += (msg ? " " : "") + `Hashtags removed from all generated posts — they reduce your reach by ${pct}%.`;
+  }
+  return msg || null;
+}
+
 export function WeeklyPipeline() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -72,10 +89,10 @@ export function WeeklyPipeline() {
       const weekStartStr = format(weekStart, "yyyy-MM-dd");
       const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
-      const [planRes, scheduledRes, pillarsRes] = await Promise.all([
+      const [planRes, scheduledRes, pillarsRes, regressionRes] = await Promise.all([
         supabase
           .from("content_plan_items")
-          .select("id, scheduled_date, archetype, funnel_stage, status, pillar_id, topic_id, post_id")
+          .select("id, scheduled_date, archetype, funnel_stage, status, pillar_id, topic_id, post_id, is_test_slot")
           .eq("user_id", user.id)
           .gte("scheduled_date", weekStartStr)
           .lte("scheduled_date", weekEndStr),
@@ -90,12 +107,27 @@ export function WeeklyPipeline() {
           .select("id, name")
           .eq("user_id", user.id)
           .eq("is_active", true),
+        supabase
+          .from("content_strategies")
+          .select("regression_insights")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "weekly")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
+      const planItems = planRes.data ?? [];
+      const testCount = planItems.filter(i => i.is_test_slot).length;
+      const scaleCount = planItems.filter(i => !i.is_test_slot).length;
+
       return {
-        planItems: planRes.data ?? [],
+        planItems,
         scheduledPosts: scheduledRes.data ?? [],
         pillars: pillarsRes.data ?? [],
+        regressionData: regressionRes.data?.regression_insights as any,
+        testCount,
+        scaleCount,
       };
     },
     enabled: !!user?.id,
@@ -138,14 +170,31 @@ export function WeeklyPipeline() {
   const todayNeedsPost = (day: typeof days[0]) =>
     day.isToday && day.status === "planned";
 
+  const changeMessage = buildChangeMessage(data?.regressionData);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-foreground">This Week's Pipeline</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-foreground">This Week's Pipeline</h2>
+          {data && (data.testCount > 0 || data.scaleCount > 0) && (
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {data.testCount} Tests / {data.scaleCount} Scales
+            </span>
+          )}
+        </div>
         <span className="text-xs text-muted-foreground">
           {format(weekStart, "MMM d")} – {format(weekEnd, "MMM d")}
         </span>
       </div>
+
+      {/* "What changed" strip (#4) */}
+      {changeMessage && (
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/10 px-4 py-2.5">
+          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">{changeMessage}</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((day, i) => {
@@ -163,13 +212,25 @@ export function WeeklyPipeline() {
               }`}
             >
               {/* Day + date */}
-              <div>
-                <p className={`text-[10px] font-semibold ${day.isToday ? "text-primary" : "text-muted-foreground"}`}>
-                  {format(day.dayDate, "EEE")}
-                </p>
-                <p className={`text-sm font-bold leading-none mt-0.5 ${day.isToday ? "text-primary" : "text-foreground"}`}>
-                  {format(day.dayDate, "d")}
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className={`text-[10px] font-semibold ${day.isToday ? "text-primary" : "text-muted-foreground"}`}>
+                    {format(day.dayDate, "EEE")}
+                  </p>
+                  <p className={`text-sm font-bold leading-none mt-0.5 ${day.isToday ? "text-primary" : "text-foreground"}`}>
+                    {format(day.dayDate, "d")}
+                  </p>
+                </div>
+                {/* Test/Scale badge (#2) */}
+                {day.planItem && day.planItem.is_test_slot != null && (
+                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded-full border leading-none ${
+                    day.planItem.is_test_slot
+                      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+                      : "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+                  }`}>
+                    {day.planItem.is_test_slot ? "TEST" : "SCALE"}
+                  </span>
+                )}
               </div>
 
               {/* Pillar */}
@@ -194,7 +255,6 @@ export function WeeklyPipeline() {
               {/* Status badge */}
               <div className="mt-auto space-y-1.5">
                 <StatusBadge status={day.status} />
-                {/* Generate CTA for today if not yet posted */}
                 {isActionable && (
                   <div className="flex items-center gap-0.5 text-[9px] font-semibold text-primary">
                     <Sparkles className="h-2.5 w-2.5" />

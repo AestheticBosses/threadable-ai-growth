@@ -32,6 +32,25 @@ const FUNNEL_META: Record<string, { label: string; color: string; dot: string; d
   },
 };
 
+function getWhyToday(archetype: string | null | undefined, funnelStage: string | null | undefined, isTest: boolean, regressionData: any): string {
+  const credLift = regressionData?.views_insights?.boolean_feature_lifts?.has_credibility_marker;
+  const testLabel = isTest ? "This is a test slot — we're validating a new angle." : "This is a proven format — we're scaling what works.";
+  const arch = archetype ?? "Content";
+
+  if (funnelStage === "TOF") {
+    return credLift?.with_avg
+      ? `${arch} post — optimized for reach. Your credibility-signal posts average ${credLift.with_avg.toLocaleString()} views. ${testLabel}`
+      : `${arch} post — pulling new people into your world before warming them up. ${testLabel}`;
+  }
+  if (funnelStage === "MOF") {
+    return `${arch} post — building trust with people who've already seen you. ${testLabel}`;
+  }
+  if (funnelStage === "BOF") {
+    return `${arch} post — your audience is warm. This is the ask. ${testLabel}`;
+  }
+  return `${arch} post — ${testLabel}`;
+}
+
 export function PlanHealthHero() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -39,22 +58,23 @@ export function PlanHealthHero() {
   const todayStr = format(today, "yyyy-MM-dd");
   const weekStart = startOfWeek(startOfDay(today), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(startOfDay(today), { weekStartsOn: 1 });
+  const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
   const { data, isLoading } = useQuery({
     queryKey: ["plan-health-hero-v2", user?.id, todayStr],
     queryFn: async () => {
       if (!user?.id) return null;
 
-      const [profileRes, planRes, scheduledRes, draftsRes] = await Promise.all([
+      const [profileRes, planRes, scheduledRes, draftsRes, regressionRes, weekPlanRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("threads_username, threads_user_id")
           .eq("id", user.id)
           .maybeSingle(),
-        // Fetch from today onward (up to 60 days) so we can always find the next item
         supabase
           .from("content_plan_items")
-          .select("id, scheduled_date, archetype, funnel_stage, pillar_id, topic_id, status")
+          .select("id, scheduled_date, archetype, funnel_stage, pillar_id, topic_id, status, is_test_slot")
           .eq("user_id", user.id)
           .gte("scheduled_date", todayStr)
           .order("scheduled_date", { ascending: true })
@@ -69,12 +89,28 @@ export function PlanHealthHero() {
           .select("id")
           .eq("user_id", user.id)
           .eq("status", "draft"),
+        supabase
+          .from("content_strategies")
+          .select("regression_insights")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "weekly")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("content_plan_items")
+          .select("funnel_stage, is_test_slot")
+          .eq("user_id", user.id)
+          .gte("scheduled_date", weekStartStr)
+          .lte("scheduled_date", weekEndStr),
       ]);
 
       const profile = profileRes.data;
       const planItems = planRes.data ?? [];
       const scheduledPosts = scheduledRes.data ?? [];
       const draftPosts = draftsRes.data ?? [];
+      const regressionData = regressionRes.data?.regression_insights as any;
+      const weekItems = weekPlanRes.data ?? [];
 
       const threadsConnected = !!(profile?.threads_username || profile?.threads_user_id);
       const hasPlan = planItems.length > 0;
@@ -82,10 +118,8 @@ export function PlanHealthHero() {
       const published = scheduledPosts.filter((p) => p.status === "published");
       const scheduled = scheduledPosts.filter((p) => p.status === "scheduled" || p.status === "approved");
 
-      // Find today's plan item
       const todayPlanItem = planItems.find((p) => p.scheduled_date === todayStr) ?? null;
 
-      // Check if today already has a post
       const todayPost = scheduledPosts.find((sp) => {
         const postDate = sp.scheduled_for ? format(new Date(sp.scheduled_for), "yyyy-MM-dd") : null;
         return postDate === todayStr;
@@ -93,8 +127,6 @@ export function PlanHealthHero() {
 
       const todayDone = todayPost !== null && (todayPost.status === "published" || todayPost.status === "scheduled" || todayPost.status === "draft");
 
-      // Find next unposted item:
-      // - If today is done OR has no plan item, find the next future plan item with no post
       let nextUnpostedItem: typeof planItems[0] | null = null;
       for (const item of planItems) {
         if (!item.scheduled_date || item.scheduled_date === todayStr) continue;
@@ -108,7 +140,6 @@ export function PlanHealthHero() {
         }
       }
 
-      // Resolve pillar + topic names
       const allPillarIds = [...new Set([
         todayPlanItem?.pillar_id,
         nextUnpostedItem?.pillar_id,
@@ -133,6 +164,15 @@ export function PlanHealthHero() {
       const resolvePillar = (id?: string | null) => pillars.find((p) => p.id === id)?.name ?? null;
       const resolveTopic = (id?: string | null) => topics.find((t) => t.id === id)?.name ?? null;
 
+      // Funnel gap analysis
+      const tofCount = weekItems.filter(i => i.funnel_stage === "TOF").length;
+      const mofCount = weekItems.filter(i => i.funnel_stage === "MOF").length;
+      const bofCount = weekItems.filter(i => i.funnel_stage === "BOF").length;
+      const gaps: string[] = [];
+      if (tofCount === 0) gaps.push("no Reach posts this week");
+      if (bofCount === 0) gaps.push("no Conversion posts scheduled");
+      if (mofCount === 0) gaps.push("no Trust posts planned");
+
       return {
         threadsConnected,
         hasPlan,
@@ -147,6 +187,11 @@ export function PlanHealthHero() {
         todayTopic: resolveTopic(todayPlanItem?.topic_id),
         nextPillar: resolvePillar(nextUnpostedItem?.pillar_id),
         nextTopic: resolveTopic(nextUnpostedItem?.topic_id),
+        regressionData,
+        tofCount,
+        mofCount,
+        bofCount,
+        gaps,
       };
     },
     enabled: !!user?.id,
@@ -161,7 +206,6 @@ export function PlanHealthHero() {
     );
   }
 
-  // State 1: No Threads connected
   if (!data?.threadsConnected) {
     return (
       <div className="relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card overflow-hidden p-6">
@@ -184,7 +228,6 @@ export function PlanHealthHero() {
     );
   }
 
-  // State 2: No content plan
   if (!data?.hasPlan) {
     return (
       <div className="relative rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card overflow-hidden p-6">
@@ -207,10 +250,8 @@ export function PlanHealthHero() {
     );
   }
 
-  const { todayPlanItem, todayPost, todayDone, nextUnpostedItem, todayPillar, todayTopic, nextPillar, nextTopic } = data;
+  const { todayPlanItem, todayPost, todayDone, nextUnpostedItem, todayPillar, todayTopic, nextPillar, nextTopic, regressionData } = data;
 
-  // Determine what to feature:
-  // Priority: today's unposted item → next future unposted item (if today done or no item today)
   const hasTodayItem = !!todayPlanItem && !todayDone;
   const featuredItem = hasTodayItem ? todayPlanItem : nextUnpostedItem;
   const featuredPillar = hasTodayItem ? todayPillar : nextPillar;
@@ -269,9 +310,25 @@ export function PlanHealthHero() {
           </Button>
         </div>
 
+        {/* Funnel mix health (#6) */}
+        {data.gaps.length > 0 ? (
+          <div className="flex items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-2.5">
+            <AlertCircle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-yellow-400">
+              ⚠ Your plan is missing: {data.gaps.join(", ")}. Generate posts to fill it.
+            </p>
+          </div>
+        ) : (data.tofCount + data.mofCount + data.bofCount > 0) && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <p className="text-xs text-emerald-400">
+              ✓ Your funnel mix is healthy this week — TOF: {data.tofCount} / MOF: {data.mofCount} / BOF: {data.bofCount}
+            </p>
+          </div>
+        )}
+
         {/* ── TODAY'S POST HERO ── */}
         {todayDone && todayPost ? (
-          // Today is done — show completion banner + next upcoming
           <div className="space-y-3">
             <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
               <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
@@ -298,20 +355,20 @@ export function PlanHealthHero() {
                 topicName={nextTopic}
                 label="Next Post"
                 onGenerate={handleGenerate}
+                regressionData={regressionData}
               />
             )}
           </div>
         ) : featuredItem ? (
-          // Show today's item or next upcoming item (if no item today)
           <TodayPostCard
             planItem={featuredItem}
             pillarName={featuredPillar}
             topicName={featuredTopic}
             label={featuredLabel}
             onGenerate={handleGenerate}
+            regressionData={regressionData}
           />
         ) : (
-          // Truly no upcoming plan items at all
           <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">No upcoming posts in your plan.</p>
             <Button size="sm" onClick={() => navigate("/playbook")} variant="outline" className="text-xs gap-1">
@@ -331,14 +388,17 @@ function TodayPostCard({
   topicName,
   label,
   onGenerate,
+  regressionData,
 }: {
-  planItem: { archetype?: string | null; funnel_stage?: string | null; scheduled_date?: string | null };
+  planItem: { archetype?: string | null; funnel_stage?: string | null; scheduled_date?: string | null; is_test_slot?: boolean | null };
   pillarName?: string | null;
   topicName?: string | null;
   label: string;
   onGenerate: () => void;
+  regressionData?: any;
 }) {
   const funnel = planItem.funnel_stage ? FUNNEL_META[planItem.funnel_stage] ?? null : null;
+  const whyToday = getWhyToday(planItem.archetype, planItem.funnel_stage, !!planItem.is_test_slot, regressionData);
 
   return (
     <div className="rounded-xl border border-primary/40 bg-primary/5 p-5 space-y-4 shadow-[0_0_20px_-4px_hsl(var(--primary)/0.2)]">
@@ -346,6 +406,15 @@ function TodayPostCard({
       <div className="flex items-center gap-2">
         <Pin className="h-3.5 w-3.5 text-primary" />
         <span className="text-xs font-semibold uppercase tracking-wider text-primary">{label}</span>
+        {planItem.is_test_slot != null && (
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+            planItem.is_test_slot
+              ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/20"
+              : "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+          }`}>
+            {planItem.is_test_slot ? "TEST" : "SCALE"}
+          </span>
+        )}
         {planItem.scheduled_date && (
           <span className="text-xs text-muted-foreground ml-auto">
             {format(parseISO(planItem.scheduled_date), "EEEE, MMM d")}
@@ -371,12 +440,15 @@ function TodayPostCard({
         )}
       </div>
 
-      {/* Funnel stage pill */}
+      {/* Funnel stage pill + Why today */}
       {funnel && (
-        <div className="flex items-center gap-2">
-          <div className={`h-2 w-2 rounded-full ${funnel.dot}`} />
-          <span className={`text-xs font-semibold ${funnel.color}`}>{funnel.label}</span>
-          <span className="text-xs text-muted-foreground">— {funnel.description}</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${funnel.dot}`} />
+            <span className={`text-xs font-semibold ${funnel.color}`}>{funnel.label}</span>
+            <span className="text-xs text-muted-foreground">— {funnel.description}</span>
+          </div>
+          <p className="text-xs text-muted-foreground italic pl-4">{whyToday}</p>
         </div>
       )}
 
