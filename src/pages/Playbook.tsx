@@ -422,17 +422,6 @@ const Playbook = () => {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Content Strategy</h1>
             <p className="mt-1 text-sm text-muted-foreground">Your personalized content engine.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowRegenConfirm(true)}
-              disabled={generatingStrategy}
-              className="gap-2"
-            >
-              {generatingStrategy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Regenerate Strategy
-            </Button>
-          </div>
         </div>
 
         {renderStrategyProgress()}
@@ -594,8 +583,19 @@ const Playbook = () => {
                       </Button>
                     </CardContent>
                   </Card>
-                )}
+               )}
               </section>
+
+              {/* ── Regenerate Strategy (secondary) ── */}
+              <div className="pt-4 border-t border-border">
+                <button
+                  onClick={() => setShowRegenConfirm(true)}
+                  disabled={generatingStrategy}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 disabled:opacity-50"
+                >
+                  {generatingStrategy ? "Regenerating…" : "Regenerate entire strategy…"}
+                </button>
+              </div>
             </div>
           </TabsContent>
 
