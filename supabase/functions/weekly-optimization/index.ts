@@ -118,10 +118,10 @@ async function processUser(
     .order("created_at", { ascending: false })
     .limit(2);
 
-  let patternsShifted = false;
+  let shiftCount = 0;
   if (prevStrategies && prevStrategies.length >= 2 && newInsights) {
     const prevInsights = prevStrategies[1].regression_insights as any;
-    patternsShifted = hasSignificantShift(newInsights, prevInsights);
+    shiftCount = countSignificantShifts(newInsights, prevInsights);
   }
 
   // Step 5: Check if plan regeneration is needed
@@ -136,40 +136,74 @@ async function processUser(
     ? (Date.now() - new Date(lastPlan.updated_at).getTime()) / (1000 * 60 * 60 * 24)
     : Infinity;
 
-  const shouldRegeneratePlan = patternsShifted || daysSinceLastPlan > 7;
+  const patternsShifted = shiftCount >= 1;
+  const fullCascade = shiftCount >= 2 || daysSinceLastPlan > 7;
+  const shouldRegenerate = patternsShifted || daysSinceLastPlan > 7;
 
-  if (!shouldRegeneratePlan) {
+  if (!shouldRegenerate) {
     console.log(`[weekly-optimization] No plan update needed for ${userId}`);
     return { user_id: userId, status: "ok", plan_updated: false, reason: "No significant changes" };
   }
 
-  // Step 6: Regenerate content plan via generate-plans
-  try {
-    const planRes = await fetch(`${supabaseUrl}/functions/v1/generate-plans`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${serviceRoleKey}`,
-      },
-      body: JSON.stringify({
-        plan_type: "content_plan",
-        include_plans: ["branding_plan", "funnel_strategy"],
-      }),
-    });
-    if (!planRes.ok) {
-      const errText = await planRes.text();
-      console.warn(`[weekly-optimization] generate-plans failed for ${userId}: ${planRes.status} ${errText}`);
-    } else {
-      console.log(`[weekly-optimization] Content plan regenerated for ${userId}`);
+  const serviceHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+
+  if (fullCascade) {
+    // Step 6a: Full cascade regeneration — each step depends on the previous
+    console.log(`[weekly-optimization] Running FULL cascade for ${userId} (${shiftCount} shifts, ${Math.round(daysSinceLastPlan)}d old)`);
+
+    const cascadeSteps = [
+      { name: "discover-archetypes", body: { user_id: userId } },
+      { name: "generate-content-buckets", body: { user_id: userId } },
+      { name: "generate-content-pillars", body: { user_id: userId } },
+      { name: "generate-plans", body: { plan_type: "branding_plan", user_id: userId } },
+      { name: "generate-plans", body: { plan_type: "funnel_strategy", user_id: userId } },
+      { name: "generate-plans", body: { plan_type: "content_plan", user_id: userId } },
+    ];
+
+    for (const step of cascadeSteps) {
+      try {
+        const res = await fetch(`${supabaseUrl}/functions/v1/${step.name}`, {
+          method: "POST",
+          headers: serviceHeaders,
+          body: JSON.stringify(step.body),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          console.warn(`[weekly-optimization] ${step.name} failed for ${userId}: ${res.status} ${errText.slice(0, 200)}`);
+        } else {
+          console.log(`[weekly-optimization] ${step.name} completed for ${userId}`);
+        }
+      } catch (e) {
+        console.warn(`[weekly-optimization] ${step.name} error for ${userId}:`, e);
+      }
     }
-  } catch (e) {
-    console.warn(`[weekly-optimization] generate-plans error for ${userId}:`, e);
+  } else {
+    // Step 6b: Minor shift — content plan only
+    console.log(`[weekly-optimization] Running content plan only for ${userId} (${shiftCount} shift)`);
+    try {
+      const planRes = await fetch(`${supabaseUrl}/functions/v1/generate-plans`, {
+        method: "POST",
+        headers: serviceHeaders,
+        body: JSON.stringify({ plan_type: "content_plan", user_id: userId }),
+      });
+      if (!planRes.ok) {
+        const errText = await planRes.text();
+        console.warn(`[weekly-optimization] generate-plans failed for ${userId}: ${planRes.status} ${errText.slice(0, 200)}`);
+      } else {
+        console.log(`[weekly-optimization] Content plan regenerated for ${userId}`);
+      }
+    } catch (e) {
+      console.warn(`[weekly-optimization] generate-plans error for ${userId}:`, e);
+    }
   }
 
   // Step 7: Save notification
-  const reason = patternsShifted
-    ? "Your content plan was updated — we detected significant shifts in what's driving your reach and engagement."
-    : "Your weekly content plan was refreshed based on the latest performance data.";
+  const reason = fullCascade
+    ? "Your full content strategy was updated based on last week's performance data — archetypes, pillars, and content plan refreshed."
+    : "Your weekly content plan was refreshed based on recent performance data.";
 
   await adminClient.from("user_notifications").insert({
     user_id: userId,
@@ -180,35 +214,31 @@ async function processUser(
   });
 
   console.log(`[weekly-optimization] Notification saved for ${userId}`);
-  return { user_id: userId, status: "ok", plan_updated: true, reason: patternsShifted ? "patterns_shifted" : "stale_plan" };
+  return { user_id: userId, status: "ok", plan_updated: true, reason: fullCascade ? "full_cascade" : "content_plan_only" };
 }
 
-function hasSignificantShift(newInsights: any, prevInsights: any): boolean {
-  // Compare top 3 view correlations — check if any shifted by > 10%
+function countSignificantShifts(newInsights: any, prevInsights: any): number {
   const newTop = (newInsights.views_insights?.top_positive_predictors ?? newInsights.top_positive_predictors ?? []).slice(0, 3);
   const prevTop = (prevInsights.views_insights?.top_positive_predictors ?? prevInsights.top_positive_predictors ?? []).slice(0, 3);
 
-  if (newTop.length === 0 || prevTop.length === 0) return false;
+  if (newTop.length === 0 || prevTop.length === 0) return 0;
 
-  // Build lookup of previous correlations
   const prevMap: Record<string, number> = {};
   for (const p of prevTop) {
     prevMap[p.feature] = p.correlation;
   }
 
+  let shifts = 0;
   for (const n of newTop) {
     const prev = prevMap[n.feature];
     if (prev === undefined) {
-      // New feature in top 3 that wasn't there before — that's a shift
-      return true;
-    }
-    // Check if correlation changed by more than 10% absolute
-    if (Math.abs(n.correlation - prev) > 0.1) {
-      return true;
+      shifts++;
+    } else if (Math.abs(n.correlation - prev) > 0.1) {
+      shifts++;
     }
   }
 
-  return false;
+  return shifts;
 }
 
 async function backfillPostResults(adminClient: any, userId: string) {
