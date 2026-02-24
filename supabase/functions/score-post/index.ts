@@ -6,92 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Default checklist if no playbook exists
-const DEFAULT_CHECKLIST = [
-  { points: 2, question: "Does it include a specific number, dollar amount, or authority name?", data_backing: "Posts with specifics get higher engagement" },
-  { points: 2, question: "Does it create a curiosity gap or promise insider knowledge?", data_backing: "Curiosity-driven hooks increase views" },
-  { points: 1, question: "Does it speak to entrepreneurial struggle/reality?", data_backing: "Relatability drives engagement" },
-  { points: 1, question: "Does it reference millennial/parent experiences?", data_backing: "Niche-specific content performs better" },
-  { points: 1, question: "Does it take a contrarian or controversial stance?", data_backing: "Controversial posts get more shares" },
-  { points: -1, question: "Does it avoid generic business advice (has specific details)?", data_backing: "Generic content underperforms" },
-];
-
-// Regex patterns mapped to common checklist themes
-const PATTERN_MAP: Record<string, RegExp> = {
-  "specific number": /\$\d|\d+[kKmM]\b|\d{2,}%|\d+x\b/i,
-  "dollar amount": /\$\d/i,
-  "authority name": /hormozi|cardone|gary\s*vee|elon|bezos|buffett|cuban|rogan|iman|naval/i,
-  "curiosity gap": /find out|here's|secret|most people don't|I'll give|the exact|what happened|turns out|nobody|truth is/i,
-  "insider knowledge": /insider|behind the scenes|what they don't|the real reason/i,
-  "entrepreneurial struggle": /struggle|hard|lonely|scared|real talk|honest|nobody warns|truth|failed|broke|quit|fired|rejected/i,
-  "reality": /reality|real world|in practice|actually|the truth/i,
-  "millennial": /millennial|30s|grew up|90s|generation|remember when/i,
-  "parent": /kids|dad|mom|parent|family|school|bedtime|daughter|son|wife|husband/i,
-  "contrarian": /stop|run the fuck|bullshit|dead|overrated|wrong|don't|scam|unpopular opinion|hot take|controversial/i,
-  "controversial": /disagree|fight me|hear me out|nobody wants to hear|uncomfortable truth/i,
-  "generic": /^(success|hustle|grind|mindset|believe|dream|journey|passion|motivated)\b/i,
-  "specific details": /\$\d|\d+[kKmM]\b|[A-Z][a-z]+\s+(said|told|asked)|"[^"]+"|at \d|in \d{4}|last (week|month|year)/i,
-};
-
-function scoreAgainstChecklist(
-  text: string,
-  checklist: { points: number; question: string; data_backing: string }[]
-): { total: number; max_possible: number; items: { question: string; points: number; passed: boolean; data_backing: string }[] } {
-  const items = checklist.map((item) => {
-    const q = item.question.toLowerCase();
-    let passed = false;
-
-    // Match question text to patterns
-    if (q.includes("specific number") || q.includes("dollar amount") || q.includes("authority name")) {
-      passed = PATTERN_MAP["specific number"].test(text) ||
-               PATTERN_MAP["dollar amount"].test(text) ||
-               PATTERN_MAP["authority name"].test(text);
-    } else if (q.includes("curiosity gap") || q.includes("insider knowledge")) {
-      passed = PATTERN_MAP["curiosity gap"].test(text) ||
-               PATTERN_MAP["insider knowledge"].test(text);
-    } else if (q.includes("entrepreneurial") || q.includes("struggle") || q.includes("reality")) {
-      passed = PATTERN_MAP["entrepreneurial struggle"].test(text) ||
-               PATTERN_MAP["reality"].test(text);
-    } else if (q.includes("millennial") || q.includes("parent") || q.includes("dad") || q.includes("family")) {
-      passed = PATTERN_MAP["millennial"].test(text) ||
-               PATTERN_MAP["parent"].test(text);
-    } else if (q.includes("contrarian") || q.includes("controversial")) {
-      passed = PATTERN_MAP["contrarian"].test(text) ||
-               PATTERN_MAP["controversial"].test(text);
-    } else if (q.includes("generic") || q.includes("avoid")) {
-      // "Avoid generic" = pass if post has specific details
-      passed = PATTERN_MAP["specific details"].test(text) &&
-               !PATTERN_MAP["generic"].test(text.split("\n")[0] || "");
-    } else {
-      // Fallback: try to match any keywords from the question
-      const keywords = q.match(/\b[a-z]{4,}\b/g) || [];
-      const lower = text.toLowerCase();
-      const matches = keywords.filter(kw => lower.includes(kw));
-      passed = matches.length >= 2;
-    }
-
-    return {
-      question: item.question,
-      points: item.points,
-      passed,
-      data_backing: item.data_backing,
-    };
-  });
-
-  const maxPossible = checklist.reduce((sum, i) => sum + Math.max(0, i.points), 0);
-  const total = items.reduce((sum, i) => {
-    if (i.passed && i.points > 0) return sum + i.points;
-    if (!i.passed && i.points < 0) return sum + Math.abs(i.points); // penalty avoided = no change
-    if (i.passed && i.points < 0) return sum; // "avoid" criterion passed = no penalty
-    return sum;
-  }, 0);
-
-  // Normalize to 6-point scale
-  const normalized = maxPossible > 0 ? Math.round((total / maxPossible) * 6) : 0;
-
-  return { total: Math.min(6, normalized), max_possible: 6, items };
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -100,6 +14,7 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -129,38 +44,139 @@ Deno.serve(async (req) => {
 
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch playbook checklist
-    const { data: playbookRow } = await adminClient
-      .from("content_strategies")
-      .select("strategy_data")
-      .eq("user_id", userId)
-      .eq("strategy_type", "playbook")
-      .limit(1)
-      .maybeSingle();
+    // Fetch user context in parallel
+    const [regressionRow, profileRow, prefsRows, styleRow] = await Promise.all([
+      adminClient
+        .from("content_strategies")
+        .select("regression_insights")
+        .eq("user_id", userId)
+        .eq("strategy_type", "weekly")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      adminClient
+        .from("profiles")
+        .select("goal_type, dm_keyword, dm_offer, traffic_url, dream_client, niche")
+        .eq("id", userId)
+        .single(),
+      adminClient
+        .from("content_preferences")
+        .select("content")
+        .eq("user_id", userId)
+        .order("sort_order"),
+      adminClient
+        .from("user_writing_style")
+        .select("selected_style, custom_style_description")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
 
-    const playbookData = playbookRow?.strategy_data as any;
-    const checklist = playbookData?.checklist && playbookData.checklist.length > 0
-      ? playbookData.checklist
-      : DEFAULT_CHECKLIST;
+    const regression = regressionRow.data?.regression_insights as any;
+    const profile = profileRow.data;
+    const prefs = prefsRows.data?.map((p: any) => p.content) || [];
+    const style = styleRow.data;
 
-    const result = scoreAgainstChecklist(text, checklist);
+    // Build regression context
+    const viewsInsights = regression?.views_insights;
+    const boolLifts = viewsInsights?.boolean_feature_lifts || {};
+    
+    let regressionContext = "No regression data available yet.";
+    if (viewsInsights) {
+      const liftLines: string[] = [];
+      for (const [feature, data] of Object.entries(boolLifts)) {
+        const d = data as any;
+        if (d?.with_avg && d?.without_avg) {
+          const multiplier = (d.with_avg / d.without_avg).toFixed(1);
+          liftLines.push(`- ${feature}: ${d.with_avg.toLocaleString()} avg views WITH vs ${d.without_avg.toLocaleString()} WITHOUT (${multiplier}x lift)`);
+        }
+      }
+      const topPos = viewsInsights.top_positive_predictors?.slice(0, 3) || [];
+      const topNeg = viewsInsights.top_negative_predictors?.slice(0, 3) || [];
+      
+      regressionContext = [
+        "REGRESSION DATA (from user's actual post performance):",
+        ...liftLines,
+        topPos.length ? `Top positive predictors: ${topPos.map((p: any) => `${p.feature} (r=${p.correlation?.toFixed(2)})`).join(", ")}` : "",
+        topNeg.length ? `Top negative predictors (suppress reach): ${topNeg.map((p: any) => `${p.feature} (r=${p.correlation?.toFixed(2)})`).join(", ")}` : "",
+      ].filter(Boolean).join("\n");
+    }
 
-    const breakdown: Record<string, any> = {};
-    result.items.forEach((item, i) => {
-      breakdown[`criterion_${i}`] = {
-        question: item.question,
-        points: item.points,
-        score: item.passed ? 1 : 0,
-        passed: item.passed,
-        reason: item.passed
-          ? `✅ Met: ${item.question} (+${item.points}pt)`
-          : `❌ Not met: ${item.question}`,
-        data_backing: item.data_backing,
-      };
+    const systemPrompt = `You are a post quality scorer for a Threads content creator. You evaluate posts against 6 criteria using the creator's ACTUAL performance data.
+
+CREATOR CONTEXT:
+- Goal: ${profile?.goal_type || "grow_audience"}
+- Niche: ${profile?.niche || "not specified"}
+- Dream client: ${profile?.dream_client || "not specified"}
+- DM keyword: ${profile?.dm_keyword || "none"}
+- DM offer: ${profile?.dm_offer || "none"}
+- Traffic URL: ${profile?.traffic_url || "none"}
+- Writing style: ${style?.selected_style || "default"}${style?.custom_style_description ? ` — ${style.custom_style_description}` : ""}
+- Content rules: ${prefs.length ? prefs.join("; ") : "none specified"}
+
+${regressionContext}
+
+SCORING CRITERIA (evaluate each):
+1. hook — Hook Strength: First line must be <15 words, no filler, bold statement or question. Does it stop the scroll?
+2. credibility — Credibility Signals: Contains specific numbers, dollar amounts, authority names, or concrete proof. Reference the regression data for has_credibility_marker lift if available.
+3. suppressors — No Reach Suppressors: Check for hashtags, URLs, emojis that the regression data shows hurt reach. Reference specific negative predictor data.
+4. voice — Voice Match: Does the tone match the creator's writing style profile? Is it authentic to them?
+5. niche — Niche Specificity: Does it speak directly to the dream client / target audience, not generic?
+6. goal — Goal Alignment: Does it serve the creator's goal? For get_comments: has a comment CTA with keyword. For drive_traffic: has link CTA. For grow_audience: maximizes shareability.
+
+IMPORTANT: Your "reason" for each criterion MUST reference the creator's actual data when available (e.g., "your credibility posts average 24,000 views vs 1,000 without"). Do NOT give generic advice.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "scores": [
+    { "id": "hook", "label": "Hook Strength", "passed": true, "reason": "one line explanation" },
+    { "id": "credibility", "label": "Credibility Signals", "passed": true, "reason": "..." },
+    { "id": "suppressors", "label": "No Reach Suppressors", "passed": true, "reason": "..." },
+    { "id": "voice", "label": "Voice Match", "passed": true, "reason": "..." },
+    { "id": "niche", "label": "Niche Specificity", "passed": true, "reason": "..." },
+    { "id": "goal", "label": "Goal Alignment", "passed": true, "reason": "..." }
+  ],
+  "total": 6
+}`;
+
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Score this post:\n\n${text}` },
+        ],
+      }),
     });
-    breakdown.total = result.total;
 
-    return new Response(JSON.stringify({ score: result.total, breakdown }), {
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error("AI gateway error:", aiResponse.status, errText);
+      return new Response(JSON.stringify({ error: "AI scoring failed" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const aiData = await aiResponse.json();
+    const raw = aiData.choices?.[0]?.message?.content || "";
+    
+    // Extract JSON from response (handle markdown code blocks)
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonMatch[1]!.trim());
+    } catch {
+      console.error("Failed to parse AI response:", raw);
+      return new Response(JSON.stringify({ error: "Failed to parse scoring response" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify(parsed), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
