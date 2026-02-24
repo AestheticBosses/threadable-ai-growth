@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { posts } = await req.json();
+    const { posts, current_timestamp } = await req.json();
     if (!posts || !Array.isArray(posts) || posts.length === 0) {
       return new Response(JSON.stringify({ error: "posts array required" }), {
         status: 400,
@@ -173,7 +173,18 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
             };
 
             if (post.scheduled_time) {
-              insertData.scheduled_for = post.scheduled_time;
+              // Time-aware scheduling: skip slots that have already passed
+              const scheduledDate = new Date(post.scheduled_time);
+              const now = current_timestamp ? new Date(current_timestamp) : new Date();
+              
+              if (scheduledDate > now) {
+                // Future slot — use as-is
+                insertData.scheduled_for = post.scheduled_time;
+              } else {
+                // Slot has passed — push to the same time next week
+                scheduledDate.setDate(scheduledDate.getDate() + 7);
+                insertData.scheduled_for = scheduledDate.toISOString();
+              }
             }
 
             const { data: inserted, error: insertErr } = await admin

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -16,7 +17,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send, ChevronDown, ChevronRight, CheckSquare } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -68,6 +69,13 @@ export function ContentPlanTab() {
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, string>>({});
   const [sentToQueue, setSentToQueue] = useState<Set<string>>(new Set());
 
+  // Batch selection state
+  const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
+  const [batchDrafting, setBatchDrafting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+
+  const hasAnySelected = selectedPosts.size > 0;
+
   // Safe date parsing helper
   const safeISOString = (date: Date): string | null => {
     try {
@@ -104,7 +112,8 @@ export function ContentPlanTab() {
       const dayIdx = dayNames.indexOf(day.day);
       if (dayIdx === -1) continue;
       let daysUntil = dayIdx - dayOfWeek;
-      if (daysUntil <= 0) daysUntil += 7;
+      if (daysUntil < 0) daysUntil += 7;
+      // Allow daysUntil === 0 (today) — the edge function handles past slots
       const scheduledDate = new Date(now);
       scheduledDate.setDate(scheduledDate.getDate() + daysUntil);
 
@@ -112,12 +121,12 @@ export function ContentPlanTab() {
         const post = day.posts[i];
         const time = bestTimes[i % bestTimes.length] || "09:00";
         const parsedTime = parseTime(time);
-        if (!parsedTime) continue; // Skip if time parsing fails
+        if (!parsedTime) continue;
 
         const schedTime = new Date(scheduledDate);
         schedTime.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
         const isoString = safeISOString(schedTime);
-        if (!isoString) continue; // Skip if date becomes invalid
+        if (!isoString) continue;
 
         allPosts.push({
           archetype: post.archetype,
@@ -126,6 +135,7 @@ export function ContentPlanTab() {
           hook_idea: post.hook_idea || "",
           day: day.day,
           scheduled_time: isoString,
+          _postKey: `${day.day}-${i}`,
         });
       }
     }
@@ -155,7 +165,7 @@ export function ContentPlanTab() {
 
       for (const batch of batches) {
         const res = await supabase.functions.invoke("generate-draft-posts", {
-          body: { posts: batch },
+          body: { posts: batch, current_timestamp: new Date().toISOString() },
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
 
@@ -191,7 +201,7 @@ export function ContentPlanTab() {
       const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
       const dayIdx = dayNames.indexOf(dayName);
       let daysUntil = dayIdx >= 0 ? dayIdx - dayOfWeek : 1;
-      if (daysUntil <= 0) daysUntil += 7;
+      if (daysUntil < 0) daysUntil += 7;
       const schedDate = new Date(now);
       schedDate.setDate(schedDate.getDate() + daysUntil);
       schedDate.setHours(9, 0, 0, 0);
@@ -209,6 +219,7 @@ export function ContentPlanTab() {
             day: dayName,
             scheduled_time: isoString,
           }],
+          current_timestamp: new Date().toISOString(),
           return_text: true,
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -234,6 +245,92 @@ export function ContentPlanTab() {
     // The draft was already saved to queue during generation
     setSentToQueue((prev) => new Set(prev).add(key));
     toast({ title: "Draft is in your Content Queue ✅" });
+  };
+
+  // ── Batch selection helpers ──
+  const togglePostSelection = (postKey: string) => {
+    setSelectedPosts((prev) => {
+      const next = new Set(prev);
+      if (next.has(postKey)) next.delete(postKey);
+      else next.add(postKey);
+      return next;
+    });
+  };
+
+  const toggleDaySelection = (day: any, dayName: string) => {
+    const dayPostKeys = (day.posts || []).map((_: any, i: number) => `${dayName}-${i}`);
+    const allSelected = dayPostKeys.every((k: string) => selectedPosts.has(k));
+    setSelectedPosts((prev) => {
+      const next = new Set(prev);
+      for (const k of dayPostKeys) {
+        if (allSelected) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
+  };
+
+  const isDayFullySelected = (day: any, dayName: string) => {
+    const dayPostKeys = (day.posts || []).map((_: any, i: number) => `${dayName}-${i}`);
+    return dayPostKeys.length > 0 && dayPostKeys.every((k: string) => selectedPosts.has(k));
+  };
+
+  const isDayPartiallySelected = (day: any, dayName: string) => {
+    const dayPostKeys = (day.posts || []).map((_: any, i: number) => `${dayName}-${i}`);
+    return dayPostKeys.some((k: string) => selectedPosts.has(k)) && !dayPostKeys.every((k: string) => selectedPosts.has(k));
+  };
+
+  // ── Batch draft handler ──
+  const handleBatchDraft = async () => {
+    if (!session?.access_token || selectedPosts.size === 0) return;
+
+    const allPlanPosts = getAllPlanPosts();
+    const postsToGenerate = allPlanPosts.filter((p) => selectedPosts.has(p._postKey));
+
+    if (postsToGenerate.length === 0) return;
+
+    setBatchDrafting(true);
+    setBatchProgress({ current: 0, total: postsToGenerate.length });
+
+    try {
+      let generated = 0;
+      const batches: any[][] = [];
+      for (let i = 0; i < postsToGenerate.length; i += 3) {
+        batches.push(postsToGenerate.slice(i, i + 3));
+      }
+
+      for (const batch of batches) {
+        const res = await supabase.functions.invoke("generate-draft-posts", {
+          body: { posts: batch, current_timestamp: new Date().toISOString() },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        generated += res.data?.total || 0;
+        setBatchProgress({ current: generated, total: postsToGenerate.length });
+
+        // Mark each generated post as drafted
+        for (const p of batch) {
+          setDraftedPosts((prev) => new Set(prev).add(p._postKey));
+          setDraftingLabel((prev) => ({ ...prev, [p._postKey]: "Drafted ✓" }));
+        }
+      }
+
+      toast({
+        title: `${generated} posts drafted successfully 🎉`,
+        action: (
+          <Button size="sm" variant="outline" onClick={() => navigate("/queue")} className="gap-1">
+            View Queue
+          </Button>
+        ),
+      });
+      setSelectedPosts(new Set());
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setBatchDrafting(false);
+      setBatchProgress({ current: 0, total: 0 });
+    }
   };
 
   if (!hasIdentity) {
@@ -269,9 +366,41 @@ export function ContentPlanTab() {
     );
   }
 
+  // Checkbox component for post rows
+  const PostCheckbox = ({ postKey }: { postKey: string }) => (
+    <div className={cn(
+      "transition-opacity",
+      hasAnySelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+    )}>
+      <Checkbox
+        checked={selectedPosts.has(postKey)}
+        onCheckedChange={() => togglePostSelection(postKey)}
+        className="h-3.5 w-3.5"
+      />
+    </div>
+  );
+
+  // Select All checkbox for day headers
+  const DaySelectAll = ({ day, dayName }: { day: any; dayName: string }) => (
+    <div className={cn(
+      "transition-opacity",
+      hasAnySelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+    )}>
+      <Checkbox
+        checked={isDayFullySelected(day, dayName)}
+        // Use indeterminate-like styling via data attribute
+        className={cn(
+          "h-3.5 w-3.5",
+          isDayPartiallySelected(day, dayName) && "opacity-70"
+        )}
+        onCheckedChange={() => toggleDaySelection(day, dayName)}
+      />
+    </div>
+  );
+
   const totalPlanPosts = getAllPlanPosts().length;
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Content Plan</h3>
@@ -354,58 +483,66 @@ export function ContentPlanTab() {
               /* CARD GRID — 1-5 posts/day */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {plan.daily_plan?.map((day: any) => (
-                  <Card key={day.day}>
+                  <Card key={day.day} className="group">
                     <CardContent className="p-4 space-y-3">
-                      <p className="text-sm font-bold text-foreground">{day.day}</p>
+                      <div className="flex items-center gap-2">
+                        <DaySelectAll day={day} dayName={day.day} />
+                        <p className="text-sm font-bold text-foreground">{day.day}</p>
+                      </div>
                       <div className="space-y-2">
                         {day.posts?.map((post: any, i: number) => {
                           const postKey = `${day.day}-${i}`;
                           const isDrafted = draftedPosts.has(postKey);
                           const isDrafting = draftingPostKey === postKey;
                           return (
-                            <div key={i} className="rounded-lg border border-border p-3 space-y-2">
-                              <div className="flex flex-wrap gap-1">
-                                <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
-                                <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
-                                  {post.funnel_stage}
-                                </Badge>
-                                {isDrafted && (
-                                  <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
-                                    <Check className="h-2.5 w-2.5" /> Drafted
-                                  </Badge>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground">{post.topic}</p>
-                              {post.hook_idea && (
-                                <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
-                              )}
-                              {!inlineDrafts[postKey] ? (
-                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
-                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
-                                </Button>
-                              ) : (
-                                <div className="mt-2 space-y-2 border-t border-border pt-2">
-                                  <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">— Generated Draft —</p>
-                                  <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">{inlineDrafts[postKey]}</p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {!sentToQueue.has(postKey) ? (
-                                      <Button size="sm" variant="outline" className="h-6 text-[10px] gap-0.5" onClick={() => handleSendDraftToQueue(postKey)}>
-                                        <Send className="h-2.5 w-2.5" /> Send to Queue
-                                      </Button>
-                                    ) : (
+                            <div key={i} className="rounded-lg border border-border p-3 space-y-2 group">
+                              <div className="flex items-start gap-2">
+                                <PostCheckbox postKey={postKey} />
+                                <div className="flex-1 space-y-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    <Badge variant="outline" className="text-[10px]">{post.archetype}</Badge>
+                                    <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
+                                      {post.funnel_stage}
+                                    </Badge>
+                                    {isDrafted && (
                                       <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
-                                        <Check className="h-2.5 w-2.5" /> In Queue
+                                        <Check className="h-2.5 w-2.5" /> Drafted
                                       </Badge>
                                     )}
-                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" onClick={() => navigate(`/chat?prefill=${encodeURIComponent(inlineDrafts[postKey])}`)}>
-                                      <MessageSquare className="h-2.5 w-2.5" /> Edit in Chat
-                                    </Button>
-                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" disabled={isDrafting} onClick={() => { setInlineDrafts((prev) => { const n = { ...prev }; delete n[postKey]; return n; }); setSentToQueue((prev) => { const n = new Set(prev); n.delete(postKey); return n; }); handleInlineDraft(post, day.day, i); }}>
-                                      <RefreshCw className="h-2.5 w-2.5" /> Regenerate
-                                    </Button>
                                   </div>
+                                  <p className="text-xs text-muted-foreground">{post.topic}</p>
+                                  {post.hook_idea && (
+                                    <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
+                                  )}
+                                  {!inlineDrafts[postKey] ? (
+                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                      {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
+                                    </Button>
+                                  ) : (
+                                    <div className="mt-2 space-y-2 border-t border-border pt-2">
+                                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">— Generated Draft —</p>
+                                      <p className="text-xs text-foreground whitespace-pre-line leading-relaxed">{inlineDrafts[postKey]}</p>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {!sentToQueue.has(postKey) ? (
+                                          <Button size="sm" variant="outline" className="h-6 text-[10px] gap-0.5" onClick={() => handleSendDraftToQueue(postKey)}>
+                                            <Send className="h-2.5 w-2.5" /> Send to Queue
+                                          </Button>
+                                        ) : (
+                                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
+                                            <Check className="h-2.5 w-2.5" /> In Queue
+                                          </Badge>
+                                        )}
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" onClick={() => navigate(`/chat?prefill=${encodeURIComponent(inlineDrafts[postKey])}`)}>
+                                          <MessageSquare className="h-2.5 w-2.5" /> Edit in Chat
+                                        </Button>
+                                        <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-0.5" disabled={isDrafting} onClick={() => { setInlineDrafts((prev) => { const n = { ...prev }; delete n[postKey]; return n; }); setSentToQueue((prev) => { const n = new Set(prev); n.delete(postKey); return n; }); handleInlineDraft(post, day.day, i); }}>
+                                          <RefreshCw className="h-2.5 w-2.5" /> Regenerate
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           );
                         })}
@@ -418,11 +555,14 @@ export function ContentPlanTab() {
               /* COMPACT LIST — 6-10 posts/day */
               <div className="space-y-4">
                 {plan.daily_plan?.map((day: any) => (
-                  <Card key={day.day}>
+                  <Card key={day.day} className="group">
                     <CardContent className="p-4 space-y-2">
-                      <p className="text-sm font-bold text-foreground">
-                        {day.day} <span className="text-muted-foreground font-normal">({day.posts?.length || 0} posts)</span>
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <DaySelectAll day={day} dayName={day.day} />
+                        <p className="text-sm font-bold text-foreground">
+                          {day.day} <span className="text-muted-foreground font-normal">({day.posts?.length || 0} posts)</span>
+                        </p>
+                      </div>
                       <div className="divide-y divide-border">
                         {day.posts?.map((post: any, i: number) => {
                           const postKey = `${day.day}-${i}`;
@@ -430,7 +570,8 @@ export function ContentPlanTab() {
                           const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
                           const time = bestTimes[i % bestTimes.length] || "09:00";
                           return (
-                            <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                            <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                              <PostCheckbox postKey={postKey} />
                               <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                               <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                               <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
@@ -439,9 +580,15 @@ export function ContentPlanTab() {
                               <span className="text-muted-foreground truncate flex-1">
                                 {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                               </span>
-                              <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
-                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
-                              </Button>
+                              {draftedPosts.has(postKey) ? (
+                                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5 shrink-0">
+                                  <Check className="h-2.5 w-2.5" /> Drafted
+                                </Badge>
+                              ) : (
+                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
+                                </Button>
+                              )}
                             </div>
                           );
                         })}
@@ -470,10 +617,11 @@ export function ContentPlanTab() {
                         });
                       }}
                     >
-                      <Card>
+                      <Card className="group">
                         <CollapsibleTrigger className="w-full">
                           <CardContent className="p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
+                              <DaySelectAll day={day} dayName={day.day} />
                               {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                               <p className="text-sm font-bold text-foreground">{day.day}</p>
                               <span className="text-xs text-muted-foreground">
@@ -495,7 +643,8 @@ export function ContentPlanTab() {
                               const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
                               const time = bestTimes[i % bestTimes.length] || "09:00";
                               return (
-                                <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                                <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                                  <PostCheckbox postKey={postKey} />
                                   <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                                   <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                                   <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
@@ -504,9 +653,15 @@ export function ContentPlanTab() {
                                   <span className="text-muted-foreground truncate flex-1">
                                     {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                                   </span>
-                                  <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
-                                    {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
-                                  </Button>
+                                  {draftedPosts.has(postKey) ? (
+                                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5 shrink-0">
+                                      <Check className="h-2.5 w-2.5" /> Drafted
+                                    </Badge>
+                                  ) : (
+                                    <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                      {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
+                                    </Button>
+                                  )}
                                 </div>
                               );
                             })}
@@ -570,6 +725,48 @@ export function ContentPlanTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Floating Action Bar for batch selection ── */}
+      {(hasAnySelected || batchDrafting) && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-200">
+          <Card className="border-primary/30 shadow-xl shadow-primary/10">
+            <CardContent className="p-3 flex items-center gap-4">
+              {batchDrafting ? (
+                <div className="flex items-center gap-3 px-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span className="text-sm font-medium text-foreground">
+                    Drafting {batchProgress.current} of {batchProgress.total}...
+                  </span>
+                  <Progress value={(batchProgress.current / Math.max(batchProgress.total, 1)) * 100} className="h-1.5 w-32" />
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-foreground">
+                    <CheckSquare className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{selectedPosts.size} post{selectedPosts.size !== 1 ? "s" : ""} selected</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleBatchDraft}
+                    className="gap-1.5 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Draft All
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSelectedPosts(new Set())}
+                    className="text-muted-foreground"
+                  >
+                    Clear
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
