@@ -131,7 +131,7 @@ For every post you write:
 - If the funnel stage is BOF, reference specific offers and CTAs from their sales funnel.
 - Use regression insights to inform the structure and angle.
 - NEVER include 📌, pillar names, archetype names, funnel stage labels, or any structured headers in the post text. Strategy is invisible.
-- HARD LIMIT: Post must be under 500 characters. Count every character before responding. If over 500, rewrite shorter.
+- ABSOLUTE HARD LIMIT: 500 characters maximum. This is a Threads platform limit — posts over 500 characters will be rejected. Count every character including spaces and line breaks. If your draft is over 500 characters, cut it. The post in this response must be 500 characters or fewer, no exceptions.
 
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
@@ -182,6 +182,19 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
               if (trimResp.ok) {
                 const trimData = await trimResp.json();
                 text = (trimData.content?.[0]?.text || text).trim();
+              }
+
+              if (text.length > 500) {
+                // Hard truncate as fallback — find last complete sentence under 500 chars
+                let trimmed = text.slice(0, 500);
+                const lastPeriod = trimmed.lastIndexOf('.');
+                const lastNewline = trimmed.lastIndexOf('\n');
+                const cutPoint = Math.max(lastPeriod, lastNewline);
+                if (cutPoint > 300) {
+                  text = trimmed.slice(0, cutPoint + 1).trim();
+                } else {
+                  text = trimmed.trim();
+                }
               }
             }
 
