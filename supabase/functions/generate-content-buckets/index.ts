@@ -32,8 +32,39 @@ serve(async (req) => {
     const userId = user.id;
     console.log("[generate-content-buckets] Auth OK, userId:", userId);
 
-    // Get full user context (replaces 3 manual queries: profile, identity, posts)
+    // Get full user context
     const userContext = await getUserContext(adminClient, userId);
+
+    // Fetch goal_type for directive injection
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("goal_type, dm_keyword, dm_offer")
+      .eq("id", userId)
+      .single();
+
+    const goalType = profile?.goal_type || "grow_audience";
+    const dmKeyword = profile?.dm_keyword || "";
+    const dmOffer = profile?.dm_offer || "";
+
+    const goalDirective = `
+=== GOAL OPTIMIZATION DIRECTIVE ===
+The user's primary goal is: ${goalType}
+${dmKeyword ? `DM Keyword: ${dmKeyword}` : ""}
+${dmOffer ? `DM Offer: ${dmOffer}` : ""}
+
+Apply this goal to every audience segment you generate:
+
+${goalType === "get_comments" ? `- Audience segments should be defined by who is most likely to ENGAGE and COMMENT, not just consume.
+- Every segment should have "drives replies/comments" as a primary success metric.
+- Prioritize audiences who feel compelled to share opinions, ask questions, or respond to vulnerable stories.` : ""}
+${goalType === "drive_traffic" ? `- Audience segments should be defined by who has the highest intent to click through to an offer.
+- Every segment should connect to a natural CTA pathway to the traffic URL.
+- Prioritize audiences actively seeking solutions the creator offers.` : ""}
+${goalType === "grow_audience" ? `- Audience segments should focus on who is most likely to follow and bring others.
+- Prioritize audiences who share content and attract similar followers.` : ""}
+
+Read goal_type, dm_keyword, and dm_offer from the CREATOR PROFILE section above and apply this directive to every segment you generate.
+=== END GOAL DIRECTIVE ===`;
 
     const systemPrompt = `You are a content strategist who identifies audience segments for social media creators. You analyze a creator's niche, goals, identity, and top-performing content to determine the 2-3 distinct audience segments they should create content for.
 
@@ -51,6 +82,8 @@ Examples of good bucket structures:
     const userMessage = `Here is everything you know about this creator:
 
 ${userContext}
+
+${goalDirective}
 
 Based on this creator's niche, goals, identity, and content performance, generate 2-3 content buckets (audience segments).
 
