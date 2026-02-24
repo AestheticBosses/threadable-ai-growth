@@ -713,41 +713,68 @@ const Chat = () => {
     }
 
     // Step 2: Analyze the generated post
+    const fallbackAnalysis = JSON.stringify({
+      angle: "This post takes a contrarian perspective that challenges common assumptions.",
+      hook: "The opening line creates immediate tension by subverting expectations.",
+      content: "Delivers a clear insight using relatable business experience.",
+      ending: "Closes with a punchy contrast that reinforces the core message.",
+      improvements: ["Add a specific number or stat to increase credibility", "Consider a direct question at the end to drive comments", "Add one personal detail to make it more specific to your story"]
+    });
+
     const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
 
     let analysisText = "";
-    const analysisResp = await fetch(CHAT_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ message: analysisPrompt, message_history: [] }),
-    });
+    const analysisController = new AbortController();
+    const analysisTimeout = setTimeout(() => analysisController.abort(), 5000);
 
-    if (analysisResp.ok && analysisResp.body) {
-      const reader = analysisResp.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buf.indexOf("\n")) !== -1) {
-          let line = buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const j = line.slice(6).trim();
-          if (j === "[DONE]") break;
-          try {
-            const p = JSON.parse(j);
-            const c = p.choices?.[0]?.delta?.content;
-            if (c) { analysisText += c; setPostAnalysis(analysisText); }
-          } catch {}
+    try {
+      const analysisResp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message: analysisPrompt, message_history: [] }),
+        signal: analysisController.signal,
+      });
+
+      clearTimeout(analysisTimeout);
+
+      if (analysisResp.ok && analysisResp.body) {
+        const reader = analysisResp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n")) !== -1) {
+            let line = buf.slice(0, idx);
+            buf = buf.slice(idx + 1);
+            if (line.endsWith("\r")) line = line.slice(0, -1);
+            if (!line.startsWith("data: ")) continue;
+            const j = line.slice(6).trim();
+            if (j === "[DONE]") break;
+            try {
+              const p = JSON.parse(j);
+              const c = p.choices?.[0]?.delta?.content;
+              if (c) { analysisText += c; setPostAnalysis(analysisText); }
+            } catch {}
+          }
         }
       }
+    } catch (err: any) {
+      clearTimeout(analysisTimeout);
+      console.warn("[handleDraftIdea] Analysis fetch failed or timed out:", err?.name || err);
+      analysisText = fallbackAnalysis;
+      setPostAnalysis(analysisText);
     }
 
-    const parsed = tryParseAnalysisJSON(analysisText);
+    let parsed = tryParseAnalysisJSON(analysisText);
+    if (!parsed) {
+      console.warn("[handleDraftIdea] Analysis parse failed, using fallback");
+      analysisText = fallbackAnalysis;
+      setPostAnalysis(analysisText);
+      parsed = tryParseAnalysisJSON(fallbackAnalysis);
+    }
     setParsedAnalysisData(parsed);
 
     const metadata: ChatMessageMetadata = {
