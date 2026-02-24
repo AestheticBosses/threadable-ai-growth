@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-5",
         max_tokens: 4096,
         system: `You are an expert writing style analyst. Analyze the writing samples provided and extract a detailed voice profile.${profile?.niche ? `\n\nCREATOR CONTEXT:\n- Niche: ${profile.niche}\n- Dream Client: ${profile.dream_client || "Not specified"}\n- End Goal: ${profile.end_goal || "Not specified"}\n\nUse this context to identify niche-specific language patterns, industry terminology, and how the creator's voice is tailored to resonate with their target audience.` : ""}`,
         messages: [

@@ -355,7 +355,7 @@ Generate a response with summary, wins, improvements, strategy adjustments, upda
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-opus-4-5",
       max_tokens: 4096,
       system: "You are Threadable — a data-driven Threads growth analyst. Return ONLY the requested data.",
       messages: [
