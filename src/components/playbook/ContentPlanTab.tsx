@@ -112,8 +112,8 @@ export function ContentPlanTab() {
       const dayIdx = dayNames.indexOf(day.day);
       if (dayIdx === -1) continue;
       let daysUntil = dayIdx - dayOfWeek;
-      if (daysUntil < 0) daysUntil += 7;
-      // Allow daysUntil === 0 (today) — the edge function handles past slots
+      // Include ALL days in the current week (even past days) for counting purposes.
+      // The edge function handles pushing past time slots to next week.
       const scheduledDate = new Date(now);
       scheduledDate.setDate(scheduledDate.getDate() + daysUntil);
 
