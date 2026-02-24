@@ -68,9 +68,24 @@ serve(async (req) => {
       chunks.push(posts.slice(i, i + 3));
     }
 
+    const lengthGuide: Record<string, string> = {
+      "Brutal Truth": "Keep under 150 characters. One punchy observation. No explanation needed.",
+      "Hot Take": "Keep under 200 characters. Bold claim, no softening.",
+      "One-Liner Philosophy": "Keep under 100 characters. Single quotable sentence.",
+      "Millennial Operator": "150-300 characters max. Relatable, punchy.",
+      "Authority Flex": "200-400 characters. Lead with credential, end with insight.",
+      "Data Drop": "200-400 characters. Stat first, implication second.",
+      "Vulnerable Founder": "300-500 characters. Story arc: struggle → lesson.",
+      "Builder Updates": "200-400 characters. Progress + what it means.",
+    };
+
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
         chunk.map(async (post: any) => {
+          const archetype = post.archetype || "General";
+          const archetypeLengthInstruction = lengthGuide[archetype] ||
+            `Keep under 400 characters. Your regression data shows optimal post length is 3-91 words.`;
+
           const systemPrompt = `${CONTENT_GENERATION_RULES}
 
 You are Threadable — a data-driven Threads content writer. You write posts that are backed by regression analysis of this user's actual performance data.
@@ -89,10 +104,14 @@ This is not generic content. This post is built from:
 - The user's AUTHENTIC voice
 
 POST SPECIFICATIONS:
-- Archetype: ${post.archetype || "General"}
+- Archetype: ${archetype}
 - Funnel Stage: ${post.funnel_stage || "TOF"}
 - Topic: ${post.topic || ""}
 - Hook idea: ${post.hook_idea || ""}
+
+=== LENGTH REQUIREMENT (CRITICAL) ===
+${archetypeLengthInstruction}
+Your regression data shows the optimal word count is 3-91 words. Posts within this range get significantly more reach. Do NOT exceed this unless the archetype specifically allows it.
 
 === HOW YOU WRITE HIGH-PERFORMING POSTS ===
 
@@ -109,7 +128,7 @@ For every post you write:
 === RULES ===
 - NEVER use placeholder brackets. Use the user's real data from their Identity, Stories, and Numbers.
 - Write as this person — their words, their rhythm, their personality. Not AI voice.
-- Keep under 500 characters unless specified otherwise.
+- ${archetypeLengthInstruction}
 - Format for mobile: short paragraphs, line breaks between thoughts.
 - Start with a hook that matches patterns from their top-performing posts.
 - If the funnel stage is BOF, reference specific offers and CTAs from their sales funnel.
