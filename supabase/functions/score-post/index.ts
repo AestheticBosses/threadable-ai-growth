@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -138,16 +138,18 @@ Return ONLY valid JSON with this exact structure:
   "total": 6
 }`;
 
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "claude-opus-4-5",
+        max_tokens: 2000,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: `Score this post:\n\n${text}` },
         ],
       }),
@@ -162,7 +164,7 @@ Return ONLY valid JSON with this exact structure:
     }
 
     const aiData = await aiResponse.json();
-    const raw = aiData.choices?.[0]?.message?.content || "";
+    const raw = aiData.content?.[0]?.text || "";
     
     // Extract JSON from response (handle markdown code blocks)
     const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
