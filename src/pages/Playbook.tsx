@@ -432,10 +432,6 @@ const Playbook = () => {
               {generatingStrategy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Regenerate Strategy
             </Button>
-            <Button onClick={handleGenerateContent} disabled={generatingContent} className="gap-2">
-              {generatingContent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Generate Posts
-            </Button>
           </div>
         </div>
 
@@ -450,14 +446,14 @@ const Playbook = () => {
             <TabsTrigger value="archetypes" className="gap-1.5">
               <Brain className="h-3.5 w-3.5" /> Archetypes
             </TabsTrigger>
-            <TabsTrigger value="content_plan" className="gap-1.5">
-              <FileText className="h-3.5 w-3.5" /> Content Plan
-            </TabsTrigger>
             <TabsTrigger value="branding_plan" className="gap-1.5">
               <Palette className="h-3.5 w-3.5" /> Branding Plan
             </TabsTrigger>
             <TabsTrigger value="funnel_strategy" className="gap-1.5">
               <GitBranch className="h-3.5 w-3.5" /> Funnel Strategy
+            </TabsTrigger>
+            <TabsTrigger value="content_plan" className="gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Content Plan
             </TabsTrigger>
           </TabsList>
 
