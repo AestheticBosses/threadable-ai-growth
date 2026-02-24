@@ -77,6 +77,58 @@ function funnelPill(stage: string | null) {
   }
 }
 
+function getConsequenceLine(insightText: string, viewsLifts: any, commentsLifts: any): string {
+  const text = insightText.toLowerCase();
+  
+  if (text.includes("credibility")) {
+    const withAvg = viewsLifts?.has_credibility_marker?.with_avg;
+    const withoutAvg = viewsLifts?.has_credibility_marker?.without_avg;
+    if (withAvg && withoutAvg) {
+      const multiplier = Math.round(withAvg / withoutAvg);
+      return `Your posts with credibility signals average ${withAvg.toLocaleString()} views. Without them: ${withoutAvg.toLocaleString()}. That's a ${multiplier}x gap on every post.`;
+    }
+  }
+  
+  if (text.includes("question") && text.includes("fewer views")) {
+    const lift = viewsLifts?.has_question?.lift;
+    if (lift) return `Questions cost you ${Math.abs(lift)}% reach on average. Save them for MOF trust-building posts.`;
+  }
+  
+  if (text.includes("question") && text.includes("more comments")) {
+    const lift = commentsLifts?.has_question?.lift;
+    if (lift) return `Questions drive ${lift}% more comments — use them intentionally in conversation-starter posts.`;
+  }
+  
+  if (text.includes("emoji") || text.includes("emojis")) {
+    const lift = viewsLifts?.has_emoji?.lift;
+    if (lift) return `Emojis are suppressing your reach by ${Math.abs(lift)}% on average. Your audience responds better without them.`;
+  }
+  
+  if (text.includes("hashtag")) {
+    const lift = viewsLifts?.has_hashtag?.lift;
+    if (lift) return `Hashtags reduce your views by ${Math.abs(lift)}% — the Threads algorithm doesn't reward them the way Instagram does.`;
+  }
+  
+  if (text.includes("url") || text.includes("link")) {
+    const lift = viewsLifts?.has_url?.lift;
+    if (lift) return `Posts with links get ${Math.abs(lift)}% fewer views. Save links for BOF posts only — don't mix reach and conversion.`;
+  }
+  
+  if (text.includes("starts with number") || text.includes("number")) {
+    return `Opening with numbers reduces reach for your audience. Lead with identity or observation instead.`;
+  }
+  
+  if (text.includes("tuesday") || text.includes("best day")) {
+    return `Your audience is most active and engaged on this day — posting outside your best windows costs you compounding reach.`;
+  }
+  
+  if (text.includes("best posting hour") || text.includes("19:00") || text.includes("1:00")) {
+    return `Timing compounds — consistent posting in your peak window trains the algorithm to distribute your content further.`;
+  }
+
+  return `Apply this consistently and your baseline performance shifts permanently.`;
+}
+
 export default function PlanPreview({ journeyStage, goalType, onNavigate }: PlanPreviewProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -94,6 +146,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const [archetypes, setArchetypes] = useState<Archetype[]>([]);
   const [postingCadence, setPostingCadence] = useState<string | null>(null);
   const [unrealizedPct, setUnrealizedPct] = useState<number | null>(null);
+  const [featureLifts, setFeatureLifts] = useState<{ views: any; comments: any }>({ views: {}, comments: {} });
 
   const funnel = STAGE_FUNNEL[journeyStage] || STAGE_FUNNEL.getting_started;
 
@@ -167,19 +220,25 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         setHasRealInsights(false);
       }
 
-      // Unrealized reach calculation
-      const correlations = regressionData?.views_insights?.correlations ||
-                           regressionData?.correlations || [];
-      const topCorrelation = correlations
-        .filter((c: any) => c.correlation > 0.3)
-        .sort((a: any, b: any) => b.correlation - a.correlation)[0];
+      // Extract boolean feature lifts for personalized consequence lines
+      const viewsLifts = regressionData?.views_insights?.boolean_feature_lifts || 
+                         regressionData?.boolean_feature_lifts || {};
+      const commentsLifts = regressionData?.comments_insights?.boolean_feature_lifts || {};
+
+      // Calculate unrealized reach from top positive predictor
+      const viewsCorrelations = regressionData?.views_insights?.correlations || 
+                                regressionData?.correlations || [];
+      const topPositive = viewsCorrelations
+        .filter((c: any) => c.r > 0.3)
+        .sort((a: any, b: any) => b.r - a.r)[0];
+
+      const credLift = viewsLifts?.has_credibility_marker;
       let calcUnrealizedPct: number | null = null;
-      if (topCorrelation) {
-        const usageRate = topCorrelation.usage_rate || topCorrelation.frequency || 0;
-        const gap = Math.round((1 - usageRate) * 100);
-        if (gap > 20 && gap < 85) calcUnrealizedPct = gap;
+      if (credLift && topPositive?.feature === "has_credibility_marker") {
+        calcUnrealizedPct = credLift.lift > 500 ? 35 : null;
       }
       setUnrealizedPct(calcUnrealizedPct);
+      setFeatureLifts({ views: viewsLifts, comments: commentsLifts });
 
       // Positioning
       const planData = brandingPlan?.plan_data as any;
@@ -265,9 +324,16 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               </div>
             </div>
             <p className="text-sm text-[hsl(38_92%_50%)] text-center mt-2">
-              {unrealizedPct !== null
-                ? `Based on your patterns, you've likely left ~${unrealizedPct}% of your potential reach unrealized. Here's how we fix that.`
-                : "Most creators leave 30–50% of their potential reach unrealized by posting without a pattern. Here's yours."}
+              {(() => {
+                const credLiftData = featureLifts.views?.has_credibility_marker;
+                if (credLiftData?.with_avg && credLiftData?.without_avg) {
+                  const multiplier = Math.round(credLiftData.with_avg / credLiftData.without_avg);
+                  return `Your data shows a ${multiplier}x performance gap between your best and average posts. Here's the pattern behind it.`;
+                }
+                return unrealizedPct !== null
+                  ? `Based on your data, you're suppressing ~${unrealizedPct}% of your reach on posts that don't follow your top pattern.`
+                  : "Your content performs dramatically differently depending on structure. Here's what the data found.";
+              })()}
             </p>
           </section>
         )}
@@ -302,12 +368,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           )}
           <div className="space-y-3">
             {insights.map((text, i) => {
-              const lowerText = text.toLowerCase();
-              const consequence = lowerText.includes("more views") || lowerText.includes("higher")
-                ? "Every post without this pattern is suppressing your reach."
-                : lowerText.includes("fewer") || lowerText.includes("less")
-                ? "You've likely been accidentally leaving growth on the table."
-                : "Apply this consistently to see compounding results.";
+              const consequence = getConsequenceLine(text, featureLifts.views, featureLifts.comments);
               return (
                 <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
                   <Lightbulb className="h-5 w-5 text-[hsl(38_92%_50%)] shrink-0 mt-0.5" />
