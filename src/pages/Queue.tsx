@@ -880,9 +880,16 @@ function PostCard({
                   autoFocus
                 />
                 <div className="flex items-center justify-between">
-                  <span className={cn("text-xs", editText.length > 500 ? "text-destructive" : "text-muted-foreground")}>
-                    {editText.length}/500
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("text-xs", editText.length > 500 ? "text-destructive font-medium" : "text-muted-foreground")}>
+                      {editText.length} / 500 chars
+                    </span>
+                    {editText.length > 500 && (
+                      <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                        Over Threads limit
+                      </span>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <Button size="sm" variant="ghost" onClick={onCancelEdit}>Cancel</Button>
                     <Button size="sm" onClick={() => onSaveEdit(post.id)} disabled={editText.length > 500}>Save</Button>
@@ -894,12 +901,19 @@ function PostCard({
                 <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
                   {post.text_content || "No content"}
                 </p>
-                <span className={cn(
-                  "text-xs mt-2 inline-block",
-                  (post.text_content?.length || 0) > 500 ? "text-destructive" : "text-muted-foreground"
-                )}>
-                  {post.text_content?.length || 0} chars
-                </span>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={cn(
+                    "text-xs",
+                    (post.text_content?.length || 0) > 500 ? "text-destructive font-medium" : "text-muted-foreground"
+                  )}>
+                    {post.text_content?.length || 0} / 500 chars
+                  </span>
+                  {(post.text_content?.length || 0) > 500 && (
+                    <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                      Over Threads limit
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
