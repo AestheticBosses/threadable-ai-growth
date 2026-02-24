@@ -31,13 +31,34 @@ serve(async (req) => {
     // Read profile from DB so context is always available regardless of caller
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("niche, dream_client, end_goal")
+      .select("niche, dream_client, end_goal, goal_type, dm_keyword, dm_offer")
       .eq("id", user.id)
       .single()
 
     const nicheHint = body.niche || profile?.niche || ""
     const goalsHint = body.goals || profile?.end_goal || ""
     const dreamClientHint = profile?.dream_client || ""
+    const goalType = profile?.goal_type || "grow_audience"
+    const dmKeyword = profile?.dm_keyword || ""
+    const dmOffer = profile?.dm_offer || ""
+
+    const goalDirective = `
+=== GOAL OPTIMIZATION DIRECTIVE ===
+The user's primary goal is: ${goalType}
+${dmKeyword ? `DM Keyword: ${dmKeyword}` : ""}
+${dmOffer ? `DM Offer: ${dmOffer}` : ""}
+
+Apply this goal to everything you generate:
+
+${goalType === "get_comments" ? `- Archetypes should be optimized for CONVERSATION STARTERS. Prioritize archetypes that end with questions, make controversial statements people feel compelled to respond to, or share vulnerable stories that invite replies.
+- Every archetype should have "drives replies/comments" as a primary success metric.
+- De-prioritize pure reach/views archetypes unless they also drive conversation.` : ""}
+${goalType === "drive_traffic" ? `- Archetypes should be optimized for CLICK INTENT. Prioritize archetypes that create curiosity gaps, tease valuable resources, and naturally lead to "get the full thing at the link."
+- Every archetype should have a natural CTA pathway to the traffic URL.` : ""}
+${goalType === "grow_audience" ? `- Archetypes should be optimized for SHAREABILITY and FOLLOW TRIGGERS. Prioritize archetypes that make people want to share with others or follow for more.` : ""}
+
+Read goal_type, dm_keyword, and dm_offer from the CREATOR PROFILE section above and apply this directive to every archetype you generate.
+=== END GOAL DIRECTIVE ===`
 
     let postsForAnalysis = ""
     let promptContent = ""
@@ -46,6 +67,7 @@ serve(async (req) => {
       // New account — no posts, generate starter archetypes based on niche
       console.log("New account mode — niche:", nicheHint)
       promptContent = `You are a viral content strategist. A NEW creator is starting on Threads in the "${nicheHint}" niche. Their goals: "${goalsHint}".
+${goalDirective}
 
 They have NO existing posts yet. Based on what works for successful Threads creators in this niche, suggest 3-5 content archetypes they should use.
 
@@ -115,6 +137,7 @@ CREATOR CONTEXT:
 - End Goal: ${goalsHint || "Not specified"}
 
 Use this context to shape the archetypes. The archetypes should not just reflect past posting patterns — they should reflect what this creator needs to build toward their goal and resonate with their dream client. If their posts show patterns that serve their dream client well, weight those higher.
+${goalDirective}
 
 Here are their top ${posts.length} posts ranked by views with engagement data:
 
