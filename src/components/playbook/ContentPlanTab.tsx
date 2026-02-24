@@ -62,6 +62,7 @@ export function ContentPlanTab() {
   const [generatingWeek, setGeneratingWeek] = useState(false);
   const [weekProgress, setWeekProgress] = useState({ current: 0, total: 0 });
   const [draftingPostKey, setDraftingPostKey] = useState<string | null>(null);
+  const [draftingLabel, setDraftingLabel] = useState<Record<string, string>>({});
   const [draftedPosts, setDraftedPosts] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, string>>({});
@@ -220,8 +221,10 @@ export function ContentPlanTab() {
       const generatedText = posts[0]?.text_content || res.data?.text || "Draft generated — check your Content Queue";
       setInlineDrafts((prev) => ({ ...prev, [key]: generatedText }));
       setDraftedPosts((prev) => new Set(prev).add(key));
+      setDraftingLabel((prev) => ({ ...prev, [key]: "Drafting..." }));
+      setTimeout(() => setDraftingLabel((prev) => ({ ...prev, [key]: "Drafted ✓" })), 1200);
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      toast({ title: "Error drafting post", description: e.message, variant: "destructive" });
     } finally {
       setDraftingPostKey(null);
     }
@@ -377,8 +380,8 @@ export function ContentPlanTab() {
                                 <p className="text-xs text-foreground/70 italic">"{post.hook_idea}"</p>
                               )}
                               {!inlineDrafts[postKey] ? (
-                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5" disabled={isDrafting} onClick={() => handleInlineDraft(post, day.day, i)}>
-                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
+                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                  {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
                                 </Button>
                               ) : (
                                 <div className="mt-2 space-y-2 border-t border-border pt-2">
@@ -436,14 +439,8 @@ export function ContentPlanTab() {
                               <span className="text-muted-foreground truncate flex-1">
                                 {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                               </span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0"
-                                disabled={isDrafting}
-                                onClick={() => handleInlineDraft(post, day.day, i)}
-                              >
-                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
+                              <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
                               </Button>
                             </div>
                           );
@@ -507,14 +504,8 @@ export function ContentPlanTab() {
                                   <span className="text-muted-foreground truncate flex-1">
                                     {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0"
-                                    disabled={isDrafting}
-                                    onClick={() => handleInlineDraft(post, day.day, i)}
-                                  >
-                                    {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" /> Draft</>}
+                                  <Button size="sm" variant="ghost" className="h-6 text-[10px] text-primary p-0 gap-0.5 shrink-0" disabled={isDrafting || !!draftingLabel[postKey]} onClick={() => handleInlineDraft(post, day.day, i)}>
+                                    {isDrafting ? <Loader2 className="h-3 w-3 animate-spin" /> : draftingLabel[postKey] ? <><Check className="h-3 w-3 text-emerald-400" /> {draftingLabel[postKey]}</> : <><Zap className="h-3 w-3" /> Draft</>}
                                   </Button>
                                 </div>
                               );
