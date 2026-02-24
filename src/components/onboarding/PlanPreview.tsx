@@ -290,7 +290,8 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
     );
   }
 
-  const cadenceLabel = postingCadence === "2x_daily" ? "2 posts per day" : "1 post per day";
+  const postsPerDay = postingCadence === "2x_daily" ? 2 : 1;
+  const cadenceLabel = `${postsPerDay} post${postsPerDay > 1 ? 's' : ''} per day`;
 
   return (
     <div className="fixed inset-0 bg-background overflow-y-auto">
