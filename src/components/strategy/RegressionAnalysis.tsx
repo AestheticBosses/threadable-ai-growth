@@ -1,12 +1,48 @@
 import { useState, useMemo } from "react";
 import { useRegressionInsights, type RegressionInsight } from "@/hooks/useStrategyData";
 import { usePostsAnalyzed, type AnalyzedPost } from "@/hooks/usePostsAnalyzed";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { computeCorrelations as computeMockCorrelations } from "@/lib/mockAnalysisData";
 import type { CorrelationRow } from "@/lib/mockAnalysisData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Sparkles } from "lucide-react";
+import { ChevronDown, Sparkles, Eye, MessageCircle } from "lucide-react";
+
+/* ── Types for dual regression data ── */
+interface RegressionSection {
+  human_readable_insights?: string[];
+  correlations?: { feature: string; r: number }[];
+  top_positive_predictors?: { feature: string; correlation: number }[];
+  top_negative_predictors?: { feature: string; correlation: number }[];
+  best_posting_day?: { day: string; avg: number };
+  best_posting_hour?: { hour: number; avg: number };
+  optimal_word_count_range?: { min: number; max: number };
+  boolean_feature_lifts?: Record<string, { with_avg: number; without_avg: number; lift: number }>;
+}
+
+/* ── Hook to fetch raw regression_insights from content_strategies ── */
+function useDualRegressionData() {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["dual-regression", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from("content_strategies")
+        .select("regression_insights")
+        .eq("user_id", user.id)
+        .not("regression_insights", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data?.regression_insights as any) ?? null;
+    },
+    enabled: !!user?.id,
+  });
+}
 
 /* ── Metric color coding ── */
 const METRIC_COLORS: Record<string, string> = {
@@ -24,7 +60,6 @@ const STRENGTH_COLORS: Record<string, string> = {
 
 /* ── Parse comparison numbers from evidence text ── */
 function parseComparison(evidence: string): { withVal: string; withoutVal: string; multiplier: string; metric: string } | null {
-  // Pattern: "X,XXX views with ... Y,YYY without" or "avg X,XXX ... avg Y,YYY"
   const numPattern = /(\d[\d,]*\.?\d*)\s*(views|likes|reposts|replies|%|engagement)/gi;
   const matches = [...evidence.matchAll(numPattern)];
   if (matches.length >= 2) {
@@ -34,12 +69,7 @@ function parseComparison(evidence: string): { withVal: string; withoutVal: strin
       const high = Math.max(a, b);
       const low = Math.min(a, b);
       const mult = low > 0 ? (high / low).toFixed(1) : "∞";
-      return {
-        withVal: high.toLocaleString(),
-        withoutVal: low.toLocaleString(),
-        multiplier: `${mult}x`,
-        metric: matches[0][2].toLowerCase(),
-      };
+      return { withVal: high.toLocaleString(), withoutVal: low.toLocaleString(), multiplier: `${mult}x`, metric: matches[0][2].toLowerCase() };
     }
   }
   return null;
@@ -48,7 +78,6 @@ function parseComparison(evidence: string): { withVal: string; withoutVal: strin
 /* ── AI Insight Card ── */
 function InsightCard({ insight }: { insight: RegressionInsight }) {
   const comparison = parseComparison(insight.evidence);
-
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -63,8 +92,6 @@ function InsightCard({ insight }: { insight: RegressionInsight }) {
         </div>
       </div>
       <p className="text-sm font-medium text-foreground">{insight.insight}</p>
-
-      {/* Comparison boxes */}
       {comparison && (
         <div className="flex items-center gap-3">
           <div className="flex gap-2 flex-1">
@@ -82,7 +109,6 @@ function InsightCard({ insight }: { insight: RegressionInsight }) {
           <span className="text-sm font-bold text-emerald-400">{comparison.multiplier} better</span>
         </div>
       )}
-
       <p className="text-xs text-muted-foreground leading-relaxed">{insight.evidence}</p>
       {insight.recommendation && (
         <p className="text-xs text-primary font-medium">→ {insight.recommendation}</p>
@@ -91,8 +117,88 @@ function InsightCard({ insight }: { insight: RegressionInsight }) {
   );
 }
 
+/* ── Insight text card (for human_readable_insights strings) ── */
+function InsightTextCard({ text, accentClass }: { text: string; accentClass: string }) {
+  return (
+    <div className={`rounded-lg border border-border bg-card p-4 ${accentClass}`}>
+      <p className="text-sm font-medium text-foreground">{text}</p>
+    </div>
+  );
+}
+
+/* ── Correlation predictor cards ── */
+function PredictorCards({ predictors, label }: { predictors: { feature: string; correlation: number }[]; label: string }) {
+  if (!predictors?.length) return null;
+  return (
+    <div className="space-y-2">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</h4>
+      <div className="flex flex-wrap gap-2">
+        {predictors.map((p) => (
+          <Badge key={p.feature} variant="outline" className={`text-xs ${p.correlation > 0 ? "text-emerald-400 border-emerald-500/30" : "text-red-400 border-red-500/30"}`}>
+            {p.feature.replace(/_/g, " ")} ({p.correlation > 0 ? "+" : ""}{p.correlation})
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Section for a single regression dimension ── */
+function RegressionDimensionSection({
+  title,
+  icon,
+  section,
+  accentClass,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  section: RegressionSection;
+  accentClass: string;
+}) {
+  const insights = section.human_readable_insights ?? [];
+  const topPos = section.top_positive_predictors ?? [];
+  const topNeg = section.top_negative_predictors ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        {icon}
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+      </div>
+
+      {insights.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {insights.map((text, i) => (
+            <InsightTextCard key={i} text={text} accentClass={accentClass} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Not enough data for insights yet.</p>
+      )}
+
+      {(topPos.length > 0 || topNeg.length > 0) && (
+        <div className="space-y-3 pt-2">
+          <PredictorCards predictors={topPos} label="Top positive predictors" />
+          <PredictorCards predictors={topNeg} label="Top negative predictors" />
+        </div>
+      )}
+
+      {section.best_posting_day && section.best_posting_hour && (
+        <div className="flex flex-wrap gap-3 pt-1">
+          <Badge variant="outline" className="text-xs text-foreground">
+            Best day: {section.best_posting_day.day} (avg {section.best_posting_day.avg.toLocaleString()})
+          </Badge>
+          <Badge variant="outline" className="text-xs text-foreground">
+            Best hour: {section.best_posting_hour.hour}:00 (avg {section.best_posting_hour.avg.toLocaleString()})
+          </Badge>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Raw Pearson table (collapsible) ── */
-function pearson(xs: number[], ys: number[]): number {
+function pearsonCalc(xs: number[], ys: number[]): number {
   const n = xs.length;
   if (n < 3) return 0;
   const meanX = xs.reduce((a, b) => a + b, 0) / n;
@@ -131,7 +237,7 @@ function computeRealCorrelations(posts: AnalyzedPost[]): CorrelationRow[] {
   return variables.map((v) => {
     const xs = posts.map(v.extract);
     const count = xs.filter((x) => x > 0).length;
-    return { variable: v.label, rViews: pearson(xs, views), rLikes: pearson(xs, likes), rReposts: pearson(xs, reposts), rLikeRate: pearson(xs, likeRate), rRepostRate: pearson(xs, repostRate), rEngRate: pearson(xs, engRate), count };
+    return { variable: v.label, rViews: pearsonCalc(xs, views), rLikes: pearsonCalc(xs, likes), rReposts: pearsonCalc(xs, reposts), rLikeRate: pearsonCalc(xs, likeRate), rRepostRate: pearsonCalc(xs, repostRate), rEngRate: pearsonCalc(xs, engRate), count };
   });
 }
 
@@ -214,15 +320,49 @@ function RawCorrelationsTable() {
 
 /* ── Main Component ── */
 export function RegressionAnalysis() {
-  const { data: regressionData, isLoading } = useRegressionInsights();
+  const { data: regressionData, isLoading: aiLoading } = useRegressionInsights();
+  const { data: dualData, isLoading: dualLoading } = useDualRegressionData();
   const insights = regressionData?.insights;
+
+  const isLoading = aiLoading || dualLoading;
+
+  // Check for dual structure (new format)
+  const viewsSection = dualData?.views_insights as RegressionSection | undefined;
+  const commentsSection = dualData?.comments_insights as RegressionSection | undefined;
+  const hasDualData = !!viewsSection || !!commentsSection;
 
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
 
   return (
     <div className="space-y-8">
-      {/* AI-Powered Insights */}
-      {insights && insights.length > 0 ? (
+      {/* Dual regression sections (new format) */}
+      {hasDualData && (
+        <>
+          {viewsSection && (
+            <RegressionDimensionSection
+              title="What Drives Reach"
+              icon={<Eye className="h-5 w-5 text-violet-400" />}
+              section={viewsSection}
+              accentClass="border-l-2 border-l-violet-500/40"
+            />
+          )}
+
+          {commentsSection && (
+            <>
+              <div className="border-t border-border/50" />
+              <RegressionDimensionSection
+                title="What Drives Comments"
+                icon={<MessageCircle className="h-5 w-5 text-blue-400" />}
+                section={commentsSection}
+                accentClass="border-l-2 border-l-blue-500/40"
+              />
+            </>
+          )}
+        </>
+      )}
+
+      {/* AI-Powered Insights (legacy format) */}
+      {!hasDualData && insights && insights.length > 0 && (
         <>
           <div>
             <h3 className="text-lg font-semibold text-foreground">AI-Powered Regression Insights</h3>
@@ -236,12 +376,15 @@ export function RegressionAnalysis() {
             ))}
           </div>
         </>
-      ) : (
+      )}
+
+      {/* Empty state */}
+      {!hasDualData && (!insights || insights.length === 0) && (
         <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
           <Sparkles className="h-10 w-10 text-primary" />
           <p className="text-foreground font-medium">No regression insights yet</p>
           <p className="text-sm text-muted-foreground max-w-md">
-            Click "🧠 Run Full Analysis" on the Dashboard to get AI-powered regression insights that go beyond simple correlations.
+            Click "🧠 Run Full Analysis" on the Dashboard to get regression insights that reveal what drives your reach and comments.
           </p>
         </div>
       )}
