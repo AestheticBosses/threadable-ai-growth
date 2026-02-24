@@ -7,29 +7,31 @@ import { CheckCircle2, Circle, ListChecks } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 
+// Secondary actions per goal (first action is always dynamic)
 const GOAL_ACTIONS: Record<string, string[]> = {
   get_comments: [
-    "Reply meaningfully to all comments",
     "Check for keyword mentions",
     "Leave insight on 5 posts in your niche",
   ],
   grow_audience: [
-    "Reply meaningfully to all comments",
     "Leave insight on 5 posts in your niche",
     "Share today's post in one other place",
   ],
   drive_traffic: [
-    "Check link clicks from yesterday",
     "Reply meaningfully to all comments",
     "Share today's post in one other place",
   ],
 };
 
-const GOAL_FOCUS: Record<string, string> = {
-  get_comments: "Today's focus: Start conversations, not broadcasts.",
-  grow_audience: "Today's focus: Give before you ask.",
-  drive_traffic: "Today's focus: Every post is a doorway.",
-};
+function getFocusLine(funnelStage: string | null, goalType: string): string {
+  if (funnelStage === "TOF") return "Today's focus: Reach. Make new people stop scrolling.";
+  if (funnelStage === "MOF") return "Today's focus: Trust. Say something only you would say.";
+  if (funnelStage === "BOF") return "Today's focus: Convert. Your audience is warm — make the ask.";
+  // Fallback to goal-based
+  if (goalType === "get_comments") return "Today's focus: Start conversations, not broadcasts.";
+  if (goalType === "drive_traffic") return "Today's focus: Every post is a doorway.";
+  return "Today's focus: Give before you ask.";
+}
 
 function getFirstAction(goalType: string, yesterdayResults: any): string {
   const comments = yesterdayResults?.comments_received ?? null;
@@ -68,7 +70,7 @@ export function DailyActionBoard() {
       const todayStart = startOfDay(new Date()).toISOString();
       const todayEnd = endOfDay(new Date()).toISOString();
 
-      const [profileRes, todayPostRes, yesterdayResultsRes] = await Promise.all([
+      const [profileRes, todayPostRes, yesterdayResultsRes, todayPlanRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("goal_type")
@@ -89,12 +91,20 @@ export function DailyActionBoard() {
           .order("logged_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
+        supabase
+          .from("content_plan_items")
+          .select("funnel_stage")
+          .eq("user_id", user.id)
+          .eq("scheduled_date", format(new Date(), "yyyy-MM-dd"))
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       return {
         goalType: profileRes.data?.goal_type ?? "grow_audience",
         hasTodayPost: (todayPostRes.data?.length ?? 0) > 0,
         yesterdayResults: yesterdayResultsRes.data ?? null,
+        todayFunnelStage: todayPlanRes.data?.funnel_stage ?? null,
       };
     },
     enabled: !!user?.id,
@@ -139,7 +149,7 @@ export function DailyActionBoard() {
   };
 
   const allDone = actions.length > 0 && actions.every((a) => checked[a.id]);
-  const focusLine = GOAL_FOCUS[goalType] ?? GOAL_FOCUS.grow_audience;
+  const focusLine = getFocusLine(data?.todayFunnelStage ?? null, goalType);
 
   if (!data) return null;
 
