@@ -75,12 +75,13 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages: [{
           role: 'user',
           content: `You are an expert Threads growth strategist doing a deep analysis of a creator's content performance to help them grow faster.
 
 Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
+Keep each insight under 100 characters. Be concise. The total JSON response must fit within 4000 tokens.
 
 CREATOR CONTEXT:
 - Niche: ${profile?.niche || "Not specified"}
