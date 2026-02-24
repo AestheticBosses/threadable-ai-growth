@@ -57,6 +57,7 @@ import { ScheduleDialog } from "@/components/queue/ScheduleDialog";
 import { LogResultsModal } from "@/components/queue/LogResultsModal";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info, BarChart3 } from "lucide-react";
+import { ScoringChecklist } from "@/components/strategy/ScoringChecklist";
 
 type Post = {
   id: string;
@@ -129,6 +130,7 @@ const Queue = () => {
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [scoringId, setScoringId] = useState<string | null>(null);
+  const [scoreChecklistId, setScoreChecklistId] = useState<string | null>(null);
   const [logResultsPostId, setLogResultsPostId] = useState<string | null>(null);
   const [postResults, setPostResults] = useState<Record<string, { id: string; comments_received: number | null; link_clicks: number | null; dm_replies: number | null; is_estimated: boolean }>>({});
 
@@ -545,6 +547,8 @@ const Queue = () => {
                 onScore={handleScorePost}
                 scoringId={scoringId}
                 onRetry={handleRetry}
+                scoreChecklistId={scoreChecklistId}
+                onToggleScoreChecklist={(id) => setScoreChecklistId(scoreChecklistId === id ? null : id)}
                 onDateChange={handleDateChange}
                 threadsUsername={threadsUsername}
                 truncate={truncate}
@@ -584,6 +588,8 @@ const Queue = () => {
                 onScore={handleScorePost}
                 scoringId={scoringId}
                 onRetry={handleRetry}
+                scoreChecklistId={scoreChecklistId}
+                onToggleScoreChecklist={(id) => setScoreChecklistId(scoreChecklistId === id ? null : id)}
                 onDateChange={handleDateChange}
                 threadsUsername={threadsUsername}
                 truncate={truncate}
@@ -693,6 +699,8 @@ interface PostCardProps {
   onScore: (post: Post) => void;
   scoringId: string | null;
   onRetry: (id: string) => void;
+  scoreChecklistId: string | null;
+  onToggleScoreChecklist: (id: string) => void;
   onDateChange: (id: string, date: Date) => void;
   threadsUsername: string | null;
   truncate: (text: string | null, len?: number) => string;
@@ -721,6 +729,8 @@ function PostCard({
   onScore,
   scoringId,
   onRetry,
+  scoreChecklistId,
+  onToggleScoreChecklist,
   onDateChange,
   threadsUsername,
   truncate,
@@ -953,11 +963,10 @@ function PostCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onScore(post)}
-                  disabled={scoringId === post.id}
+                  onClick={() => onToggleScoreChecklist(post.id)}
                   className="gap-1 h-7 text-xs"
                 >
-                  {scoringId === post.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Target className="h-3 w-3" />}
+                  <Target className="h-3 w-3" />
                   Score
                 </Button>
                 <Button
@@ -994,6 +1003,11 @@ function PostCard({
                   <Trash2 className="h-3 w-3" />
                 </Button>
               </div>
+            )}
+
+            {/* Score Checklist */}
+            {scoreChecklistId === post.id && (
+              <ScoringChecklist postText={post.text_content ?? ""} />
             )}
           </div>
         </CollapsibleContent>
