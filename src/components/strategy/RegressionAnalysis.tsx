@@ -9,7 +9,7 @@ import type { CorrelationRow } from "@/lib/mockAnalysisData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Sparkles, Eye, MessageCircle } from "lucide-react";
+import { ChevronDown, Sparkles, Eye, MessageCircle, MousePointerClick, Mail, Lock } from "lucide-react";
 
 /* ── Types for dual regression data ── */
 interface RegressionSection {
@@ -329,6 +329,10 @@ export function RegressionAnalysis() {
   // Check for dual structure (new format)
   const viewsSection = dualData?.views_insights as RegressionSection | undefined;
   const commentsSection = dualData?.comments_insights as RegressionSection | undefined;
+  const linkClicksSection = dualData?.link_clicks_insights as RegressionSection | undefined;
+  const dmRepliesSection = dualData?.dm_replies_insights as RegressionSection | undefined;
+  const manualClicksCount = (dualData?.manual_clicks_count as number) ?? 0;
+  const dmRepliesCount = (dualData?.dm_replies_count as number) ?? 0;
   const hasDualData = !!viewsSection || !!commentsSection;
 
   if (isLoading) return <Skeleton className="h-64 rounded-lg" />;
@@ -357,6 +361,56 @@ export function RegressionAnalysis() {
                 accentClass="border-l-2 border-l-blue-500/40"
               />
             </>
+          )}
+
+          {/* Link Clicks section */}
+          <div className="border-t border-border/50" />
+          {linkClicksSection && manualClicksCount >= 3 ? (
+            <RegressionDimensionSection
+              title="What Drives Link Clicks"
+              icon={<MousePointerClick className="h-5 w-5 text-emerald-400" />}
+              section={linkClicksSection}
+              accentClass="border-l-2 border-l-emerald-500/40"
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <MousePointerClick className="h-5 w-5 text-emerald-400" />
+                <h3 className="text-lg font-semibold text-foreground">What Drives Link Clicks</h3>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-6 flex items-center gap-3">
+                <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
+                <p className="text-sm text-muted-foreground">
+                  Not enough data yet — log results on your posts to unlock this insight.
+                  {manualClicksCount > 0 && ` (${manualClicksCount}/3 posts logged)`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* DM Replies section */}
+          <div className="border-t border-border/50" />
+          {dmRepliesSection && dmRepliesCount >= 3 ? (
+            <RegressionDimensionSection
+              title="What Drives DM Replies"
+              icon={<Mail className="h-5 w-5 text-amber-400" />}
+              section={dmRepliesSection}
+              accentClass="border-l-2 border-l-amber-500/40"
+            />
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Mail className="h-5 w-5 text-amber-400" />
+                <h3 className="text-lg font-semibold text-foreground">What Drives DM Replies</h3>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-6 flex items-center gap-3">
+                <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
+                <p className="text-sm text-muted-foreground">
+                  Not enough data yet — log results on your posts to unlock this insight.
+                  {dmRepliesCount > 0 && ` (${dmRepliesCount}/3 posts logged)`}
+                </p>
+              </div>
+            </div>
           )}
         </>
       )}

@@ -218,6 +218,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Fetch post_results for additional dependent variables
+    const { data: postResults } = await adminClient
+      .from("post_results")
+      .select("post_id, comments_received, link_clicks, dm_replies, is_estimated")
+      .eq("user_id", userId);
+
+    const resultsMap = new Map((postResults ?? []).map((r: any) => [r.post_id, r]));
+
     // ── Build feature vectors ──
 
     const boolFeatures = [
@@ -238,35 +246,111 @@ Deno.serve(async (req) => {
     const viewsVec: number[] = [];
     const repliesVec: number[] = [];
 
+    // Build filtered vectors for post_results metrics
+    // link_clicks: only manually logged (is_estimated=false)
+    // comments_received & dm_replies: both manual and estimated
+    const linkClicksFeatureVecs: Record<string, number[]> = {};
+    const linkClicksTarget: number[] = [];
+    const commentsReceivedFeatureVecs: Record<string, number[]> = {};
+    const commentsReceivedTarget: number[] = [];
+    const dmRepliesFeatureVecs: Record<string, number[]> = {};
+    const dmRepliesTarget: number[] = [];
+
+    for (const f of [...boolFeatures, ...numFeatures, "day_of_week" as const]) {
+      linkClicksFeatureVecs[f] = [];
+      commentsReceivedFeatureVecs[f] = [];
+      dmRepliesFeatureVecs[f] = [];
+    }
+
+    let manualClicksCount = 0;
+    let dmRepliesCount = 0;
+
     for (const p of posts) {
-      for (const f of boolFeatures) {
-        featureVecs[f].push(p[f] ? 1 : 0);
+      const fVals: Record<string, number> = {};
+      for (const f of boolFeatures) fVals[f] = p[f] ? 1 : 0;
+      for (const f of numFeatures) fVals[f] = p[f] ?? 0;
+      fVals["day_of_week"] = DAY_INDEX[p.day_of_week as string] ?? 0;
+
+      // Main feature vectors
+      for (const f of [...boolFeatures, ...numFeatures, "day_of_week" as const]) {
+        featureVecs[f].push(fVals[f]);
       }
-      for (const f of numFeatures) {
-        featureVecs[f].push(p[f] ?? 0);
-      }
-      featureVecs["day_of_week"].push(DAY_INDEX[p.day_of_week as string] ?? 0);
       viewsVec.push(p.views ?? 0);
       repliesVec.push(p.replies ?? 0);
+
+      // post_results vectors
+      const result = resultsMap.get(p.id);
+      if (result) {
+        // link_clicks — manual only
+        if (!result.is_estimated && result.link_clicks != null) {
+          for (const f of [...boolFeatures, ...numFeatures, "day_of_week" as const]) {
+            linkClicksFeatureVecs[f].push(fVals[f]);
+          }
+          linkClicksTarget.push(result.link_clicks);
+          manualClicksCount++;
+        }
+
+        // comments_received — both manual and estimated
+        if (result.comments_received != null) {
+          for (const f of [...boolFeatures, ...numFeatures, "day_of_week" as const]) {
+            commentsReceivedFeatureVecs[f].push(fVals[f]);
+          }
+          commentsReceivedTarget.push(result.comments_received);
+        }
+
+        // dm_replies — both manual and estimated
+        if (result.dm_replies != null) {
+          for (const f of [...boolFeatures, ...numFeatures, "day_of_week" as const]) {
+            dmRepliesFeatureVecs[f].push(fVals[f]);
+          }
+          dmRepliesTarget.push(result.dm_replies);
+          dmRepliesCount++;
+        }
+      }
     }
 
     const allFeatureNames = [...boolFeatures, ...numFeatures, "day_of_week"];
 
-    // ── Run both regressions ──
+    // ── Run regressions ──
 
     const viewsResult = buildInsights(posts, featureVecs, viewsVec, allFeatureNames, boolFeatures, "views");
     const commentsResult = buildInsights(posts, featureVecs, repliesVec, allFeatureNames, boolFeatures, "comments");
 
-    // Merge top 3 from each for backwards compatibility
+    // Post-results regressions (only if enough data)
+    let linkClicksResult: ReturnType<typeof buildInsights> | null = null;
+    let dmRepliesResult: ReturnType<typeof buildInsights> | null = null;
+
+    // Build filtered post arrays for lift calculations
+    if (linkClicksTarget.length >= 3) {
+      const filteredPosts = posts.filter((p: any) => {
+        const r = resultsMap.get(p.id);
+        return r && !r.is_estimated && r.link_clicks != null;
+      });
+      linkClicksResult = buildInsights(filteredPosts, linkClicksFeatureVecs, linkClicksTarget, allFeatureNames, boolFeatures, "link clicks");
+    }
+
+    if (dmRepliesTarget.length >= 3) {
+      const filteredPosts = posts.filter((p: any) => {
+        const r = resultsMap.get(p.id);
+        return r && r.dm_replies != null;
+      });
+      dmRepliesResult = buildInsights(filteredPosts, dmRepliesFeatureVecs, dmRepliesTarget, allFeatureNames, boolFeatures, "DM replies");
+    }
+
+    // Merge top 2 from each category for human-readable
     const combinedInsights = [
-      ...viewsResult.human_readable_insights.slice(0, 3),
-      ...commentsResult.human_readable_insights.slice(0, 3),
+      ...viewsResult.human_readable_insights.slice(0, 2),
+      ...commentsResult.human_readable_insights.slice(0, 2),
+      ...(linkClicksResult?.human_readable_insights?.slice(0, 2) ?? []),
+      ...(dmRepliesResult?.human_readable_insights?.slice(0, 2) ?? []),
     ];
 
-    const regressionInsights = {
+    const regressionInsights: Record<string, any> = {
       views_insights: viewsResult,
       comments_insights: commentsResult,
       human_readable_insights: combinedInsights,
+      manual_clicks_count: manualClicksCount,
+      dm_replies_count: dmRepliesCount,
       // Keep legacy top-level fields for backwards compat
       top_positive_predictors: viewsResult.top_positive_predictors,
       top_negative_predictors: viewsResult.top_negative_predictors,
@@ -276,6 +360,9 @@ Deno.serve(async (req) => {
       boolean_feature_lifts: viewsResult.boolean_feature_lifts,
       correlations: viewsResult.correlations,
     };
+
+    if (linkClicksResult) regressionInsights.link_clicks_insights = linkClicksResult;
+    if (dmRepliesResult) regressionInsights.dm_replies_insights = dmRepliesResult;
 
     // ── Store in content_strategies ──
 
