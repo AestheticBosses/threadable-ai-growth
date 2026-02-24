@@ -171,17 +171,6 @@ Rules:
         }
 
         console.log("Starter identity saved for user:", userId);
-
-        // Seed knowledge_base with core identity
-        if (starterParsed.about_you) {
-          await adminClient.from("knowledge_base").upsert({
-            user_id: userId, type: "belief", title: "Core Identity",
-            content: starterParsed.about_you, processed: true, tags: [],
-          }, { onConflict: "user_id,title" }).then(({ error }) => {
-            if (error) console.error("KB identity seed error:", error);
-            else console.log("KB seeded: Core Identity");
-          });
-        }
       } catch (saveErr) {
         console.error("Failed to save starter identity:", saveErr);
       }
@@ -375,17 +364,6 @@ Rules:
       }
 
       console.log("Identity data persisted for user:", userId);
-
-      // Seed knowledge_base with core identity
-      if (parsed.about_you) {
-        await adminClient.from("knowledge_base").upsert({
-          user_id: userId, type: "belief", title: "Core Identity",
-          content: parsed.about_you, processed: true, tags: [],
-        }, { onConflict: "user_id,title" }).then(({ error }) => {
-          if (error) console.error("KB identity seed error:", error);
-          else console.log("KB seeded: Core Identity");
-        });
-      }
     } catch (saveErr) {
       // Log but don't fail the request — data is still returned for review modal
       console.error("Failed to persist identity data:", saveErr);
