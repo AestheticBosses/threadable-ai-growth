@@ -81,6 +81,7 @@ Deno.serve(async (req) => {
     const boolLifts = viewsInsights?.boolean_feature_lifts || {};
     
     let regressionContext = "No regression data available yet.";
+    let optimalWordCountMax = 91; // default
     if (viewsInsights) {
       const liftLines: string[] = [];
       for (const [feature, data] of Object.entries(boolLifts)) {
@@ -92,16 +93,24 @@ Deno.serve(async (req) => {
       }
       const topPos = viewsInsights.top_positive_predictors?.slice(0, 3) || [];
       const topNeg = viewsInsights.top_negative_predictors?.slice(0, 3) || [];
+      if (viewsInsights.optimal_word_count_range?.max) {
+        optimalWordCountMax = viewsInsights.optimal_word_count_range.max;
+      }
       
       regressionContext = [
         "REGRESSION DATA (from user's actual post performance):",
         ...liftLines,
+        `Optimal word count range: 3-${optimalWordCountMax} words`,
         topPos.length ? `Top positive predictors: ${topPos.map((p: any) => `${p.feature} (r=${p.correlation?.toFixed(2)})`).join(", ")}` : "",
         topNeg.length ? `Top negative predictors (suppress reach): ${topNeg.map((p: any) => `${p.feature} (r=${p.correlation?.toFixed(2)})`).join(", ")}` : "",
       ].filter(Boolean).join("\n");
     }
 
-    const systemPrompt = `You are a post quality scorer for a Threads content creator. You evaluate posts against 6 criteria using the creator's ACTUAL performance data.
+    // Count words in the post
+    const wordCount = text.trim().split(/\s+/).length;
+    const lengthFails = wordCount > optimalWordCountMax;
+
+    const systemPrompt = `You are a post quality scorer for a Threads content creator. You evaluate posts against 7 criteria using the creator's ACTUAL performance data.
 
 CREATOR CONTEXT:
 - Goal: ${profile?.goal_type || "grow_audience"}
@@ -115,6 +124,11 @@ CREATOR CONTEXT:
 
 ${regressionContext}
 
+POST METADATA:
+- Word count: ${wordCount}
+- Optimal word count range: 3-${optimalWordCountMax} words
+- Length assessment: ${lengthFails ? `EXCEEDS optimal range (${wordCount} words > ${optimalWordCountMax} max)` : `Within optimal range`}
+
 SCORING CRITERIA (evaluate each):
 1. hook — Hook Strength: First line must be <15 words, no filler, bold statement or question. Does it stop the scroll?
 2. credibility — Credibility Signals: Contains specific numbers, dollar amounts, authority names, or concrete proof. Reference the regression data for has_credibility_marker lift if available.
@@ -122,8 +136,10 @@ SCORING CRITERIA (evaluate each):
 4. voice — Voice Match: Does the tone match the creator's writing style profile? Is it authentic to them?
 5. niche — Niche Specificity: Does it speak directly to the dream client / target audience, not generic?
 6. goal — Goal Alignment: Does it serve the creator's goal? For get_comments: has a comment CTA with keyword. For drive_traffic: has link CTA. For grow_audience: maximizes shareability.
+7. length — Data-Aligned Length: The post MUST be within the optimal word count range of 3-${optimalWordCountMax} words. This post is ${wordCount} words. ${lengthFails ? `It FAILS this criterion — set passed to false with reason: "Post is ${wordCount} words — your data shows optimal length is 3-${optimalWordCountMax} words for maximum reach."` : `It passes this criterion.`}
 
 IMPORTANT: Your "reason" for each criterion MUST reference the creator's actual data when available (e.g., "your credibility posts average 24,000 views vs 1,000 without"). Do NOT give generic advice.
+IMPORTANT: For the "length" criterion, you MUST follow the assessment above exactly. If the post exceeds ${optimalWordCountMax} words, it MUST fail.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -133,9 +149,10 @@ Return ONLY valid JSON with this exact structure:
     { "id": "suppressors", "label": "No Reach Suppressors", "passed": true, "reason": "..." },
     { "id": "voice", "label": "Voice Match", "passed": true, "reason": "..." },
     { "id": "niche", "label": "Niche Specificity", "passed": true, "reason": "..." },
-    { "id": "goal", "label": "Goal Alignment", "passed": true, "reason": "..." }
+    { "id": "goal", "label": "Goal Alignment", "passed": true, "reason": "..." },
+    { "id": "length", "label": "Data-Aligned Length", "passed": true, "reason": "..." }
   ],
-  "total": 6
+  "total": 7
 }`;
 
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
