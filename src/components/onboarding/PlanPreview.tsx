@@ -93,6 +93,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const [buckets, setBuckets] = useState<ContentBucket[]>([]);
   const [archetypes, setArchetypes] = useState<Archetype[]>([]);
   const [postingCadence, setPostingCadence] = useState<string | null>(null);
+  const [unrealizedPct, setUnrealizedPct] = useState<number | null>(null);
 
   const funnel = STAGE_FUNNEL[journeyStage] || STAGE_FUNNEL.getting_started;
 
@@ -165,6 +166,20 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS.drive_traffic);
         setHasRealInsights(false);
       }
+
+      // Unrealized reach calculation
+      const correlations = regressionData?.views_insights?.correlations ||
+                           regressionData?.correlations || [];
+      const topCorrelation = correlations
+        .filter((c: any) => c.correlation > 0.3)
+        .sort((a: any, b: any) => b.correlation - a.correlation)[0];
+      let calcUnrealizedPct: number | null = null;
+      if (topCorrelation) {
+        const usageRate = topCorrelation.usage_rate || topCorrelation.frequency || 0;
+        const gap = Math.round((1 - usageRate) * 100);
+        if (gap > 20 && gap < 85) calcUnrealizedPct = gap;
+      }
+      setUnrealizedPct(calcUnrealizedPct);
 
       // Positioning
       const planData = brandingPlan?.plan_data as any;
@@ -249,6 +264,11 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
                 <p className="text-xs text-muted-foreground">patterns found</p>
               </div>
             </div>
+            <p className="text-sm text-[hsl(38_92%_50%)] text-center mt-2">
+              {unrealizedPct !== null
+                ? `Based on your patterns, you've likely left ~${unrealizedPct}% of your potential reach unrealized. Here's how we fix that.`
+                : "Most creators leave 30–50% of their potential reach unrealized by posting without a pattern. Here's yours."}
+            </p>
           </section>
         )}
 
@@ -263,6 +283,9 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               <p className="text-base text-foreground font-medium italic leading-relaxed">
                 "{positioningStatement}"
               </p>
+              <p className="text-xs text-muted-foreground italic mt-2">
+                That's your unfair advantage. Most creators never find it.
+              </p>
             </div>
           </section>
         )}
@@ -270,7 +293,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         {/* Section 3 — Data Insights */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">
-            We ran the numbers on your content. Here's what actually works.
+            Here's what your data is telling us — and what it's costing you.
           </h2>
           {!hasRealInsights && (
             <p className="text-xs text-muted-foreground italic rounded-lg bg-muted/50 px-3 py-2">
@@ -278,12 +301,23 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
             </p>
           )}
           <div className="space-y-3">
-            {insights.map((text, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
-                <Lightbulb className="h-5 w-5 text-[hsl(38_92%_50%)] shrink-0 mt-0.5" />
-                <p className="text-sm text-foreground/90">{text}</p>
-              </div>
-            ))}
+            {insights.map((text, i) => {
+              const lowerText = text.toLowerCase();
+              const consequence = lowerText.includes("more views") || lowerText.includes("higher")
+                ? "Every post without this pattern is suppressing your reach."
+                : lowerText.includes("fewer") || lowerText.includes("less")
+                ? "You've likely been accidentally leaving growth on the table."
+                : "Apply this consistently to see compounding results.";
+              return (
+                <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
+                  <Lightbulb className="h-5 w-5 text-[hsl(38_92%_50%)] shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-foreground/90">{text}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{consequence}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           {hasRealInsights && (
             <p className="text-xs text-muted-foreground italic">
@@ -369,6 +403,26 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           </div>
         </section>
 
+        {/* Section 6.5 — 30-Day Trajectory */}
+        <section className="space-y-4">
+          <div className="rounded-xl border border-border bg-card/50 p-6 space-y-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">If you follow this system for 30 days</p>
+            <ul className="space-y-3">
+              {[
+                "Your baseline reach increases as the algorithm learns your posting pattern",
+                "Inbound comments and DMs become more consistent and predictable",
+                "You'll know exactly what to post — and have the data to prove why it works"
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="text-primary mt-0.5">→</span>
+                  <p className="text-sm text-foreground/80">{item}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground italic">This isn't a prediction. It's what happens when you post with the pattern instead of against it.</p>
+          </div>
+        </section>
+
         {/* Section 7 — Locked Weekly Plan */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">Your first week of posts is ready.</h2>
@@ -382,7 +436,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
         {/* Section 8 — CTA */}
         <section className="space-y-4 pb-8">
           <p className="text-center text-sm text-muted-foreground">
-            Built from your real data. Updated every week. No generic templates.
+            {postCount} posts analyzed. Your pattern identified. Time to use it.
           </p>
           {isPaid ? (
             <Button
@@ -390,7 +444,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               className="w-full h-14 text-base font-semibold"
               onClick={() => onNavigate("/dashboard")}
             >
-              Go to My Dashboard →
+              Activate My Growth System →
             </Button>
           ) : (
             <>
@@ -399,7 +453,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
                 className="w-full h-14 text-base font-semibold"
                 onClick={() => setPaywallOpen(true)}
               >
-                Unlock My Growth Plan — 7 Days Free →
+                Install My Content Engine — 7 Days Free →
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 7-day free trial · Card required · Cancel anytime.
