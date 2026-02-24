@@ -85,7 +85,10 @@ async function processUser(
     console.warn(`[weekly-optimization] fetch-user-posts error for ${userId}:`, e);
   }
 
-  // Step 2: Run regression via run-regression
+  // Step 2: Backfill missing post_results for posts older than 48 hours
+  await backfillPostResults(adminClient, userId);
+
+  // Step 3: Run regression via run-regression
   let newInsights: any = null;
   try {
     const regRes = await fetch(`${supabaseUrl}/functions/v1/run-regression`, {
@@ -106,7 +109,7 @@ async function processUser(
     console.warn(`[weekly-optimization] run-regression error for ${userId}:`, e);
   }
 
-  // Step 3: Compare with previous regression insights
+  // Step 4: Compare with previous regression insights
   const { data: prevStrategies } = await adminClient
     .from("content_strategies")
     .select("regression_insights, created_at")
@@ -121,7 +124,7 @@ async function processUser(
     patternsShifted = hasSignificantShift(newInsights, prevInsights);
   }
 
-  // Step 4: Check if plan regeneration is needed
+  // Step 5: Check if plan regeneration is needed
   const { data: lastPlan } = await adminClient
     .from("user_plans")
     .select("updated_at")
@@ -140,9 +143,7 @@ async function processUser(
     return { user_id: userId, status: "ok", plan_updated: false, reason: "No significant changes" };
   }
 
-  // Step 5: Regenerate content plan via generate-plans
-  // generate-plans requires a user auth token — we need to use service role workaround
-  // Since generate-plans uses getUser(), we'll call it with service role and user_id in body
+  // Step 6: Regenerate content plan via generate-plans
   try {
     const planRes = await fetch(`${supabaseUrl}/functions/v1/generate-plans`, {
       method: "POST",
@@ -165,7 +166,7 @@ async function processUser(
     console.warn(`[weekly-optimization] generate-plans error for ${userId}:`, e);
   }
 
-  // Step 6: Save notification
+  // Step 7: Save notification
   const reason = patternsShifted
     ? "Your content plan was updated — we detected significant shifts in what's driving your reach and engagement."
     : "Your weekly content plan was refreshed based on the latest performance data.";
@@ -208,4 +209,70 @@ function hasSignificantShift(newInsights: any, prevInsights: any): boolean {
   }
 
   return false;
+}
+
+async function backfillPostResults(adminClient: any, userId: string) {
+  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Get published posts from last 7 days that are older than 48h
+  const { data: recentPosts } = await adminClient
+    .from("scheduled_posts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "published")
+    .gte("published_at", sevenDaysAgo)
+    .lte("published_at", fortyEightHoursAgo);
+
+  if (!recentPosts || recentPosts.length === 0) return;
+
+  // Get existing post_results for these posts
+  const postIds = recentPosts.map((p: any) => p.id);
+  const { data: existingResults } = await adminClient
+    .from("post_results")
+    .select("post_id")
+    .in("post_id", postIds);
+
+  const coveredIds = new Set((existingResults || []).map((r: any) => r.post_id));
+  const missingIds = postIds.filter((id: string) => !coveredIds.has(id));
+
+  if (missingIds.length === 0) return;
+
+  // Calculate medians from user's history
+  const { data: history } = await adminClient
+    .from("post_results")
+    .select("comments_received, link_clicks, dm_replies")
+    .eq("user_id", userId)
+    .eq("is_estimated", false);
+
+  let medianComments = 2, medianClicks = 5, medianDm = 1;
+
+  if (history && history.length > 0) {
+    const median = (arr: number[]) => {
+      const sorted = arr.filter((v) => v != null).sort((a, b) => a - b);
+      if (sorted.length === 0) return 0;
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    };
+    medianComments = median(history.map((h: any) => h.comments_received)) || 2;
+    medianClicks = median(history.map((h: any) => h.link_clicks)) || 5;
+    medianDm = median(history.map((h: any) => h.dm_replies)) || 1;
+  }
+
+  // Insert estimated results
+  const rows = missingIds.map((postId: string) => ({
+    user_id: userId,
+    post_id: postId,
+    comments_received: medianComments,
+    link_clicks: medianClicks,
+    dm_replies: medianDm,
+    is_estimated: true,
+  }));
+
+  const { error } = await adminClient.from("post_results").insert(rows);
+  if (error) {
+    console.warn(`[weekly-optimization] backfill error for ${userId}:`, error);
+  } else {
+    console.log(`[weekly-optimization] Backfilled ${rows.length} post_results for ${userId}`);
+  }
 }
