@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/hooks/useSubscription";
 import { Button } from "@/components/ui/button";
-import { Lightbulb, ChevronDown, ChevronUp, Loader2, Lock } from "lucide-react";
+import { Lightbulb, Loader2, Lock, Target, Users, Sparkles, BarChart3 } from "lucide-react";
 import { PaywallModal } from "@/components/PaywallModal";
 
 type GoalType = "get_comments" | "grow_audience" | "drive_traffic";
@@ -15,20 +15,10 @@ interface PlanPreviewProps {
   onNavigate: (path: string) => Promise<void>;
 }
 
-/* ── Section 1 — Stage Declaration ── */
-const STAGE_HEADINGS: Record<string, { title: string; subtitle: string }> = {
-  getting_started: {
-    title: "You're building from zero. That's the advantage.",
-    subtitle: "We'll focus on reach and establishing your authority voice before introducing CTAs.",
-  },
-  growing: {
-    title: "You've built momentum. Now we make it intentional.",
-    subtitle: "We'll turn attention into trust — and trust into structured conversion.",
-  },
-  monetizing: {
-    title: "You already convert. Now we make it repeatable.",
-    subtitle: "Your audience knows you. Time to turn attention into consistent revenue.",
-  },
+const GOAL_LABELS: Record<GoalType, string> = {
+  get_comments: "comments & engagement",
+  grow_audience: "audience growth",
+  drive_traffic: "traffic & conversions",
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -37,13 +27,12 @@ const STAGE_LABELS: Record<string, string> = {
   monetizing: "Monetizing",
 };
 
-const GOAL_LABELS: Record<GoalType, string> = {
-  get_comments: "comments & leads",
-  grow_audience: "audience growth",
-  drive_traffic: "traffic",
+const STAGE_FUNNEL: Record<string, { tof: number; mof: number; bof: number }> = {
+  getting_started: { tof: 70, mof: 20, bof: 10 },
+  growing: { tof: 30, mof: 50, bof: 20 },
+  monetizing: { tof: 20, mof: 30, bof: 50 },
 };
 
-/* ── Section 2 — Patterns (fallback insights) ── */
 const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
   get_comments: [
     "Trust posts drive the most DM momentum.",
@@ -62,89 +51,17 @@ const FALLBACK_INSIGHTS: Record<GoalType, string[]> = {
   ],
 };
 
-/* ── Section 3 — Insight (outcome statements) ── */
-const INSIGHT_STATEMENTS: Record<string, Record<GoalType, string[]>> = {
-  growing: {
-    drive_traffic: [
-      "Your highest engagement posts create tension before teaching.",
-      "Authority framing expands reach faster than neutral advice.",
-      "Specific proof earns trust. Generic advice doesn't.",
-    ],
-    get_comments: [
-      "Conversation starts with belief, not pitches.",
-      "Your best posts create curiosity before the ask.",
-      "Trust posts drive the most DM momentum.",
-    ],
-    grow_audience: [
-      "Contrarian framing outperforms agreeable content.",
-      "Personal stories get shared more than tactical advice.",
-      "Consistency compounds — volume alone doesn't.",
-    ],
-  },
-  getting_started: {
-    drive_traffic: [
-      "Authority framing earns trust before links earn clicks.",
-      "Specific proof points outperform generic advice.",
-      "Reach comes from hooks that create tension.",
-    ],
-    get_comments: [
-      "Belief-driven posts start more conversations than pitches.",
-      "Curiosity hooks pull people in before the ask.",
-      "Trust posts drive the most DM momentum.",
-    ],
-    grow_audience: [
-      "Contrarian takes earn more shares than agreeable content.",
-      "Vulnerability creates connection faster than expertise.",
-      "Consistency compounds — volume alone doesn't.",
-    ],
-  },
-  monetizing: {
-    drive_traffic: [
-      "Your audience is warm — embedded CTAs outperform hard sells.",
-      "Proof-based trust posts prime clicks before the link.",
-      "Authority framing keeps traffic quality high.",
-    ],
-    get_comments: [
-      "Your audience already trusts you — curiosity pulls DMs.",
-      "Belief-building posts create the warmest conversations.",
-      "Trust posts drive the most DM momentum.",
-    ],
-    grow_audience: [
-      "Contrarian framing keeps your content shareable at scale.",
-      "Personal stories compound your reach over time.",
-      "Consistency compounds — volume alone doesn't.",
-    ],
-  },
-};
+interface ContentBucket {
+  name: string;
+  description: string | null;
+  priority: number | null;
+}
 
-/* ── Section 4 — Prescription ── */
-const PRESCRIPTION_LINES: Record<GoalType, string> = {
-  drive_traffic: "TOF: lead with authority hooks. MOF: build trust through specific proof. BOF: convert with embedded links.",
-  get_comments: "TOF: curiosity. MOF: belief-building. BOF: natural keyword introduction.",
-  grow_audience: "TOF: contrarian hooks. MOF: personal stories. BOF: consistency signals.",
-};
-
-/* ── Section 5 — Weekly Plan ── */
-const WEEKLY_PLAN_LINES: Record<GoalType, string> = {
-  drive_traffic: "Designed to earn the click, validate fast, and send traffic with intent.",
-  get_comments: "Designed to start conversations, earn replies, and pull DMs inbound.",
-  grow_audience: "Designed to get shared, earn follows, and compound consistency.",
-};
-
-const STAGE_FUNNEL: Record<string, { tof: number; mof: number; bof: number }> = {
-  getting_started: { tof: 70, mof: 20, bof: 10 },
-  growing: { tof: 30, mof: 50, bof: 20 },
-  monetizing: { tof: 20, mof: 30, bof: 50 },
-};
-
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-interface DraftPost {
-  id: string;
-  text_content: string | null;
-  funnel_stage: string | null;
-  scheduled_for: string | null;
-  content_category: string | null;
+interface Archetype {
+  name: string;
+  emoji: string;
+  recommended_percentage: number;
+  description?: string;
 }
 
 function funnelPill(stage: string | null) {
@@ -164,22 +81,36 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
   const { user } = useAuth();
   const navigate = useNavigate();
   const { isPaid } = useSubscription();
-  const [insights, setInsights] = useState<string[]>([]);
-  const [drafts, setDrafts] = useState<DraftPost[]>([]);
-  const [postCount, setPostCount] = useState(0);
-  const [patternCount, setPatternCount] = useState(0);
+
   const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
 
-  const stage = STAGE_HEADINGS[journeyStage] || STAGE_HEADINGS.getting_started;
+  // Data state
+  const [postCount, setPostCount] = useState(0);
+  const [insights, setInsights] = useState<string[]>([]);
+  const [hasRealInsights, setHasRealInsights] = useState(false);
+  const [positioningStatement, setPositioningStatement] = useState<string | null>(null);
+  const [buckets, setBuckets] = useState<ContentBucket[]>([]);
+  const [archetypes, setArchetypes] = useState<Archetype[]>([]);
+  const [postingCadence, setPostingCadence] = useState<string | null>(null);
+
   const funnel = STAGE_FUNNEL[journeyStage] || STAGE_FUNNEL.getting_started;
-  const stageInsights = INSIGHT_STATEMENTS[journeyStage]?.[goalType] || INSIGHT_STATEMENTS.getting_started[goalType];
 
   useEffect(() => {
     if (!user?.id) return;
     const load = async () => {
-      const [{ data: regressionRow, error: regressionErr }, { count: postsCount }] = await Promise.all([
+      const [
+        { count: postsCount },
+        { data: regressionRow },
+        { data: archetypeData },
+        { data: brandingPlan },
+        { data: profile },
+        { data: bucketsData },
+      ] = await Promise.all([
+        supabase
+          .from("posts_analyzed")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id),
         supabase
           .from("content_strategies")
           .select("regression_insights")
@@ -189,34 +120,79 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           .limit(1)
           .maybeSingle(),
         supabase
-          .from("posts_analyzed")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id),
+          .from("content_strategies")
+          .select("strategy_data")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "archetype_discovery")
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("user_plans")
+          .select("plan_data")
+          .eq("user_id", user.id)
+          .eq("plan_type", "branding_plan")
+          .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("mission, dream_client, dm_keyword, dm_offer, traffic_url, goal_type, posting_cadence")
+          .eq("id", user.id)
+          .single(),
+        supabase
+          .from("content_buckets")
+          .select("name, description, priority")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .order("priority")
+          .limit(3),
       ]);
 
-      console.log("regressionRow:", regressionRow, "error:", regressionErr);
       setPostCount(postsCount ?? 0);
 
+      // Regression insights
       const regressionData = regressionRow?.regression_insights as any;
       const humanInsights = regressionData?.human_readable_insights;
       if (Array.isArray(humanInsights) && humanInsights.length > 0) {
-        const selected = humanInsights.slice(0, 3);
-        setPatternCount(selected.length);
-        setInsights(selected);
+        setInsights(humanInsights.slice(0, 3).map((text: string) => {
+          const m = text.match(/(\d+)%/);
+          if (m && parseInt(m[1], 10) > 500) {
+            const multiplier = Math.round(parseInt(m[1], 10) / 100 + 1);
+            return text.replace(/\d+%\s*(more|higher|greater|better)\s*\w*/, `average ${multiplier}x more views than posts without them`);
+          }
+          return text;
+        }));
+        setHasRealInsights(true);
       } else {
-        setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS["drive_traffic"]);
+        setInsights(FALLBACK_INSIGHTS[goalType] || FALLBACK_INSIGHTS.drive_traffic);
+        setHasRealInsights(false);
       }
 
-      // Fetch drafts
-      const { data: posts } = await supabase
-        .from("scheduled_posts")
-        .select("id, text_content, funnel_stage, scheduled_for, content_category")
-        .eq("user_id", user.id)
-        .eq("status", "draft")
-        .order("scheduled_for", { ascending: true })
-        .limit(7);
+      // Positioning
+      const planData = brandingPlan?.plan_data as any;
+      if (planData?.positioning_statement) {
+        setPositioningStatement(planData.positioning_statement);
+      }
 
-      setDrafts((posts as DraftPost[]) || []);
+      // Buckets
+      setBuckets((bucketsData as ContentBucket[]) || []);
+
+      // Archetypes
+      const stratData = archetypeData?.strategy_data as any;
+      if (stratData?.archetypes && Array.isArray(stratData.archetypes)) {
+        setArchetypes(
+          stratData.archetypes
+            .slice(0, 3)
+            .map((a: any) => ({
+              name: a.name,
+              emoji: a.emoji || "📝",
+              recommended_percentage: a.recommended_percentage || 0,
+              description: a.description,
+            }))
+        );
+      }
+
+      // Posting cadence
+      setPostingCadence((profile as any)?.posting_cadence || null);
+
       setLoading(false);
     };
     load();
@@ -240,14 +216,20 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
     );
   }
 
+  const cadenceLabel = postingCadence === "2x_daily" ? "2 posts per day" : "1 post per day";
+
   return (
     <div className="fixed inset-0 bg-background overflow-y-auto">
       <div className="max-w-[720px] mx-auto px-6 py-12 space-y-12">
 
-        {/* Section 1 — Stage Declaration */}
+        {/* Section 1 — CMO Opening */}
         <section className="text-center space-y-3">
-          <h1 className="text-3xl md:text-4xl font-bold text-foreground">{stage.title}</h1>
-          <p className="text-muted-foreground text-base max-w-lg mx-auto">{stage.subtitle}</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-foreground">
+            Here's what we found — and what we're doing about it.
+          </h1>
+          <p className="text-muted-foreground text-base max-w-lg mx-auto">
+            This is your growth brief. Built from {postCount > 0 ? `${postCount} posts, ${postCount * 8} data points, and ` : ""}your specific goal.
+          </p>
         </section>
 
         {/* Stats Bar */}
@@ -260,101 +242,155 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-foreground">{postCount * 8}</p>
-                <p className="text-xs text-muted-foreground">data points examined</p>
+                <p className="text-xs text-muted-foreground">data points</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground">{patternCount}</p>
-                <p className="text-xs text-muted-foreground">patterns identified</p>
+                <p className="text-2xl font-bold text-foreground">{insights.length}</p>
+                <p className="text-xs text-muted-foreground">patterns found</p>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground text-center">
-              We analyzed your actual content history to build this plan — not a template.
-            </p>
           </section>
         )}
 
-        {/* Section 2 — Patterns */}
+        {/* Section 2 — Positioning */}
+        {positioningStatement && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Your Positioning</h2>
+            </div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+              <p className="text-base text-foreground font-medium italic leading-relaxed">
+                "{positioningStatement}"
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* Section 3 — Data Insights */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Your content has patterns. We found the ones that matter.</h2>
+          <h2 className="text-lg font-semibold text-foreground">
+            We ran the numbers on your content. Here's what actually works.
+          </h2>
+          {!hasRealInsights && (
+            <p className="text-xs text-muted-foreground italic rounded-lg bg-muted/50 px-3 py-2">
+              Industry benchmarks for your goal — your data will replace these after your first week.
+            </p>
+          )}
           <div className="space-y-3">
             {insights.map((text, i) => (
               <div key={i} className="flex items-start gap-3 rounded-xl border border-border bg-card/50 p-4">
                 <Lightbulb className="h-5 w-5 text-[hsl(38_92%_50%)] shrink-0 mt-0.5" />
-                <p className="text-sm text-foreground/90">{(() => {
-                  const m = text.match(/(\d+)%/);
-                  if (m && parseInt(m[1], 10) > 500) {
-                    const multiplier = Math.round(parseInt(m[1], 10) / 100 + 1);
-                    return text.replace(/\d+%\s*(more|higher|greater|better)\s*\w*/, `average ${multiplier}x more views than posts without them`);
-                  }
-                  return text;
-                })()}</p>
+                <p className="text-sm text-foreground/90">{text}</p>
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground italic">
-            These aren't general best practices. They're specific to your audience.
+          {hasRealInsights && (
+            <p className="text-xs text-muted-foreground italic">
+              These aren't general best practices. They're specific to your audience.
+            </p>
+          )}
+        </section>
+
+        {/* Section 4 — Audience (Content Buckets) */}
+        {buckets.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Who You're Talking To</h2>
+            </div>
+            <div className="space-y-3">
+              {buckets.map((bucket, i) => (
+                <div key={i} className="rounded-xl border border-border bg-card/50 p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-sm font-semibold text-foreground">{bucket.name}</p>
+                    {bucket.priority && (
+                      <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                        Priority {bucket.priority}
+                      </span>
+                    )}
+                  </div>
+                  {bucket.description && (
+                    <p className="text-sm text-muted-foreground">{bucket.description}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Section 5 — Archetypes */}
+        {archetypes.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">How You'll Show Up</h2>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {archetypes.map((arch, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 rounded-full border border-border bg-card/50 px-4 py-2"
+                >
+                  <span className="text-base">{arch.emoji}</span>
+                  <span className="text-sm font-medium text-foreground">{arch.name}</span>
+                  <span className="text-xs text-muted-foreground">— {arch.recommended_percentage}%</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Section 6 — Funnel Mix */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Your Content Mix</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Calibrated for {GOAL_LABELS[goalType]} at your {STAGE_LABELS[journeyStage] || "Getting Started"} stage.
           </p>
-        </section>
-
-        {/* Section 3 — Insight */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">What this tells us.</h2>
-          <ul className="space-y-2">
-            {stageInsights.map((text, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                <p className="text-sm text-foreground/90">{text}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Section 4 — Prescription */}
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">This week's strategic shift.</h2>
-          <p className="text-sm text-foreground/80">{PRESCRIPTION_LINES[goalType]}</p>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary">Reach (TOF)</span>
+              {funnelPill("TOF")}
               <span className="text-sm text-foreground font-medium">{funnel.tof}%</span>
               <span className="text-sm text-muted-foreground">Attract new people</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[hsl(217_91%_60%/0.2)] text-[hsl(217_91%_60%)]">Trust (MOF)</span>
+              {funnelPill("MOF")}
               <span className="text-sm text-foreground font-medium">{funnel.mof}%</span>
               <span className="text-sm text-muted-foreground">Build belief</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[hsl(142_71%_45%/0.2)] text-[hsl(142_71%_45%)]">Convert (BOF)</span>
+              {funnelPill("BOF")}
               <span className="text-sm text-foreground font-medium">{funnel.bof}%</span>
               <span className="text-sm text-muted-foreground">Drive action</span>
             </div>
           </div>
-          <p className="text-sm italic text-muted-foreground">
-            Calibrated for your {STAGE_LABELS[journeyStage] || "Getting Started"} stage and {GOAL_LABELS[goalType]} goal.
-          </p>
         </section>
 
-        {/* Section 5 — Weekly Plan */}
+        {/* Section 7 — Locked Weekly Plan */}
         <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Your first week</h2>
-          <p className="text-sm text-foreground/80">{WEEKLY_PLAN_LINES[goalType]}</p>
+          <h2 className="text-lg font-semibold text-foreground">Your first week of posts is ready.</h2>
           <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card/50 py-12">
             <Lock className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-foreground font-medium text-base">Your first week of posts is being prepared.</p>
-            <p className="text-muted-foreground text-sm mt-1">Complete your free trial setup to publish them.</p>
+            <p className="text-foreground font-medium text-base">{cadenceLabel}, scheduled at your best times.</p>
+            <p className="text-muted-foreground text-sm mt-1">Start your trial to publish them.</p>
           </div>
         </section>
 
-        {/* Section 6 — Launch CTA */}
+        {/* Section 8 — CTA */}
         <section className="space-y-4 pb-8">
+          <p className="text-center text-sm text-muted-foreground">
+            Built from your real data. Updated every week. No generic templates.
+          </p>
           {isPaid ? (
             <Button
               size="lg"
               className="w-full h-14 text-base font-semibold"
               onClick={() => onNavigate("/dashboard")}
             >
-              Go to Dashboard →
+              Go to My Dashboard →
             </Button>
           ) : (
             <>
@@ -363,7 +399,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
                 className="w-full h-14 text-base font-semibold"
                 onClick={() => setPaywallOpen(true)}
               >
-                Start Free Trial — Plans from $49/mo →
+                Unlock My Growth Plan — 7 Days Free →
               </Button>
               <p className="text-center text-xs text-muted-foreground">
                 7-day free trial · Card required · Cancel anytime.
