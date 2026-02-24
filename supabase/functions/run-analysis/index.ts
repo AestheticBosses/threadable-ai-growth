@@ -64,7 +64,7 @@ serve(async (req) => {
 
     // 55-second timeout
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 55000);
+    const timeout = setTimeout(() => controller.abort(), 90000);
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -74,8 +74,8 @@ serve(async (req) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 8000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
         messages: [{
           role: 'user',
           content: `You are an expert Threads growth strategist doing a deep analysis of a creator's content performance to help them grow faster.
