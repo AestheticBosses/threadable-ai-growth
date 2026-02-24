@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { safeParseJSON } from "../_shared/safeParseJSON.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,7 +61,6 @@ ${goalType === "grow_audience" ? `- Archetypes should be optimized for SHAREABIL
 Read goal_type, dm_keyword, and dm_offer from the CREATOR PROFILE section above and apply this directive to every archetype you generate.
 === END GOAL DIRECTIVE ===`
 
-    let postsForAnalysis = ""
     let promptContent = ""
 
     if (isNewAccount) {
@@ -83,7 +83,9 @@ Also provide:
 - A recommended weekly posting schedule (7 days) using these archetypes
 - 3 rules for new creators in this niche
 
-Respond ONLY in this exact JSON format with no other text:
+Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
+
+Return this exact JSON structure:
 {
   "archetypes": [
     {
@@ -124,7 +126,7 @@ Respond ONLY in this exact JSON format with no other text:
 
       console.log("Posts loaded:", posts.length)
 
-      postsForAnalysis = posts.map((p: any, i: number) => 
+      const postsForAnalysis = posts.map((p: any, i: number) => 
         `Post ${i+1} (${p.views} views, ${p.likes} likes, ${p.replies} replies, ${p.reposts} reposts, ${p.quotes} quotes, ${p.engagement_rate}% eng):
 ${p.text_content}`
       ).join('\n\n---\n\n')
@@ -157,7 +159,9 @@ Also provide:
 - A recommended weekly posting schedule (7 days) using these archetypes
 - 3 rules validated by their data
 
-Respond ONLY in this exact JSON format with no other text:
+Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
+
+Return this exact JSON structure:
 {
   "archetypes": [
     {
@@ -184,7 +188,10 @@ Respond ONLY in this exact JSON format with no other text:
 }`
     }
 
-    // Call Claude API
+    // 55-second timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -199,8 +206,11 @@ Respond ONLY in this exact JSON format with no other text:
           role: 'user',
           content: promptContent
         }]
-      })
+      }),
+      signal: controller.signal,
     })
+
+    clearTimeout(timeout);
 
     const claudeData = await claudeResponse.json()
     console.log("Claude response status:", claudeResponse.status)
@@ -216,8 +226,7 @@ Respond ONLY in this exact JSON format with no other text:
     // Parse JSON from Claude response
     let analysis: any
     try {
-      const cleanJson = analysisText.replace(/```json\n?|```\n?/g, '').trim()
-      analysis = JSON.parse(cleanJson)
+      analysis = safeParseJSON(analysisText)
     } catch (e: any) {
       console.error("JSON parse error:", e.message)
       return new Response(JSON.stringify({ error: 'Failed to parse Claude response', raw: analysisText }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

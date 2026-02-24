@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { safeParseJSON } from "../_shared/safeParseJSON.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,7 +62,10 @@ serve(async (req) => {
 
     const summary = `Total posts: ${posts.length} | Total views: ${totalViews.toLocaleString()} | Avg views: ${avgViews} | Median views: ${medianViews} | Total likes: ${totalLikes} | Total reposts: ${totalReposts} | Total replies: ${totalReplies}`
 
-    // One comprehensive Claude call
+    // 55-second timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -75,6 +79,8 @@ serve(async (req) => {
         messages: [{
           role: 'user',
           content: `You are an expert Threads growth strategist doing a deep analysis of a creator's content performance to help them grow faster.
+
+Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
 
 CREATOR CONTEXT:
 - Niche: ${profile?.niche || "Not specified"}
@@ -128,7 +134,7 @@ Based on the archetypes and regression insights, create an actionable playbook:
 - 5-7 data-validated rules with specific evidence from their posts
 - Content generation guidelines (tone, vocabulary, length, what to include, what to avoid)
 
-Respond ONLY in this exact JSON format:
+Return this exact JSON structure:
 {
   "regression_insights": [
     {
@@ -170,8 +176,11 @@ Respond ONLY in this exact JSON format:
   }
 }`
         }]
-      })
+      }),
+      signal: controller.signal,
     })
+
+    clearTimeout(timeout);
 
     const claudeData = await claudeResponse.json()
     console.log("Claude status:", claudeResponse.status)
@@ -186,8 +195,7 @@ Respond ONLY in this exact JSON format:
 
     let analysis: any
     try {
-      const cleanJson = analysisText.replace(/```json\n?|```\n?/g, '').trim()
-      analysis = JSON.parse(cleanJson)
+      analysis = safeParseJSON(analysisText)
     } catch (e: any) {
       console.error("Parse error:", e.message)
       console.log("Raw response:", analysisText.substring(0, 500))

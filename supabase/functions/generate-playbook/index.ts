@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
+import { safeParseJSON } from "../_shared/safeParseJSON.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +65,8 @@ Deno.serve(async (req) => {
 
     const prompt = `You are building a personalized content playbook for a Threads creator.
 
+Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
+
 Here are their discovered content archetypes (from analyzing their top posts):
 ${JSON.stringify(archetypes, null, 2)}
 
@@ -86,7 +89,7 @@ Create a complete, actionable playbook that includes:
 
 5. CONTENT GENERATION GUIDELINES: Instructions for an AI to write posts in this creator's style, including tone, vocabulary, length preferences, and what to avoid.
 
-Respond ONLY in this exact JSON format with no other text:
+Return this exact JSON structure:
 {
   "weekly_schedule": [{ "day": "Monday", "archetype": "name", "emoji": "🔥", "notes": "why" }],
   "checklist": [{ "points": 2, "question": "Does it...?", "data_backing": "stat from their data" }],
@@ -96,6 +99,10 @@ Respond ONLY in this exact JSON format with no other text:
 }`;
 
     console.log("Calling Claude for playbook generation...");
+
+    // 55-second timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
 
     const claudeResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -109,7 +116,10 @@ Respond ONLY in this exact JSON format with no other text:
         max_tokens: 6000,
         messages: [{ role: "user", content: prompt }],
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     const claudeData = await claudeResponse.json();
     if (!claudeResponse.ok) {
@@ -123,8 +133,7 @@ Respond ONLY in this exact JSON format with no other text:
     const analysisText = claudeData.content[0].text;
     let playbook: any;
     try {
-      const cleanJson = analysisText.replace(/```json\n?|```\n?/g, "").trim();
-      playbook = JSON.parse(cleanJson);
+      playbook = safeParseJSON(analysisText);
     } catch (e: any) {
       console.error("JSON parse error:", e.message);
       return new Response(
