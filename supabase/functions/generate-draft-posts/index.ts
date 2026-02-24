@@ -131,6 +131,7 @@ For every post you write:
 - If the funnel stage is BOF, reference specific offers and CTAs from their sales funnel.
 - Use regression insights to inform the structure and angle.
 - NEVER include 📌, pillar names, archetype names, funnel stage labels, or any structured headers in the post text. Strategy is invisible.
+- HARD LIMIT: Post must be under 500 characters. Count every character before responding. If over 500, rewrite shorter.
 
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
@@ -158,9 +159,31 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
             }
 
             const aiData = await aiResp.json();
-            const text = (aiData.content?.[0]?.text || "").trim();
+            let text = (aiData.content?.[0]?.text || "").trim();
 
             if (!text) return { error: "Empty response", post };
+
+            // Hard enforce 500 character limit
+            if (text.length > 500) {
+              const trimResp = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-api-key": ANTHROPIC_API_KEY,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: "claude-opus-4-6",
+                  max_tokens: 300,
+                  system: "You are a Threads post editor. Trim the post to under 500 characters while preserving the hook, core message, and voice. Never cut mid-sentence. Return ONLY the trimmed post text.",
+                  messages: [{ role: "user", content: `Trim this to under 500 characters:\n\n${text}` }],
+                }),
+              });
+              if (trimResp.ok) {
+                const trimData = await trimResp.json();
+                text = (trimData.content?.[0]?.text || text).trim();
+              }
+            }
 
             const insertData: Record<string, any> = {
               user_id: user.id,
