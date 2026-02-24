@@ -107,7 +107,7 @@ Return ONLY the corrected post text, nothing else. No quotes, no explanation.`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-5",
+        model: "claude-opus-4-6",
         max_tokens: 1000,
         system: systemPrompt,
         messages: [

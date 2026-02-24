@@ -117,7 +117,7 @@ async function callAI(
   useTool: boolean = true,
 ): Promise<any[]> {
   const body: any = {
-    model: "claude-opus-4-5",
+    model: "claude-opus-4-6",
     max_tokens: 8192,
     system: systemPrompt,
     messages: [
