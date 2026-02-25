@@ -12,43 +12,27 @@ interface PipelineStep {
   body?: Record<string, unknown>;
 }
 
-async function callFunction(
+function fireStep(
   supabaseUrl: string,
   endpoint: string,
   authToken: string,
   body: Record<string, unknown> = {},
-): Promise<{ ok: boolean; status: number; data?: any; error?: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
-
-  try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
+): void {
+  fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+    .then(async (res) => {
+      const text = await res.text().catch(() => "");
+      console.log(`[cmo-loop] ${endpoint} → ${res.status} | ${text.slice(0, 300)}`);
+    })
+    .catch((e) => {
+      console.error(`[cmo-loop] ${endpoint} → FIRE ERROR: ${e.message}`);
     });
-    clearTimeout(timeout);
-
-    const rawText = await res.text();
-    console.log(`[cmo-loop] ${endpoint} → ${res.status} | ${rawText.slice(0, 500)}`);
-
-    let data: any = null;
-    try { data = JSON.parse(rawText); } catch { /* non-JSON response */ }
-
-    if (!res.ok) {
-      return { ok: false, status: res.status, error: data?.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}` };
-    }
-    return { ok: true, status: res.status, data };
-  } catch (e: any) {
-    clearTimeout(timeout);
-    const msg = e.name === "AbortError" ? "Timed out after 90s" : e.message;
-    console.log(`[cmo-loop] ${endpoint} → EXCEPTION: ${msg}`);
-    return { ok: false, status: 0, error: msg };
-  }
 }
 
 Deno.serve(async (req) => {
@@ -57,7 +41,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")!;
     const adminClient = createClient(supabaseUrl, serviceKey);
 
     // --- Auth ---
@@ -78,33 +61,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[cmo-loop] Starting for user ${user.id}`);
+    console.log(`[cmo-loop] Starting fire-and-forget pipeline for user ${user.id}`);
 
-    // --- Fetch BEFORE state ---
-    const [beforeArchetypesRes, beforeRegressionRes] = await Promise.all([
-      adminClient
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "archetype_discovery")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      adminClient
-        .from("content_strategies")
-        .select("regression_insights")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "weekly")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    const beforeArchetypes = beforeArchetypesRes.data?.strategy_data || null;
-    const beforeRegression = beforeRegressionRes.data?.regression_insights || null;
-    console.log("[cmo-loop] Before state captured");
-
-    // --- Run pipeline sequentially ---
+    // --- Pipeline steps with staggered delays ---
     const steps: PipelineStep[] = [
       { name: "run-analysis", endpoint: "run-analysis" },
       { name: "run-regression", endpoint: "run-regression" },
@@ -114,116 +73,37 @@ Deno.serve(async (req) => {
       { name: "content-plan", endpoint: "generate-plans", body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] } },
     ];
 
-    const stepResults: { name: string; ok: boolean; error?: string }[] = [];
+    const DELAY_MS = 15_000;
 
-    for (const step of steps) {
-      console.log(`[cmo-loop] Step: ${step.name} — starting`);
-      const result = await callFunction(supabaseUrl, step.endpoint, jwt, step.body || {});
-      stepResults.push({ name: step.name, ok: result.ok, error: result.error });
-      if (result.ok) {
-        console.log(`[cmo-loop] Step: ${step.name} — complete`);
-      } else {
-        console.error(`[cmo-loop] Step: ${step.name} — FAILED: ${result.error}`);
-      }
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const delay = i * DELAY_MS;
+      setTimeout(() => {
+        console.log(`[cmo-loop] Firing step: ${step.name} (delay=${delay}ms)`);
+        fireStep(supabaseUrl, step.endpoint, jwt, step.body || {});
+      }, delay);
     }
 
-    // --- Fetch AFTER state ---
-    const [afterArchetypesRes, afterRegressionRes] = await Promise.all([
-      adminClient
-        .from("content_strategies")
-        .select("strategy_data")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "archetype_discovery")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      adminClient
-        .from("content_strategies")
-        .select("regression_insights")
-        .eq("user_id", user.id)
-        .eq("strategy_type", "weekly")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
-
-    const afterArchetypes = afterArchetypesRes.data?.strategy_data || null;
-    const afterRegression = afterRegressionRes.data?.regression_insights || null;
-    console.log("[cmo-loop] After state captured");
-
-    // --- Generate what-changed summary ---
-    const summaryPrompt = `You are a CMO summarizing what changed in a content strategy. Compare the before and after data and return ONLY valid JSON with this structure: {"headline": "string", "changes": [{"type": "string", "change": "string"}], "top_insight": "string", "recommendation": "string"}. Be specific and data-driven.
-
-BEFORE archetypes:
-${JSON.stringify(beforeArchetypes, null, 2)}
-
-AFTER archetypes:
-${JSON.stringify(afterArchetypes, null, 2)}
-
-BEFORE regression insights:
-${JSON.stringify(beforeRegression, null, 2)}
-
-AFTER regression insights:
-${JSON.stringify(afterRegression, null, 2)}
-
-Pipeline step results:
-${JSON.stringify(stepResults, null, 2)}`;
-
-    let summary: any = { headline: "Weekly refresh completed", changes: [], top_insight: "Pipeline ran successfully", recommendation: "Review your updated content plan" };
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 90000);
-
-      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": anthropicKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: summaryPrompt }],
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-
-      if (claudeRes.ok) {
-        const claudeData = await claudeRes.json();
-        const text = claudeData.content?.[0]?.text || "";
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          summary = JSON.parse(jsonMatch[0]);
-          console.log("[cmo-loop] Summary generated:", summary.headline);
-        }
-      } else {
-        console.error("[cmo-loop] Claude summary call failed:", claudeRes.status);
-      }
-    } catch (e: any) {
-      console.error("[cmo-loop] Summary generation error:", e.message);
-    }
-
-    // --- Update profiles ---
+    // --- Mark refresh timestamp immediately ---
     const { error: updateError } = await adminClient
       .from("profiles")
-      .update({
-        last_weekly_refresh_at: new Date().toISOString(),
-        weekly_refresh_summary: summary,
-      })
+      .update({ last_weekly_refresh_at: new Date().toISOString() })
       .eq("id", user.id);
 
     if (updateError) {
       console.error("[cmo-loop] Profile update error:", updateError);
     }
 
-    console.log(`[cmo-loop] Complete for user ${user.id}`);
+    console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — returning immediately`);
 
-    return new Response(JSON.stringify({ success: true, summary, steps: stepResults }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "CMO pipeline triggered — strategy will update in background",
+        steps: steps.map((s, i) => ({ name: s.name, delay_seconds: i * 15 })),
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (err: any) {
     console.error("[cmo-loop] Fatal:", err.message);
     return new Response(JSON.stringify({ error: err.message }), {
