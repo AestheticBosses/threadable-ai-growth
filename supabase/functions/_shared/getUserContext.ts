@@ -1,4 +1,4 @@
-import { fetchJourneyStage, getStageConfig } from "./journeyStage.ts";
+import { getStageConfig } from "./journeyStage.ts";
 
 /**
  * Classify hook type from the opening words of a post.
@@ -60,29 +60,29 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     planItemsRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
-    supabase.from("user_story_vault").select("section, data").eq("user_id", userId),
-    supabase.from("user_offers").select("name, description").eq("user_id", userId),
-    supabase.from("user_audiences").select("name").eq("user_id", userId),
-    supabase.from("user_personal_info").select("content").eq("user_id", userId),
+    supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
+    supabase.from("user_offers").select("name, description").eq("user_id", userId).limit(20),
+    supabase.from("user_audiences").select("name").eq("user_id", userId).limit(20),
+    supabase.from("user_personal_info").select("content").eq("user_id", userId).limit(20),
     supabase.from("user_writing_style").select("selected_style, custom_style_description").eq("user_id", userId).maybeSingle(),
-    supabase.from("content_preferences").select("content").eq("user_id", userId).order("sort_order"),
-    supabase.from("knowledge_base").select("title, type, content, summary").eq("user_id", userId).eq("processed", true).limit(50),
+    supabase.from("content_preferences").select("content").eq("user_id", userId).order("sort_order").limit(20),
+    supabase.from("knowledge_base").select("title, type, summary").eq("user_id", userId).eq("processed", true).limit(50),
     // Top 10 by views (existing)
-    supabase.from("posts_analyzed").select("text_content, likes, views, replies, reposts, engagement_rate, archetype, posted_at").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("views", { ascending: false }).limit(10),
+    supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("views", { ascending: false }).limit(10),
     // Top 10 by engagement rate (NEW — may surface different posts)
     supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(10),
-    // 30 recent posts to pick 10 random for variety
-    supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("posted_at", { ascending: false }).limit(30),
+    // 10 recent posts for variety
+    supabase.from("posts_analyzed").select("text_content, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("posted_at", { ascending: false }).limit(10),
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("profiles").select("niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count, goal_type, dm_keyword, dm_offer, posts_per_day, revenue_target, business_model, success_metric").eq("id", userId).single(),
-    supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
-    supabase.from("content_templates").select("archetype, template_text").eq("user_id", userId).order("archetype").order("sort_order"),
+    supabase.from("profiles").select("journey_stage, niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count, goal_type, dm_keyword, dm_offer, posts_per_day, revenue_target, business_model, success_metric").eq("id", userId).single(),
+    supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number").limit(20),
+    supabase.from("content_templates").select("archetype").eq("user_id", userId).order("archetype").order("sort_order").limit(20),
     // Competitor accounts the user is studying
-    supabase.from("competitor_accounts").select("threads_username").eq("user_id", userId),
+    supabase.from("competitor_accounts").select("threads_username").eq("user_id", userId).limit(20),
     // Top competitor posts by engagement for pattern learning
-    supabase.from("posts_analyzed").select("text_content, views, likes, replies, reposts, engagement_rate, source_username").eq("user_id", userId).eq("source", "competitor").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(25),
+    supabase.from("posts_analyzed").select("text_content, views, engagement_rate, source_username").eq("user_id", userId).eq("source", "competitor").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(25),
     // Content strategy v2
     supabase.from("content_buckets").select("name, description, audience_persona, priority").eq("user_id", userId).eq("is_active", true).order("priority"),
     supabase.from("content_pillars").select("id, name, description, purpose, percentage, bucket_id").eq("user_id", userId).eq("is_active", true),
@@ -90,8 +90,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(14),
   ]);
 
-  // === JOURNEY STAGE ===
-  const journeyStage = await fetchJourneyStage(supabase, userId);
+  // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
+  const profile = profileRes.data;
+  const journeyStage = profile?.journey_stage || "getting_started";
   const stageConfig = getStageConfig(journeyStage);
   const journeySection = `Stage: ${stageConfig.label}\nFunnel mix: ${stageConfig.funnelMix.tof}% TOF / ${stageConfig.funnelMix.mof}% MOF / ${stageConfig.funnelMix.bof}% BOF\nContent focus: ${stageConfig.contentFocus}`;
 
@@ -190,8 +191,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const knowledge = knowledgeRes.data || [];
   const knowledgeSection = knowledge.length > 0
     ? knowledge.map((k: any) => {
-        const content = k.summary || k.content || "";
-        return `- [${k.type}] ${k.title}: ${content.slice(0, 500)}`;
+        const summary = k.summary || "";
+        return `- [${k.type}] ${k.title}: ${summary.slice(0, 500)}`;
       }).join("\n")
     : "No knowledge base items.";
 
@@ -219,13 +220,10 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "";
 
-  // === RECENT POSTS (random 10 from last 30, patterns only) ===
+  // === RECENT POSTS (last 10, patterns only) ===
   const recentPosts = recentPostsRes.data || [];
-  const randomRecent = recentPosts
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 10);
-  const recentSection = randomRecent.length > 0
-    ? randomRecent.map((p: any, i: number) => {
+  const recentSection = recentPosts.length > 0
+    ? recentPosts.map((p: any, i: number) => {
         const text = p.text_content || "";
         const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
         const hook = classifyHook(text);
@@ -252,7 +250,6 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   ].join("\n");
 
   // === PROFILE ===
-  const profile = profileRes.data;
   const profileSection = profile
     ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nGoal Type: ${profile.goal_type || "Not set"}\nMission: ${profile.mission || "Not set"}\nRevenue Target: ${profile.revenue_target || "Not set"}\nBusiness Model: ${profile.business_model || "Not set"}\nSuccess Metric: ${profile.success_metric || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nPosts Per Day: ${profile.posts_per_day || "Not set"}\nTraffic URL (for BOF/CTA posts): ${profile.traffic_url || "Not set"}\nDM Keyword: ${profile.dm_keyword || "Not set"}\nDM Offer: ${profile.dm_offer || "Not set"}\nVoice Profile: ${profile.voice_profile ? JSON.stringify(profile.voice_profile) : "Not set"}`
     : "No profile data.";
