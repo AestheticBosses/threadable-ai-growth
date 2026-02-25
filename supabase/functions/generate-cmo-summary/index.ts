@@ -51,9 +51,9 @@ Deno.serve(async (req) => {
         .maybeSingle(),
       adminClient
         .from("content_strategies")
-        .select("strategy_data")
+        .select("regression_insights")
         .eq("user_id", user.id)
-        .eq("strategy_type", "regression_insights")
+        .not("regression_insights", "is", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     ]);
 
     const currentArchetypes = archetypesRes.data?.strategy_data || null;
-    const currentRegression = regressionRes.data?.strategy_data || null;
+    const currentRegression = regressionRes.data?.regression_insights || null;
     const currentContentPlan = contentPlanRes.data?.plan_data || null;
 
     // --- Read PREVIOUS state from snapshots ---
