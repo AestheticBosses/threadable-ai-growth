@@ -56,7 +56,7 @@ const Insights = () => {
       ]);
 
       const allPosts = postsRes.data ?? [];
-      const cutoff = subDays(new Date(), rangeDays[range]);
+      const cutoff = subDays(new Date(), rangeDays[range] + 1);
       const posts = allPosts.filter((p) => {
         const dateStr = p.posted_at ?? p.fetched_at;
         if (!dateStr) return true;
