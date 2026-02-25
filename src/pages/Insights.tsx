@@ -105,22 +105,11 @@ const Insights = () => {
     queryKey: ["insights-regression", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-
-      // Debug: fetch ALL content_strategies rows to see what strategy_type values exist
-      const { data: allStrategies, error: debugErr } = await supabase
-        .from("content_strategies")
-        .select("id, strategy_type, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      console.log("[Insights] All strategy types:", allStrategies?.map(s => s.strategy_type));
-      console.log("[Insights] All strategies count:", allStrategies?.length, "error:", debugErr);
-
       const { data } = await supabase
         .from("content_strategies")
         .select("strategy_data, regression_insights, created_at")
         .eq("user_id", user.id)
-        .eq("strategy_type", "weekly")
-        .not("strategy_data", "is", null)
+        .eq("strategy_type", "regression_insights")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
