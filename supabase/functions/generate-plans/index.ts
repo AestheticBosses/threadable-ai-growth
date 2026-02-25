@@ -247,21 +247,35 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      signal: AbortSignal.timeout(55000),
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: Math.min(2000 + (postsPerDay * 300), 6000),
-        system: systemPrompt,
-        messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+    let anthropicRes: Response;
+    try {
+      anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: Math.min(2000 + (postsPerDay * 300), 6000),
+          system: systemPrompt,
+          messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
+        }),
+      });
+      clearTimeout(timeoutId);
+    } catch (e) {
+      clearTimeout(timeoutId);
+      console.error("Fetch error:", e);
+      return new Response(JSON.stringify({ error: "AI request failed or timed out. Please try again." }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (!anthropicRes.ok) {
       const errText = await anthropicRes.text();
