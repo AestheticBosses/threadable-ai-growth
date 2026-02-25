@@ -1389,6 +1389,41 @@ export type Database = {
         }
         Relationships: []
       }
+      weekly_strategy_snapshots: {
+        Row: {
+          archetypes: Json | null
+          content_plan: Json | null
+          created_at: string | null
+          id: string
+          regression_insights: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          archetypes?: Json | null
+          content_plan?: Json | null
+          created_at?: string | null
+          id?: string
+          regression_insights?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          archetypes?: Json | null
+          content_plan?: Json | null
+          created_at?: string | null
+          id?: string
+          regression_insights?: Json | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_strategy_snapshots_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
