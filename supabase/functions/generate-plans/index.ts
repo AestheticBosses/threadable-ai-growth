@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
+import { safeParseJSON } from "../_shared/safeParseJSON.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -262,7 +263,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         signal: controller.signal,
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: Math.min(2000 + (postsPerDay * 300), 6000),
+          max_tokens: Math.min(3000 + (postsPerDay * 600), 10000),
           system: systemPrompt,
           messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
         }),
@@ -292,13 +293,11 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
     let planData: any;
     try {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON found in response");
-      planData = JSON.parse(jsonMatch[0]);
+      planData = safeParseJSON(rawText);
       if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
     } catch (e) {
       console.error("JSON parse error:", e, "Raw:", rawText.slice(0, 500));
-      return new Response(JSON.stringify({ error: "Failed to parse AI response. Please try again." }), {
+      return new Response(JSON.stringify({ error: "Plan generation was cut short — please try again." }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
