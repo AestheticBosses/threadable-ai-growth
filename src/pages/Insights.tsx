@@ -213,11 +213,12 @@ const Insights = () => {
 
   const regressionInsights = useMemo(() => {
     if (!regressionData) return { insights: [], humanReadable: [] };
-    // Try strategy_data first, then top-level regression_insights
     const sd = regressionData.strategy_data as any;
-    const ri = regressionData.regression_insights as any;
-    const insights = sd?.regression_insights ?? ri?.insights ?? [];
-    const humanReadable = sd?.human_readable_insights ?? ri?.human_readable_insights ?? [];
+    // Data lives at strategy_data.insights (not strategy_data.regression_insights)
+    const insights = sd?.insights ?? [];
+    const humanReadable = sd?.human_readable_insights ?? (
+      insights.length > 0 ? insights.map((i: any) => i.insight).filter(Boolean) : []
+    );
     return { insights, humanReadable };
   }, [regressionData]);
 
@@ -466,25 +467,46 @@ const Insights = () => {
                 {/* Insight cards */}
                 {regressionInsights.insights.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {regressionInsights.insights.map((insight: any, i: number) => (
-                      <Card key={i} className="border-border">
-                        <CardContent className="p-5 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold text-foreground">
-                              {insight.variable ?? insight.feature ?? insight.name ?? `Insight ${i + 1}`}
-                            </h4>
-                            {(insight.confidence ?? insight.confidence_level) && (
-                              <Badge variant="outline" className="text-[10px]">
-                                {insight.confidence ?? insight.confidence_level}
-                              </Badge>
+                    {regressionInsights.insights.map((insight: any, i: number) => {
+                      const strengthClass = insight.strength === "strong"
+                        ? "border-l-emerald-500 bg-emerald-500/5"
+                        : insight.strength === "moderate"
+                        ? "border-l-yellow-500 bg-yellow-500/5"
+                        : "border-l-muted-foreground bg-muted/20";
+                      const strengthBadge = insight.strength === "strong"
+                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                        : insight.strength === "moderate"
+                        ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
+                        : "bg-muted text-muted-foreground border-border";
+                      const metricIcon = { views: Eye, likes: Heart, reposts: Repeat2, engagement_rate: TrendingUp }[insight.metric_impacted as string] ?? BarChart3;
+                      const MetricIc = metricIcon;
+                      return (
+                        <Card key={i} className={`border-border border-l-4 ${strengthClass}`}>
+                          <CardContent className="p-5 space-y-3">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{insight.category}</span>
+                              <div className="flex gap-1.5">
+                                <Badge variant="outline" className={`text-[10px] gap-1 ${strengthBadge}`}>
+                                  {insight.strength}
+                                </Badge>
+                                {insight.metric_impacted && (
+                                  <Badge variant="outline" className="text-[10px] gap-1">
+                                    <MetricIc className="h-2.5 w-2.5" /> {insight.metric_impacted}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <p className="text-sm font-medium text-foreground">{insight.insight}</p>
+                            {insight.evidence && (
+                              <p className="text-xs text-muted-foreground leading-relaxed">{insight.evidence}</p>
                             )}
-                          </div>
-                          <p className="text-sm text-primary font-mono">
-                            {insight.impact ?? insight.effect ?? insight.description ?? "—"}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))}
+                            {insight.recommendation && (
+                              <p className="text-xs text-primary font-medium">→ {insight.recommendation}</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
 
