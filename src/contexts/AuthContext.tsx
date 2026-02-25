@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from("profiles")
-      .select("onboarding_complete, last_weekly_refresh_at")
+      .select("onboarding_complete")
       .eq("id", userId)
       .single();
     setOnboardingCompleted(data?.onboarding_complete ?? false);
@@ -34,19 +34,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId);
     setHasStrategy((count ?? 0) > 0);
-
-    // Fire-and-forget CMO loop if stale or never run
-    const lastRefresh = data?.last_weekly_refresh_at;
-    const isStale = !lastRefresh || (Date.now() - new Date(lastRefresh).getTime()) > 7 * 24 * 60 * 60 * 1000;
-    if (isStale) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.access_token) {
-          supabase.functions.invoke("run-weekly-cmo-loop", {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          }).catch(() => {});
-        }
-      });
-    }
   };
 
   const refreshProfile = async () => {
