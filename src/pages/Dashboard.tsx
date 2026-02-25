@@ -7,6 +7,7 @@ import { DailyActionBoard } from "@/components/dashboard/DailyActionBoard";
 import { LogResultCard } from "@/components/dashboard/LogResultCard";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { WeeklyReviewSection } from "@/components/dashboard/WeeklyReviewSection";
+import { WeeklyRefreshCard } from "@/components/dashboard/WeeklyRefreshCard";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
 import { WeeklyApprovalGate } from "@/components/dashboard/WeeklyApprovalGate";
@@ -207,6 +208,9 @@ const Dashboard = () => {
                 </span>
               </div>
             </div>
+
+            {/* ── Weekly Refresh Summary ── */}
+            <WeeklyRefreshCard />
 
             {/* ── Section 1: Plan Health Hero ── */}
             <PlanHealthHero />
