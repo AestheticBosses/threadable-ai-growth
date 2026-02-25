@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.generate-week-posts]
 verify_jwt = false
+
+[functions.run-weekly-cmo-loop]
+verify_jwt = false
