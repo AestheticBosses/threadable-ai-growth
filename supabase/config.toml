@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.run-weekly-cmo-loop]
 verify_jwt = false
+
+[functions.generate-cmo-summary]
+verify_jwt = false

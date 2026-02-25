@@ -84,6 +84,13 @@ Deno.serve(async (req) => {
       }, delay);
     }
 
+    // --- Fire summary generation after pipeline completes (120s delay) ---
+    const SUMMARY_DELAY_MS = 120_000;
+    setTimeout(() => {
+      console.log(`[cmo-loop] Firing step: generate-cmo-summary (delay=${SUMMARY_DELAY_MS}ms)`);
+      fireStep(supabaseUrl, "generate-cmo-summary", jwt);
+    }, SUMMARY_DELAY_MS);
+
     // --- Mark refresh timestamp immediately ---
     const { error: updateError } = await adminClient
       .from("profiles")
@@ -96,11 +103,16 @@ Deno.serve(async (req) => {
 
     console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — returning immediately`);
 
+    const allSteps = [
+      ...steps.map((s, i) => ({ name: s.name, delay_seconds: i * 15 })),
+      { name: "generate-cmo-summary", delay_seconds: 120 },
+    ];
+
     return new Response(
       JSON.stringify({
         success: true,
         message: "CMO pipeline triggered — strategy will update in background",
-        steps: steps.map((s, i) => ({ name: s.name, delay_seconds: i * 15 })),
+        steps: allSteps,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
