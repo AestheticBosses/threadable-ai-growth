@@ -43,10 +43,10 @@ const Insights = () => {
       const [postsRes, profileRes] = await Promise.all([
         supabase
           .from("posts_analyzed")
-          .select("id, text_content, views, likes, replies, reposts, engagement_rate, posted_at, archetype")
+          .select("id, text_content, views, likes, replies, reposts, engagement_rate, posted_at, fetched_at, archetype")
           .eq("user_id", user.id)
           .eq("source", "own")
-          .order("posted_at", { ascending: false })
+          .order("posted_at", { ascending: false, nullsFirst: false })
           .limit(100),
         supabase
           .from("profiles")
@@ -57,11 +57,16 @@ const Insights = () => {
 
       const allPosts = postsRes.data ?? [];
       console.log("[Insights] Posts returned from DB:", allPosts.length);
-      // Client-side date filter
+      console.log("[Insights] First 3 posts date fields:", allPosts.slice(0, 3).map(p => ({
+        posted_at: p.posted_at,
+        fetched_at: p.fetched_at,
+      })));
+      // Client-side date filter — use first available date field
       const cutoff = subDays(new Date(), rangeDays[range]);
       const posts = allPosts.filter((p) => {
-        if (!p.posted_at) return false;
-        return new Date(p.posted_at) >= cutoff;
+        const dateStr = p.posted_at ?? p.fetched_at;
+        if (!dateStr) return true; // include if no date at all
+        return new Date(dateStr) >= cutoff;
       });
       const totalViews = posts.reduce((s, p) => s + (p.views ?? 0), 0);
       const totalLikes = posts.reduce((s, p) => s + (p.likes ?? 0), 0);
