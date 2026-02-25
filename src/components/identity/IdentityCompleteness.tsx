@@ -87,7 +87,7 @@ export function IdentityCompleteness() {
                 "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
                 s.complete
                   ? "bg-emerald-500/10 text-emerald-500"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80 cursor-pointer"
+                  : "border border-border bg-secondary text-foreground/60 hover:bg-secondary/80 cursor-pointer"
               )}
             >
               {s.complete ? <Check className="h-3 w-3" /> : <Square className="h-3 w-3" />}
