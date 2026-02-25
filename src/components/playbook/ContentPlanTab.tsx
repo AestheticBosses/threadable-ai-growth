@@ -410,7 +410,11 @@ export function ContentPlanTab() {
         </div>
         {plan && (
           <Button
-            onClick={() => setConfirmWeek(true)}
+            onClick={() => {
+              console.log('getAllPlanPosts result:', getAllPlanPosts());
+              console.log('contentPlan data:', plan);
+              setConfirmWeek(true);
+            }}
             disabled={generatingWeek || isGenerating}
             className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
           >
