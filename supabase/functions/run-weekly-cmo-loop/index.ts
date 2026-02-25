@@ -33,14 +33,20 @@ async function callFunction(
     });
     clearTimeout(timeout);
 
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    console.log(`[cmo-loop] ${endpoint} → ${res.status} | ${rawText.slice(0, 500)}`);
+
+    let data: any = null;
+    try { data = JSON.parse(rawText); } catch { /* non-JSON response */ }
+
     if (!res.ok) {
-      return { ok: false, status: res.status, error: data?.error || `HTTP ${res.status}` };
+      return { ok: false, status: res.status, error: data?.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}` };
     }
     return { ok: true, status: res.status, data };
   } catch (e: any) {
     clearTimeout(timeout);
     const msg = e.name === "AbortError" ? "Timed out after 90s" : e.message;
+    console.log(`[cmo-loop] ${endpoint} → EXCEPTION: ${msg}`);
     return { ok: false, status: 0, error: msg };
   }
 }
