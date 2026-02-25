@@ -86,59 +86,79 @@ export function ContentPlanTab() {
     }
   };
 
-  // Safe time parsing helper
-  const parseTime = (timeStr: string): { hours: number; minutes: number } | null => {
+  // Safe time parsing helper — handles "HH:MM", "H:MM AM", "H:MM AM EST" etc.
+  const parseTimeFlexible = (timeStr: string): { hours: number; minutes: number } | null => {
     try {
-      const [h, m] = timeStr.split(":").map(Number);
-      if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
-        return null;
+      // Strip timezone suffixes like "EST", "PST" etc.
+      const cleaned = timeStr.replace(/\s+[A-Z]{2,4}$/i, "").trim();
+      const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (ampmMatch) {
+        let h = parseInt(ampmMatch[1], 10);
+        const m = parseInt(ampmMatch[2], 10);
+        const period = ampmMatch[3].toUpperCase();
+        if (period === "PM" && h < 12) h += 12;
+        if (period === "AM" && h === 12) h = 0;
+        if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+        return { hours: h, minutes: m };
       }
+      // 24-hour format "HH:MM"
+      const [h, m] = cleaned.split(":").map(Number);
+      if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
       return { hours: h, minutes: m };
     } catch {
       return null;
     }
   };
 
+  // Get the date for a named day in the current week, combined with a time string
+  const getScheduledDateTime = (dayName: string, timeStr: string): string | null => {
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dayIdx = dayNames.indexOf(dayName);
+    if (dayIdx === -1) return null;
+
+    const now = new Date();
+    const diff = dayIdx - now.getDay();
+    const date = new Date(now);
+    date.setDate(now.getDate() + diff);
+
+    const parsed = parseTimeFlexible(timeStr);
+    if (parsed) {
+      date.setHours(parsed.hours, parsed.minutes, 0, 0);
+    } else {
+      date.setHours(9, 0, 0, 0); // fallback
+    }
+
+    return safeISOString(date);
+  };
+
   // Collect all posts from the plan
   const getAllPlanPosts = () => {
     if (!plan?.daily_plan) return [];
+
     const allPosts: any[] = [];
-    const now = new Date();
-    const dayOfWeek = now.getDay(); // 0=Sun
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
 
-    for (const day of plan.daily_plan) {
-      const dayIdx = dayNames.indexOf(day.day);
-      if (dayIdx === -1) continue;
-      let daysUntil = dayIdx - dayOfWeek;
-      // Include ALL days in the current week (even past days) for counting purposes.
-      // The edge function handles pushing past time slots to next week.
-      const scheduledDate = new Date(now);
-      scheduledDate.setDate(scheduledDate.getDate() + daysUntil);
+    plan.daily_plan.forEach((dayPlan: any) => {
+      const dayName = dayPlan.day;
+      if (!dayPlan.posts || !Array.isArray(dayPlan.posts)) return;
 
-      for (let i = 0; i < (day.posts?.length || 0); i++) {
-        const post = day.posts[i];
-        const time = bestTimes[i % bestTimes.length] || "09:00";
-        const parsedTime = parseTime(time);
-        if (!parsedTime) continue;
-
-        const schedTime = new Date(scheduledDate);
-        schedTime.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-        const isoString = safeISOString(schedTime);
-        if (!isoString) continue;
+      dayPlan.posts.forEach((post: any, index: number) => {
+        const time = bestTimes[index % bestTimes.length] || "09:00";
+        const scheduledTime = getScheduledDateTime(dayName, time);
+        if (!scheduledTime) return;
 
         allPosts.push({
           archetype: post.archetype,
           funnel_stage: post.funnel_stage,
           topic: post.topic,
           hook_idea: post.hook_idea || "",
-          day: day.day,
-          scheduled_time: isoString,
-          _postKey: `${day.day}-${i}`,
+          day: dayName,
+          scheduled_time: scheduledTime,
+          _postKey: `${dayName}-${index}`,
         });
-      }
-    }
+      });
+    });
+
     return allPosts;
   };
 
