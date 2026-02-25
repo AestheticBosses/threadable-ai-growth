@@ -162,51 +162,18 @@ export function ContentPlanTab() {
     return allPosts;
   };
 
-  const handleGenerateWeek = async () => {
+  const handleRegeneratePlan = async () => {
     setConfirmWeek(false);
     if (!session?.access_token) return;
 
-    const allPosts = getAllPlanPosts();
-    if (allPosts.length === 0) {
-      toast({ title: "No posts in plan", variant: "destructive" });
-      return;
-    }
-
     setGeneratingWeek(true);
-    setWeekProgress({ current: 0, total: allPosts.length });
-
     try {
-      // Process in batches of 3
-      let generated = 0;
-      const batches: any[][] = [];
-      for (let i = 0; i < allPosts.length; i += 3) {
-        batches.push(allPosts.slice(i, i + 3));
-      }
-
-      for (const batch of batches) {
-        const res = await supabase.functions.invoke("generate-draft-posts", {
-          body: { posts: batch, current_timestamp: new Date().toISOString() },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-
-        if (res.error) throw new Error(res.error.message);
-        generated += res.data?.total || 0;
-        setWeekProgress({ current: generated, total: allPosts.length });
-      }
-
-      toast({
-        title: `${generated} draft posts added to your Content Queue! 🎉`,
-        action: (
-          <Button size="sm" variant="outline" onClick={() => navigate("/queue")} className="gap-1">
-            View Queue
-          </Button>
-        ),
-      });
+      await generate.mutateAsync();
+      toast({ title: "Week plan regenerated! 🎉" });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setGeneratingWeek(false);
-      setWeekProgress({ current: 0, total: 0 });
     }
   };
 
@@ -418,7 +385,7 @@ export function ContentPlanTab() {
     </div>
   );
 
-  const totalPlanPosts = getAllPlanPosts().length || postsPerDay * 7;
+  
   return (
     <div className="space-y-6 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -430,31 +397,24 @@ export function ContentPlanTab() {
         </div>
         {plan && (
           <Button
-            onClick={() => {
-              console.log('getAllPlanPosts result:', getAllPlanPosts());
-              console.log('contentPlan data:', plan);
-              setConfirmWeek(true);
-            }}
+            onClick={() => setConfirmWeek(true)}
             disabled={generatingWeek || isGenerating}
             className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700"
           >
-            {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            ✦ Draft Full Week
+            {generatingWeek ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            ✦ Regenerate Week Plan
           </Button>
         )}
       </div>
 
-      {/* Week generation progress */}
+      {/* Week regeneration progress */}
       {generatingWeek && (
         <Card>
-          <CardContent className="p-4 space-y-3">
+          <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm font-medium text-foreground">
-                Generating post {weekProgress.current} of {weekProgress.total}...
-              </span>
+              <span className="text-sm font-medium text-foreground">Regenerating your week plan...</span>
             </div>
-            <Progress value={(weekProgress.current / Math.max(weekProgress.total, 1)) * 100} className="h-2" />
           </CardContent>
         </Card>
       )}
@@ -738,14 +698,14 @@ export function ContentPlanTab() {
       <AlertDialog open={confirmWeek} onOpenChange={setConfirmWeek}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Draft Full Week of Posts?</AlertDialogTitle>
+            <AlertDialogTitle>Regenerate This Week's Plan?</AlertDialogTitle>
             <AlertDialogDescription>
-              Generate draft posts for all {totalPlanPosts} planned slots this week. They'll appear in your Content Queue for review and approval before posting.
+              Refresh all hook ideas and topics for the week based on your strategy. This updates your content plan only — no posts will be created. Use the Draft buttons to generate actual posts.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleGenerateWeek}>Generate {totalPlanPosts} Posts</AlertDialogAction>
+            <AlertDialogAction onClick={handleRegeneratePlan}>Regenerate Plan</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
