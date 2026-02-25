@@ -34,7 +34,6 @@ const Insights = () => {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const rangeDays: Record<RangeType, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90, custom: 30 };
-  const rangeStart = subDays(new Date(), rangeDays[range]).toISOString();
 
   // ─── Performance data ───
   const { data: perfData, isLoading: perfLoading } = useQuery({
@@ -47,8 +46,8 @@ const Insights = () => {
           .select("id, text_content, views, likes, replies, reposts, engagement_rate, posted_at, archetype")
           .eq("user_id", user.id)
           .eq("source", "own")
-          .gte("posted_at", rangeStart)
-          .order("posted_at", { ascending: false }),
+          .order("posted_at", { ascending: false })
+          .limit(100),
         supabase
           .from("profiles")
           .select("follower_count")
@@ -56,7 +55,14 @@ const Insights = () => {
           .maybeSingle(),
       ]);
 
-      const posts = postsRes.data ?? [];
+      const allPosts = postsRes.data ?? [];
+      console.log("[Insights] Posts returned from DB:", allPosts.length);
+      // Client-side date filter
+      const cutoff = subDays(new Date(), rangeDays[range]);
+      const posts = allPosts.filter((p) => {
+        if (!p.posted_at) return false;
+        return new Date(p.posted_at) >= cutoff;
+      });
       const totalViews = posts.reduce((s, p) => s + (p.views ?? 0), 0);
       const totalLikes = posts.reduce((s, p) => s + (p.likes ?? 0), 0);
       const totalReplies = posts.reduce((s, p) => s + (p.replies ?? 0), 0);
@@ -101,12 +107,14 @@ const Insights = () => {
       if (!user?.id) return null;
       const { data } = await supabase
         .from("content_strategies")
-        .select("strategy_data, created_at")
+        .select("strategy_data, regression_insights, created_at")
         .eq("user_id", user.id)
         .eq("strategy_type", "weekly")
+        .not("strategy_data", "is", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+      console.log("[Insights] Regression query result:", JSON.stringify(data, null, 2));
       return data;
     },
     enabled: !!user?.id,
@@ -205,10 +213,12 @@ const Insights = () => {
   ];
 
   const regressionInsights = useMemo(() => {
-    if (!regressionData?.strategy_data) return { insights: [], humanReadable: [] };
+    if (!regressionData) return { insights: [], humanReadable: [] };
+    // Try strategy_data first, then top-level regression_insights
     const sd = regressionData.strategy_data as any;
-    const insights = sd?.regression_insights ?? [];
-    const humanReadable = sd?.human_readable_insights ?? [];
+    const ri = regressionData.regression_insights as any;
+    const insights = sd?.regression_insights ?? ri?.insights ?? [];
+    const humanReadable = sd?.human_readable_insights ?? ri?.human_readable_insights ?? [];
     return { insights, humanReadable };
   }, [regressionData]);
 
@@ -390,8 +400,16 @@ const Insights = () => {
                                 <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                                   {post.posted_at ? format(parseISO(post.posted_at), "MMM d") : "—"}
                                 </TableCell>
-                                <TableCell className="text-sm max-w-[200px] truncate">
-                                  {post.text_content?.slice(0, 60) ?? "—"}
+                              <TableCell className="text-sm max-w-[280px]">
+                                  <span className="block truncate">
+                                    {(() => {
+                                      const firstLine = post.text_content?.split("\n")[0] ?? "";
+                                      return firstLine.length > 120 ? firstLine.slice(0, 120) + "…" : firstLine || "—";
+                                    })()}
+                                  </span>
+                                  {post.archetype && (
+                                    <Badge variant="outline" className="text-[10px] mt-0.5">{post.archetype}</Badge>
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-sm">{(post.views ?? 0).toLocaleString()}</TableCell>
                                 <TableCell className="text-right font-mono text-sm">{(post.likes ?? 0).toLocaleString()}</TableCell>
