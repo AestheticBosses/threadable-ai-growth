@@ -268,7 +268,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         },
         signal: controller.signal,
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-6",
           max_tokens: Math.min(3000 + (postsPerDay * 600), 10000),
           system: systemPrompt,
           messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
