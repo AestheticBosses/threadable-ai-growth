@@ -100,7 +100,6 @@ Deno.serve(async (req) => {
 
     // --- Run pipeline sequentially ---
     const steps: PipelineStep[] = [
-      { name: "fetch-posts", endpoint: "fetch-user-posts" },
       { name: "run-analysis", endpoint: "run-analysis" },
       { name: "run-regression", endpoint: "run-regression" },
       { name: "discover-archetypes", endpoint: "discover-archetypes" },
