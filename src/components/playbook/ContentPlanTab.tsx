@@ -398,7 +398,7 @@ export function ContentPlanTab() {
     </div>
   );
 
-  const totalPlanPosts = postsPerDay * 7;
+  const totalPlanPosts = getAllPlanPosts().length || postsPerDay * 7;
   return (
     <div className="space-y-6 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-4">
