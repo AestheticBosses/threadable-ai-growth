@@ -367,6 +367,21 @@ export function ContentPlanTab() {
     );
   }
 
+  // Check if a time slot has already passed today
+  const DAY_NAMES_CHECK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const nowForCheck = new Date();
+  const todayDayName = DAY_NAMES_CHECK[nowForCheck.getDay()];
+
+  const isSlotPassed = (dayName: string, timeStr: string): boolean => {
+    if (dayName !== todayDayName) return false;
+    const parsed = parseTimeFlexible(timeStr);
+    if (!parsed) return false;
+    const now = new Date();
+    const slotMinutes = parsed.hours * 60 + parsed.minutes;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    return slotMinutes < nowMinutes;
+  };
+
   // Checkbox component for post rows
   const PostCheckbox = ({ postKey }: { postKey: string }) => (
     <div className={cn(
@@ -492,8 +507,11 @@ export function ContentPlanTab() {
                           const postKey = `${day.day}-${i}`;
                           const isDrafted = draftedPosts.has(postKey);
                           const isDrafting = draftingPostKey === postKey;
+                          const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
+                          const slotTime = bestTimes[i % bestTimes.length] || "09:00";
+                          const passed = isSlotPassed(day.day, slotTime);
                           return (
-                            <div key={i} className="rounded-lg border border-border p-3 space-y-2 group">
+                            <div key={i} className={cn("rounded-lg border border-border p-3 space-y-2 group", passed && "opacity-40")}>
                               <div className="flex items-start gap-2">
                                 <PostCheckbox postKey={postKey} />
                                 <div className="flex-1 space-y-2">
@@ -502,6 +520,11 @@ export function ContentPlanTab() {
                                     <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                       {post.funnel_stage}
                                     </Badge>
+                                    {passed && (
+                                      <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30">
+                                        Passed
+                                      </Badge>
+                                    )}
                                     {isDrafted && (
                                       <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
                                         <Check className="h-2.5 w-2.5" /> Drafted
@@ -567,14 +590,20 @@ export function ContentPlanTab() {
                           const isDrafting = draftingPostKey === postKey;
                           const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
                           const time = bestTimes[i % bestTimes.length] || "09:00";
+                          const passed = isSlotPassed(day.day, time);
                           return (
-                            <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                            <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", passed && "opacity-40")}>
                               <PostCheckbox postKey={postKey} />
                               <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                               <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                               <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                 {post.funnel_stage}
                               </Badge>
+                              {passed && (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30 shrink-0">
+                                  Passed
+                                </Badge>
+                              )}
                               <span className="text-muted-foreground truncate flex-1">
                                 {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                               </span>
@@ -640,14 +669,20 @@ export function ContentPlanTab() {
                               const isDrafting = draftingPostKey === postKey;
                               const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
                               const time = bestTimes[i % bestTimes.length] || "09:00";
+                              const passed = isSlotPassed(day.day, time);
                               return (
-                                <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                                <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", passed && "opacity-40")}>
                                   <PostCheckbox postKey={postKey} />
                                   <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                                   <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                                   <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                     {post.funnel_stage}
                                   </Badge>
+                                  {passed && (
+                                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30 shrink-0">
+                                      Passed
+                                    </Badge>
+                                  )}
                                   <span className="text-muted-foreground truncate flex-1">
                                     {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                                   </span>
