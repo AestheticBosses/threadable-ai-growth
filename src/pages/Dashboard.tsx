@@ -158,6 +158,16 @@ const Dashboard = () => {
       });
       if (error) { toast.error(error.message || "Failed to trigger strategy refresh"); return; }
       toast.success("Strategy refresh triggered — your plan will update in ~2 minutes");
+
+      // Fire summary generation after pipeline has time to complete
+      setTimeout(async () => {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (s) {
+          await supabase.functions.invoke("generate-cmo-summary", {
+            headers: { Authorization: `Bearer ${s.access_token}` },
+          });
+        }
+      }, 100000);
     } catch {
       toast.error("Failed to trigger strategy refresh");
     } finally {
