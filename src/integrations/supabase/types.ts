@@ -726,6 +726,7 @@ export type Database = {
           is_established: boolean | null
           journey_stage: string | null
           last_fetched_at: string | null
+          last_weekly_refresh_at: string | null
           max_posts_per_day: number
           mission: string | null
           niche: string | null
@@ -741,6 +742,7 @@ export type Database = {
           traffic_url: string | null
           updated_at: string
           voice_profile: Json | null
+          weekly_refresh_summary: Json | null
         }
         Insert: {
           auto_approve_ai_posts?: boolean
@@ -766,6 +768,7 @@ export type Database = {
           is_established?: boolean | null
           journey_stage?: string | null
           last_fetched_at?: string | null
+          last_weekly_refresh_at?: string | null
           max_posts_per_day?: number
           mission?: string | null
           niche?: string | null
@@ -781,6 +784,7 @@ export type Database = {
           traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
+          weekly_refresh_summary?: Json | null
         }
         Update: {
           auto_approve_ai_posts?: boolean
@@ -806,6 +810,7 @@ export type Database = {
           is_established?: boolean | null
           journey_stage?: string | null
           last_fetched_at?: string | null
+          last_weekly_refresh_at?: string | null
           max_posts_per_day?: number
           mission?: string | null
           niche?: string | null
@@ -821,6 +826,7 @@ export type Database = {
           traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
+          weekly_refresh_summary?: Json | null
         }
         Relationships: []
       }
