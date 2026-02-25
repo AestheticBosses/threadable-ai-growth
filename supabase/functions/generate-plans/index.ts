@@ -220,13 +220,19 @@ serve(async (req) => {
         `You MUST output "posts_per_day": ${postsPerDay}. Each day in daily_plan MUST have exactly ${postsPerDay} posts. This is non-negotiable.`
       );
 
+    // Determine today's day name for anchoring the plan
+    const today = new Date();
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const todayName = dayNames[today.getDay()];
+    const todayAnchor = `\nToday is ${todayName}. The 7-day plan must start from ${todayName} and go forward from there. Do not start from Monday unless today is Monday.\n`;
+
     const basePrompt =
       plan_type === "content_plan"
         ? contentPlanPrompt
         : plan_type === "branding_plan"
         ? BRANDING_PLAN_PROMPT
         : FUNNEL_STRATEGY_PROMPT;
-    const systemPrompt = basePrompt + stageBlock;
+    const systemPrompt = basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor : "");
 
     // Build goal-based CTA rules block
     const goalType = profile?.goal_type ?? "not set";

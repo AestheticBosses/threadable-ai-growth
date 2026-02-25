@@ -56,6 +56,20 @@ export function ContentPlanTab() {
 
   console.log("[ContentPlanTab] full plan JSON:", JSON.stringify(plan, null, 2));
 
+  // Sort daily_plan so today's day comes first, then future days, then past days
+  if (plan && Array.isArray(plan.daily_plan) && plan.daily_plan.length > 0) {
+    const DAY_ORDER = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const todayIdx = new Date().getDay(); // 0=Sun
+    plan.daily_plan.sort((a: any, b: any) => {
+      const aIdx = DAY_ORDER.indexOf(a.day);
+      const bIdx = DAY_ORDER.indexOf(b.day);
+      // Offset so today = 0, tomorrow = 1, etc.
+      const aOff = (aIdx - todayIdx + 7) % 7;
+      const bOff = (bIdx - todayIdx + 7) % 7;
+      return aOff - bOff;
+    });
+  }
+
   // Read posts_per_day from the plan data itself (set by AI based on profile.max_posts_per_day)
   const postsPerDay = plan?.posts_per_day ?? 1;
 
