@@ -156,16 +156,6 @@ const Dashboard = () => {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Command Center</h1>
             <p className="mt-1 text-muted-foreground text-sm">Your weekly command center.</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button onClick={handleFetchPosts} disabled={fetching} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              <RefreshCw className={`h-4 w-4 mr-1.5 ${fetching ? "animate-spin" : ""}`} />
-              {fetching ? "Fetching…" : "Fetch Posts"}
-            </Button>
-            <Button onClick={handleRunAnalysis} disabled={analyzing || !hasAnyData} variant="outline">
-              {analyzing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Brain className="h-4 w-4 mr-1.5" />}
-              {analyzing ? "Analyzing…" : "Run Analysis"}
-            </Button>
-          </div>
         </div>
 
         {/* Analysis loading banner */}
