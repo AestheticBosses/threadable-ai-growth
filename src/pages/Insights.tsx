@@ -55,19 +55,9 @@ const Insights = () => {
           .maybeSingle(),
       ]);
 
-      const allPosts = postsRes.data ?? [];
-      console.log("[Insights] Posts returned from DB:", allPosts.length);
-      console.log("[Insights] First 3 posts date fields:", allPosts.slice(0, 3).map(p => ({
-        posted_at: p.posted_at,
-        fetched_at: p.fetched_at,
-      })));
-      // Client-side date filter — use first available date field
-      const cutoff = subDays(new Date(), rangeDays[range]);
-      const posts = allPosts.filter((p) => {
-        const dateStr = p.posted_at ?? p.fetched_at;
-        if (!dateStr) return true; // include if no date at all
-        return new Date(dateStr) >= cutoff;
-      });
+      const posts = postsRes.data ?? [];
+      console.log("[Insights] Posts returned from DB:", posts.length);
+      console.log("[Insights] First post raw:", JSON.stringify(posts?.[0], null, 2));
       const totalViews = posts.reduce((s, p) => s + (p.views ?? 0), 0);
       const totalLikes = posts.reduce((s, p) => s + (p.likes ?? 0), 0);
       const totalReplies = posts.reduce((s, p) => s + (p.replies ?? 0), 0);
