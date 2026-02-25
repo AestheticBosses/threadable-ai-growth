@@ -248,7 +248,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 55000);
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     let anthropicRes: Response;
     try {
