@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,54 @@ type SortDir = "asc" | "desc";
 const Insights = () => {
   usePageTitle("Insights", "Your performance analytics dashboard");
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [range, setRange] = useState<RangeType>("7d");
   const [analyzing, setAnalyzing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("posted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const autoFetchRan = useRef(false);
 
   const rangeDays: Record<RangeType, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90, custom: 30 };
+
+  // ─── Silent auto-fetch on mount ───
+  useEffect(() => {
+    if (!user?.id || autoFetchRan.current) return;
+    autoFetchRan.current = true;
+
+    (async () => {
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("last_fetched_at, threads_access_token")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (!profile?.threads_access_token) return;
+
+        const lastFetched = profile?.last_fetched_at ? new Date(profile.last_fetched_at) : null;
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+
+        if (lastFetched && lastFetched > sixHoursAgo) return;
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        await supabase.functions.invoke("fetch-user-posts", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        await supabase
+          .from("profiles")
+          .update({ last_fetched_at: new Date().toISOString() })
+          .eq("id", user.id);
+
+        queryClient.invalidateQueries({ queryKey: ["insights-performance"] });
+        toast.success("Posts synced", { duration: 2000 });
+      } catch {
+        // Silent fail — don't interrupt user
+      }
+    })();
+  }, [user?.id, queryClient]);
 
   // ─── Performance data ───
   const { data: perfData, isLoading: perfLoading } = useQuery({
