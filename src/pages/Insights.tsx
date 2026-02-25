@@ -55,9 +55,13 @@ const Insights = () => {
           .maybeSingle(),
       ]);
 
-      const posts = postsRes.data ?? [];
-      console.log("[Insights] Posts returned from DB:", posts.length);
-      console.log("[Insights] First post raw:", JSON.stringify(posts?.[0], null, 2));
+      const allPosts = postsRes.data ?? [];
+      const cutoff = subDays(new Date(), rangeDays[range]);
+      const posts = allPosts.filter((p) => {
+        const dateStr = p.posted_at ?? p.fetched_at;
+        if (!dateStr) return true;
+        return new Date(dateStr) >= cutoff;
+      });
       const totalViews = posts.reduce((s, p) => s + (p.views ?? 0), 0);
       const totalLikes = posts.reduce((s, p) => s + (p.likes ?? 0), 0);
       const totalReplies = posts.reduce((s, p) => s + (p.replies ?? 0), 0);
@@ -108,7 +112,7 @@ const Insights = () => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      console.log("[Insights] Regression query result:", JSON.stringify(data, null, 2));
+      
       return data;
     },
     enabled: !!user?.id,
