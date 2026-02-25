@@ -252,8 +252,9 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
       },
+      signal: AbortSignal.timeout(55000),
       body: JSON.stringify({
-        model: "claude-opus-4-6",
+        model: "claude-sonnet-4-20250514",
         max_tokens: Math.min(4000 + (postsPerDay * 800), 16000),
         system: systemPrompt,
         messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
