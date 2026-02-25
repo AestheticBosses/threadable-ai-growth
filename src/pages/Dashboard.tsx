@@ -6,6 +6,7 @@ import { WeeklyPipeline } from "@/components/dashboard/WeeklyPipeline";
 import { DailyActionBoard } from "@/components/dashboard/DailyActionBoard";
 import { LogResultCard } from "@/components/dashboard/LogResultCard";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
+import { WeeklyReviewSection } from "@/components/dashboard/WeeklyReviewSection";
 import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
 import { WeeklyApprovalGate } from "@/components/dashboard/WeeklyApprovalGate";
@@ -227,6 +228,9 @@ const Dashboard = () => {
 
             {/* ── Section 3: This Week's Performance ── */}
             <WeeklyPerformance />
+
+            {/* ── Weekly Review ── */}
+            <WeeklyReviewSection />
 
             {/* Quick Actions */}
             <QuickActionsCard />
