@@ -84,8 +84,8 @@ Deno.serve(async (req) => {
       }, delay);
     }
 
-    // --- Fire summary generation after pipeline completes (120s delay) ---
-    const SUMMARY_DELAY_MS = 120_000;
+    // --- Fire summary generation after pipeline completes (90s delay) ---
+    const SUMMARY_DELAY_MS = 90_000;
     setTimeout(() => {
       console.log(`[cmo-loop] Firing step: generate-cmo-summary (delay=${SUMMARY_DELAY_MS}ms)`);
       fireStep(supabaseUrl, "generate-cmo-summary", jwt);
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
 
     const allSteps = [
       ...steps.map((s, i) => ({ name: s.name, delay_seconds: i * 15 })),
-      { name: "generate-cmo-summary", delay_seconds: 120 },
+      { name: "generate-cmo-summary", delay_seconds: 90 },
     ];
 
     return new Response(

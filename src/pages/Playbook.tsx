@@ -233,15 +233,7 @@ const Playbook = () => {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw new Error(error.message || "Failed to trigger analysis");
-      toast({ title: "Analyzing your data — strategy will optimize in ~2 minutes" });
-      setTimeout(async () => {
-        const { data: { session: s } } = await supabase.auth.getSession();
-        if (s) {
-          await supabase.functions.invoke("generate-cmo-summary", {
-            headers: { Authorization: `Bearer ${s.access_token}` },
-          });
-        }
-      }, 100000);
+      toast({ title: "Analyzing your data — strategy will update in ~2-3 minutes" });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
