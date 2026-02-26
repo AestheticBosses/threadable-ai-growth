@@ -376,12 +376,12 @@ export function ContentPlanTab() {
     if (dayName !== todayDayName) return false;
     const parsed = parseTimeFlexible(timeStr);
     if (!parsed) return false;
-    // Build a Date object for today at the slot's local time
+    // Build a Date object for today at the slot's local time + 5 min buffer
     const now = new Date();
-    const slotDate = new Date(now);
-    slotDate.setHours(parsed.hours, parsed.minutes, 0, 0);
-    // Only mark as passed if the slot time is strictly before current local time
-    return slotDate.getTime() < now.getTime();
+    const slotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parsed.hours, parsed.minutes, 0, 0);
+    // Only mark as passed if slot time + 5 minutes is before current local time
+    const BUFFER_MS = 5 * 60 * 1000;
+    return (slotDate.getTime() + BUFFER_MS) < now.getTime();
   };
 
   // Checkbox component for post rows
