@@ -615,24 +615,30 @@ const Playbook = () => {
               </section>
 
               {/* ── Action buttons ── */}
-              <div className="pt-4 border-t border-border flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={handleAnalyzeOptimize}
-                  disabled={analyzingOptimizing}
-                  className="gap-2"
-                >
-                  {analyzingOptimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  {analyzingOptimizing ? "Analyzing…" : "Analyze & Optimize"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowRegenConfirm(true)}
-                  disabled={generatingStrategy}
-                  className="gap-2"
-                >
-                  {generatingStrategy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  {generatingStrategy ? "Regenerating…" : "Regenerate Strategy"}
-                </Button>
+              <div className="pt-4 border-t border-border flex flex-wrap items-start gap-6">
+                <div className="flex flex-col items-center gap-1">
+                  <Button
+                    onClick={handleAnalyzeOptimize}
+                    disabled={analyzingOptimizing}
+                    className="gap-2"
+                  >
+                    {analyzingOptimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {analyzingOptimizing ? "Analyzing…" : "Analyze & Optimize"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center max-w-[220px]">Updates your strategy based on what's actually performing</p>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowRegenConfirm(true)}
+                    disabled={generatingStrategy}
+                    className="gap-2"
+                  >
+                    {generatingStrategy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    {generatingStrategy ? "Regenerating…" : "Regenerate Strategy"}
+                  </Button>
+                  <p className="text-xs text-muted-foreground text-center max-w-[220px]">Rebuilds your entire strategy from scratch</p>
+                </div>
               </div>
             </div>
           </TabsContent>
