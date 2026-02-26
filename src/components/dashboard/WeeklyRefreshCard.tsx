@@ -43,7 +43,7 @@ export function WeeklyRefreshCard() {
 
   const summary = data.weekly_refresh_summary as {
     headline?: string;
-    changes?: { type?: string; change?: string }[];
+    changes?: (string | { type?: string; change?: string })[];
     top_insight?: string;
     recommendation?: string;
   } | null;
@@ -60,7 +60,7 @@ export function WeeklyRefreshCard() {
 
   const handleDiscuss = () => {
     if (!summary) return;
-    const changesText = summary.changes?.map(c => `${c.type ? c.type + ": " : ""}${c.change}`).join(". ") || "";
+    const changesText = summary.changes?.map(c => typeof c === "string" ? c : `${c.type ? c.type + ": " : ""}${c.change}`).join(". ") || "";
     const message = `My CMO strategy was just updated. Here's the summary: ${summary.headline || "Weekly strategy refresh"}. ${changesText}. Can you help me review this and suggest any adjustments before I apply it?`;
     navigate("/chat", { state: { cmoSummaryMessage: message } });
   };
@@ -96,7 +96,7 @@ export function WeeklyRefreshCard() {
                   {summary.changes.map((c, i) => (
                     <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
                       <span className="text-purple-400 shrink-0">-</span>
-                      <span>{c.type ? <strong className="text-foreground/80">{c.type}:</strong> : null} {c.change}</span>
+                      <span>{typeof c === "string" ? c : <>{c.type ? <strong className="text-foreground/80">{c.type}:</strong> : null} {c.change}</>}</span>
                     </li>
                   ))}
                 </ul>

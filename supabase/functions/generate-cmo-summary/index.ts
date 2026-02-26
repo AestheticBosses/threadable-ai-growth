@@ -86,10 +86,28 @@ Deno.serve(async (req) => {
     );
 
     // --- Build prompt ---
+    const cmoVoiceRules = `VOICE & TONE — You are a sharp, experienced CMO briefing a founder over coffee. Not an AI generating a report.
+- Use plain language a non-marketer would understand. No jargon without explanation.
+- Be direct and opinionated. Say "Do this" and "Stop doing that" — not "Consider exploring."
+- Ground every recommendation in a specific number or result from the data.
+- If something is working, say WHY it's working in simple terms.
+- If something is underperforming, say what to do about it specifically.
+
+OUTPUT FORMAT — Return ONLY valid JSON with this exact structure:
+{"headline": "string", "changes": ["string", "string"], "top_insight": "string", "recommendation": "string"}
+
+FIELD RULES:
+- headline: One punchy sentence a founder can act on. A directive, not a summary. Example good: "Your credibility posts are crushing it — shift 35% of your content there this week." Example bad: "Content Strategy Evolution: Streamlined Archetypes with Enhanced Performance Focus."
+- changes: Array of plain-English strings. Each describes what shifted and WHY, tied to actual data. Include before vs after numbers when available. No labels like "archetype_consolidation" — just clear bullets.
+- top_insight: The single most important thing the data is telling them. One sentence, specific, with a number.
+- recommendation: The #1 action they should take this week. Specific, actionable, measurable. Not "consider" or "explore" — tell them exactly what to do and why.`;
+
     let summaryPrompt: string;
 
     if (isFirstRun) {
-      summaryPrompt = `You are a CMO reviewing a content strategy for the first time. Analyze the current strategy data and return ONLY valid JSON with this structure: {"headline": "string", "changes": [{"type": "string", "change": "string"}], "top_insight": "string", "recommendation": "string"}. Since this is the first analysis, summarize the current strategy strengths and opportunities. Be specific and data-driven, reference actual numbers and patterns.
+      summaryPrompt = `${cmoVoiceRules}
+
+You are reviewing this creator's content strategy for the first time. There is no previous data to compare — this is their baseline. Analyze what they have and tell them what's strong, what's weak, and what to do first.
 
 CURRENT archetypes:
 ${JSON.stringify(currentArchetypes, null, 2)}
@@ -98,9 +116,19 @@ CURRENT regression insights:
 ${JSON.stringify(currentRegression, null, 2)}
 
 CURRENT content plan:
-${JSON.stringify(currentContentPlan, null, 2)}`;
+${JSON.stringify(currentContentPlan, null, 2)}
+
+For the "changes" array, describe the key strengths and gaps you see in their current strategy (3-4 bullets). For the headline, give them the single most important takeaway about their starting position.`;
     } else {
-      summaryPrompt = `You are a CMO summarizing weekly content strategy changes. Compare the before and after data and return ONLY valid JSON with this structure: {"headline": "string", "changes": [{"type": "string", "change": "string"}], "top_insight": "string", "recommendation": "string"}. Be specific and data-driven, reference actual numbers and patterns.
+      summaryPrompt = `${cmoVoiceRules}
+
+COMPARISON RULES — Be precise about what actually changed:
+- If archetype COUNT changed: say "Consolidated from X to Y" or "Expanded from X to Y" and explain why.
+- If archetype NAMES changed but the count is the same: say "Repositioned X archetypes" and describe the angle shift. NEVER say "reduced from 5 to 5" — that's not a reduction.
+- If archetype weights/percentages shifted: describe the reallocation as a strategic bet — what are you betting more on and why.
+- If regression insights changed: focus on what NEW correlations emerged or what old ones got stronger/weaker.
+- If the content plan shifted: describe the practical impact — what's different about what they'll post this week.
+- If nothing meaningful changed in a category: skip it entirely. Don't manufacture fake changes.
 
 PREVIOUS archetypes:
 ${JSON.stringify(previousSnapshot.archetypes, null, 2)}
@@ -118,7 +146,9 @@ PREVIOUS content plan:
 ${JSON.stringify(previousSnapshot.content_plan, null, 2)}
 
 CURRENT content plan:
-${JSON.stringify(currentContentPlan, null, 2)}`;
+${JSON.stringify(currentContentPlan, null, 2)}
+
+Compare before and after. Only describe changes that actually happened. Be honest — if the data barely changed, say so and focus on what the stable patterns mean.`;
     }
 
     // --- Call Claude ---
