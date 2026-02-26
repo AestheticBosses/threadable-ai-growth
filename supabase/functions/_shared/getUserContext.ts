@@ -49,6 +49,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     plansRes,
     archetypesRes,
     regressionRes,
+    aiRegressionRes,
     profileRes,
     salesFunnelRes,
     templatesRes,
@@ -76,6 +77,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "regression_insights").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("profiles").select("journey_stage, niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count, goal_type, dm_keyword, dm_offer, posts_per_day, revenue_target, business_model, success_metric").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number").limit(20),
     supabase.from("content_templates").select("archetype").eq("user_id", userId).order("archetype").order("sort_order").limit(20),
@@ -231,12 +233,43 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "";
 
-  // === REGRESSION INSIGHTS ===
+  // === REGRESSION INSIGHTS (from run-regression: strategy_type='weekly') ===
   const regressionData = regressionRes.data?.regression_insights as any;
-  let insightsSection = "No regression data available yet.";
+  let statInsights = "No statistical regression data available yet.";
   if (regressionData?.human_readable_insights && Array.isArray(regressionData.human_readable_insights)) {
-    insightsSection = regressionData.human_readable_insights.map((i: string) => `- ${i}`).join("\n");
+    statInsights = regressionData.human_readable_insights.map((i: string) => `- ${i}`).join("\n");
   }
+
+  let linkClickInsights = "";
+  if (regressionData?.link_clicks_insights) {
+    const lci = regressionData.link_clicks_insights;
+    const parts: string[] = [];
+    if (lci.human_readable_insights && Array.isArray(lci.human_readable_insights)) {
+      parts.push(...lci.human_readable_insights.map((i: string) => `- ${i}`));
+    } else if (Array.isArray(lci)) {
+      parts.push(...lci.map((i: any) => `- ${typeof i === "string" ? i : JSON.stringify(i)}`));
+    }
+    if (parts.length > 0) linkClickInsights = parts.join("\n");
+  }
+
+  // === AI ANALYSIS INSIGHTS (from run-analysis: strategy_type='regression_insights') ===
+  const aiRegressionData = aiRegressionRes.data?.strategy_data as any;
+  let aiInsights = "";
+  if (aiRegressionData?.insights && Array.isArray(aiRegressionData.insights)) {
+    aiInsights = aiRegressionData.insights.map((i: any) => {
+      if (typeof i === "string") return `- ${i}`;
+      const cat = i.category ? `[${i.category}] ` : "";
+      const insight = i.insight || "";
+      const rec = i.recommendation ? `: ${i.recommendation}` : "";
+      return `- ${cat}${insight}${rec}`;
+    }).join("\n");
+  }
+
+  const insightsSection = [
+    statInsights,
+    linkClickInsights ? `\n=== LINK CLICK INSIGHTS ===\n${linkClickInsights}` : "",
+    aiInsights ? `\n=== AI ANALYSIS INSIGHTS ===\n${aiInsights}` : "",
+  ].filter(Boolean).join("\n");
 
   // === PLANS ===
   const plans = plansRes.data || [];

@@ -33,24 +33,54 @@ serve(async (req) => {
       .eq("id", user.id)
       .single()
 
-    // Get ALL posts sorted by views
-    const { data: posts, error: postsError } = await adminClient
-      .from('posts_analyzed')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('views', { ascending: false })
+    // Get ALL posts sorted by views + post_results + statistical regression
+    const [postsRes, postResultsRes, regressionRes] = await Promise.all([
+      adminClient
+        .from('posts_analyzed')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('views', { ascending: false }),
+      adminClient
+        .from('post_results')
+        .select('post_id, link_clicks, comments_received, dm_replies, is_estimated')
+        .eq('user_id', user.id)
+        .eq('is_estimated', false),
+      adminClient
+        .from('content_strategies')
+        .select('regression_insights')
+        .eq('user_id', user.id)
+        .not('regression_insights', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    const posts = postsRes.data
+    const postsError = postsRes.error
 
     if (postsError || !posts?.length) {
       console.error("Posts error:", postsError)
       return new Response(JSON.stringify({ error: 'No posts found' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    console.log("Total posts:", posts.length)
+    // Build lookup: post_id → result data
+    const resultsByPostId = new Map<string, any>()
+    for (const r of (postResultsRes.data ?? [])) {
+      resultsByPostId.set(r.post_id, r)
+    }
 
-    // Prepare post data for Claude — send top 75 with full detail
-    const topPosts = posts.slice(0, 75).map((p: any, i: number) =>
-      `#${i+1} | Views: ${p.views} | Likes: ${p.likes} | Replies: ${p.replies} | Reposts: ${p.reposts} | Quotes: ${p.quotes || 0} | Eng%: ${p.engagement_rate}%\n"${p.text_content}"`
-    ).join('\n\n')
+    const statRegression = regressionRes.data?.regression_insights || null
+
+    console.log("Total posts:", posts.length, "| Post results:", resultsByPostId.size, "| Has stat regression:", !!statRegression)
+
+    // Prepare post data for Claude — send top 75 with full detail + link clicks
+    const topPosts = posts.slice(0, 75).map((p: any, i: number) => {
+      const result = resultsByPostId.get(p.id)
+      const clicksPart = result?.link_clicks != null ? ` | LinkClicks: ${result.link_clicks}` : ''
+      const commentsPart = result?.comments_received != null ? ` | Comments: ${result.comments_received}` : ''
+      const dmsPart = result?.dm_replies != null ? ` | DMs: ${result.dm_replies}` : ''
+      return `#${i+1} | Views: ${p.views} | Likes: ${p.likes} | Replies: ${p.replies} | Reposts: ${p.reposts} | Quotes: ${p.quotes || 0} | Eng%: ${p.engagement_rate}%${clicksPart}${commentsPart}${dmsPart}\n"${p.text_content}"`
+    }).join('\n\n')
 
     const totalViews = posts.reduce((s: number, p: any) => s + (p.views || 0), 0)
     const totalLikes = posts.reduce((s: number, p: any) => s + (p.likes || 0), 0)
@@ -93,10 +123,15 @@ Keep this context in mind throughout your analysis. Weight content patterns that
 ACCOUNT SUMMARY:
 ${summary}
 
-Here are their posts ranked by views (top 75 shown with full text):
+Here are their posts ranked by views (top 75 shown with full text, with LinkClicks/Comments/DMs where the user logged results):
 
 ${topPosts}
+${statRegression ? `
+=== STATISTICAL REGRESSION OUTPUT ===
+Use this as ground truth for correlations. Your qualitative analysis should confirm and explain these patterns with specific examples from the posts.
 
+${JSON.stringify(statRegression, null, 2)}
+` : ''}
 Perform a COMPREHENSIVE analysis and return results in three sections:
 
 SECTION 1 — REGRESSION INSIGHTS
@@ -108,6 +143,7 @@ Analyze what content characteristics actually drive performance. Don't just look
 - Length patterns (optimal word count ranges for views vs engagement)
 - Topic categories (business advice, personal life, industry hot takes, behind-the-scenes)
 - Language patterns (profanity impact, first person vs second person, present tense vs past tense)
+- Link click drivers: which post characteristics correlate with higher link clicks? Look at funnel stage, archetype, hook type, and dollar amounts vs link_clicks in the post data
 
 For each finding, provide:
 - The insight (what you found)
