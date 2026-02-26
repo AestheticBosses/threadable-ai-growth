@@ -1,13 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw, Check, MessageSquare } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 export function WeeklyRefreshCard() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ["weekly-refresh-summary", user?.id],
@@ -45,13 +48,21 @@ export function WeeklyRefreshCard() {
     recommendation?: string;
   } | null;
 
-  const handleDismiss = async () => {
+  const handleApply = async () => {
     if (!user?.id) return;
     await supabase
       .from("profiles")
       .update({ weekly_refresh_summary: null })
       .eq("id", user.id);
     queryClient.invalidateQueries({ queryKey: ["weekly-refresh-summary"] });
+    toast({ title: "Strategy applied", description: "Your plan is up to date" });
+  };
+
+  const handleDiscuss = () => {
+    if (!summary) return;
+    const changesText = summary.changes?.map(c => `${c.type ? c.type + ": " : ""}${c.change}`).join(". ") || "";
+    const message = `My CMO strategy was just updated. Here's the summary: ${summary.headline || "Weekly strategy refresh"}. ${changesText}. Can you help me review this and suggest any adjustments before I apply it?`;
+    navigate("/chat", { state: { cmoSummaryMessage: message } });
   };
 
   // Summary not yet generated — show simple date line
@@ -70,11 +81,11 @@ export function WeeklyRefreshCard() {
     );
   }
 
-  // Full summary card
+  // Full summary card with action buttons
   return (
     <Card className="border-purple-500/30 bg-purple-500/5">
       <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="space-y-3">
           <div className="flex items-start gap-3 min-w-0">
             <RefreshCw className="h-4 w-4 text-purple-400 mt-0.5 shrink-0" />
             <div className="min-w-0 space-y-2">
@@ -107,14 +118,26 @@ export function WeeklyRefreshCard() {
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-            onClick={handleDismiss}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              size="sm"
+              className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 gap-1.5"
+              onClick={handleApply}
+            >
+              <Check className="h-3.5 w-3.5" />
+              Apply to My Plan
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+              onClick={handleDiscuss}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Discuss with CMO
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

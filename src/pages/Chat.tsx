@@ -1,6 +1,7 @@
 // Build trigger - race condition fix: flowMode set before DB calls to prevent useEffect reset
 // Build trigger - race condition fix: flowMode set before DB calls to prevent useEffect reset
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -254,6 +255,7 @@ function generateTitleFromMessage(msg: string): string {
 /* ─── Main component ─── */
 const Chat = () => {
   usePageTitle("Chat", "Ask Threadable AI");
+  const location = useLocation();
   const { user } = useAuth();
   const { canGenerate, isPaid, isLoading: subLoading } = useSubscription();
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -320,6 +322,17 @@ const Chat = () => {
     const recentSession = sessions.find((s) => new Date(s.created_at) >= today && s.title === "New chat");
     if (recentSession) setActiveSessionId(recentSession.id);
   }, [sessions, sessionsLoading, activeSessionId]);
+
+  // Handle CMO summary navigation state — pre-fill input
+  const cmoHandledRef = useRef(false);
+  useEffect(() => {
+    const state = location.state as { cmoSummaryMessage?: string } | null;
+    if (state?.cmoSummaryMessage && !cmoHandledRef.current) {
+      cmoHandledRef.current = true;
+      setInput(state.cmoSummaryMessage);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Scroll to bottom on flow changes
   useEffect(() => {
