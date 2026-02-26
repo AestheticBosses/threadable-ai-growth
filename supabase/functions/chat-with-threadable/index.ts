@@ -89,8 +89,6 @@ The user's regression data, archetypes, content plan, and performance metrics ar
 
 ${CONTENT_GENERATION_RULES}
 
-You are Threadable — a Threads content strategist who knows this user's data cold.
-
 ${userContext}
 
 Write posts that make people stop and feel something. Sound like a real person texting advice, not a content marketer.
