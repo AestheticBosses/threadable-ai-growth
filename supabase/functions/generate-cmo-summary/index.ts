@@ -71,18 +71,32 @@ Deno.serve(async (req) => {
     const currentRegression = regressionRes.data?.regression_insights || null;
     const currentContentPlan = contentPlanRes.data?.plan_data || null;
 
-    // --- Read PREVIOUS state from snapshots ---
-    const { data: previousSnapshot } = await adminClient
+    // --- Find the last MEANINGFULLY DIFFERENT snapshot ---
+    const { data: recentSnapshots } = await adminClient
       .from("weekly_strategy_snapshots")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
+
+    const currentAStr = JSON.stringify(currentArchetypes);
+    const currentRStr = JSON.stringify(currentRegression);
+    const currentCStr = JSON.stringify(currentContentPlan);
+
+    let previousSnapshot: any = null;
+    for (const snap of (recentSnapshots ?? [])) {
+      const samA = JSON.stringify(snap.archetypes) === currentAStr;
+      const samR = JSON.stringify(snap.regression_insights) === currentRStr;
+      const samC = JSON.stringify(snap.content_plan) === currentCStr;
+      if (!samA || !samR || !samC) {
+        previousSnapshot = snap;
+        break;
+      }
+    }
 
     const isFirstRun = !previousSnapshot;
     console.log(
-      `[cmo-summary] ${isFirstRun ? "First run — no previous snapshot" : "Previous snapshot found"}`,
+      `[cmo-summary] ${isFirstRun ? "No meaningfully different snapshot found — treating as first run" : `Using snapshot from ${previousSnapshot.created_at} for comparison`}`,
     );
 
     // --- Build prompt ---
