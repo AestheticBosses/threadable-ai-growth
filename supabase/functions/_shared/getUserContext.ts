@@ -124,11 +124,12 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
         if (item.label && item.value) {
           storyLines.push(`- Number: ${item.label} = ${item.value}${item.context ? ` (${item.context})` : ""}`);
         } else {
-          // Send first 300 chars of story text as factual reference
-          const factSnippet = storyText.length > 300 ? storyText.substring(0, 300) + "…" : storyText;
-          const parts = [`- Story: ${title}`];
-          if (factSnippet) parts.push(`  Facts: ${factSnippet}`);
-          if (lesson) parts.push(`  Lesson: ${lesson}`);
+          // Send first 150 chars of story text — gist + tone, not full narrative
+          const factSnippet = storyText.length > 150 ? storyText.substring(0, 150) + "…" : storyText;
+          const lessonSnippet = lesson.length > 80 ? lesson.substring(0, 80) + "…" : lesson;
+          const parts = [`- ${title}`];
+          if (factSnippet) parts.push(`  ${factSnippet}`);
+          if (lessonSnippet) parts.push(`  Lesson: ${lessonSnippet}`);
           storyLines.push(parts.join("\n"));
         }
       }
@@ -189,12 +190,12 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     }).join("\n\n");
   }
 
-  // === KNOWLEDGE BASE ===
+  // === KNOWLEDGE BASE (compact — 150 char summaries, top 20) ===
   const knowledge = knowledgeRes.data || [];
   const knowledgeSection = knowledge.length > 0
-    ? knowledge.map((k: any) => {
-        const summary = k.summary || "";
-        return `- [${k.type}] ${k.title}: ${summary.slice(0, 500)}`;
+    ? knowledge.slice(0, 20).map((k: any) => {
+        const summary = (k.summary || "").substring(0, 150);
+        return `- [${k.type}] ${k.title}: ${summary}`;
       }).join("\n")
     : "No knowledge base items.";
 
@@ -271,20 +272,61 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     aiInsights ? `\n=== AI ANALYSIS INSIGHTS ===\n${aiInsights}` : "",
   ].filter(Boolean).join("\n");
 
-  // === PLANS ===
+  // === PLANS (plain text summaries — no raw JSON) ===
   const plans = plansRes.data || [];
   const contentPlan = plans.find((p: any) => p.plan_type === "content_plan");
   const brandingPlan = plans.find((p: any) => p.plan_type === "branding_plan");
   const funnelPlan = plans.find((p: any) => p.plan_type === "funnel_strategy");
+
+  let contentPlanSummary = "Not generated yet";
+  if (contentPlan?.plan_data) {
+    const cp = contentPlan.plan_data as any;
+    const cadence = cp.posting_cadence || cp.cadence || "";
+    const themes = cp.themes || cp.weekly_themes || [];
+    contentPlanSummary = cadence ? `Cadence: ${cadence}` : "Active";
+    if (Array.isArray(themes) && themes.length > 0) {
+      contentPlanSummary += ` | Themes: ${themes.slice(0, 5).map((t: any) => typeof t === "string" ? t : t.name || t.theme || "").filter(Boolean).join(", ")}`;
+    }
+  }
+
+  let brandingSummary = "Not generated yet";
+  if (brandingPlan?.plan_data) {
+    const bp = brandingPlan.plan_data as any;
+    brandingSummary = `Positioning: ${bp.positioning_statement || bp.positioning || "N/A"}`;
+    if (bp.tone) brandingSummary += ` | Tone: ${bp.tone}`;
+  }
+
+  let funnelSummary = "Not generated yet";
+  if (funnelPlan?.plan_data) {
+    const fp = funnelPlan.plan_data as any;
+    const stages = fp.stages || fp.steps || [];
+    if (Array.isArray(stages) && stages.length > 0) {
+      funnelSummary = stages.slice(0, 4).map((s: any) => typeof s === "string" ? s : s.name || s.stage || "").filter(Boolean).join(" → ");
+    } else {
+      funnelSummary = "Active";
+    }
+  }
+
   const plansSection = [
-    contentPlan ? `Content Plan: ${JSON.stringify(contentPlan.plan_data).slice(0, 500)}` : "Content Plan: Not generated yet",
-    brandingPlan ? `Branding Plan: Positioning: ${(brandingPlan.plan_data as any)?.positioning_statement || "N/A"}` : "Branding Plan: Not generated yet",
-    funnelPlan ? `Funnel Strategy: ${JSON.stringify(funnelPlan.plan_data).slice(0, 500)}` : "Funnel Strategy: Not generated yet",
+    `Content Plan: ${contentPlanSummary}`,
+    `Branding: ${brandingSummary}`,
+    `Funnel: ${funnelSummary}`,
   ].join("\n");
 
   // === PROFILE ===
+  let voiceProfileText = "Not set";
+  if (profile?.voice_profile) {
+    const vp = profile.voice_profile as any;
+    if (typeof vp === "string") {
+      voiceProfileText = vp.substring(0, 150);
+    } else {
+      // Extract key voice traits from JSON object
+      const traits = [vp.tone, vp.style, vp.energy, vp.personality].filter(Boolean);
+      voiceProfileText = traits.length > 0 ? traits.join(", ") : "Custom";
+    }
+  }
   const profileSection = profile
-    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nGoal Type: ${profile.goal_type || "Not set"}\nMission: ${profile.mission || "Not set"}\nRevenue Target: ${profile.revenue_target || "Not set"}\nBusiness Model: ${profile.business_model || "Not set"}\nSuccess Metric: ${profile.success_metric || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nPosts Per Day: ${profile.posts_per_day || "Not set"}\nTraffic URL (for BOF/CTA posts): ${profile.traffic_url || "Not set"}\nDM Keyword: ${profile.dm_keyword || "Not set"}\nDM Offer: ${profile.dm_offer || "Not set"}\nVoice Profile: ${profile.voice_profile ? JSON.stringify(profile.voice_profile) : "Not set"}`
+    ? `Niche: ${profile.niche || "Not specified"}\nDream Client: ${profile.dream_client || "Not specified"}\nEnd Goal: ${profile.end_goal || "Not specified"}\nGoal Type: ${profile.goal_type || "Not set"}\nMission: ${profile.mission || "Not set"}\nRevenue Target: ${profile.revenue_target || "Not set"}\nBusiness Model: ${profile.business_model || "Not set"}\nSuccess Metric: ${profile.success_metric || "Not set"}\nFollower Count: ${profile.follower_count || "Unknown"}\nPosting Cadence: ${profile.posting_cadence || "Not set"}\nPosts Per Day: ${profile.posts_per_day || "Not set"}\nTraffic URL: ${profile.traffic_url || "Not set"}\nDM Keyword: ${profile.dm_keyword || "Not set"}\nDM Offer: ${profile.dm_offer || "Not set"}\nVoice: ${voiceProfileText}`
     : "No profile data.";
 
   // === SALES FUNNEL ===
@@ -310,34 +352,31 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     ).join("\n");
   }
 
-  // === COMPETITOR INSIGHTS (patterns only — do NOT copy their content) ===
+  // === COMPETITOR INSIGHTS (compact — hook + trigger themes only, top 10) ===
   const competitorAccounts = competitorAccountsRes.data || [];
   const competitorPosts = competitorPostsRes.data || [];
   let competitorSection = "No competitor accounts saved.";
   if (competitorAccounts.length > 0 || competitorPosts.length > 0) {
     const parts: string[] = [];
     if (competitorAccounts.length > 0) {
-      parts.push("Accounts being studied: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
+      parts.push("Studying: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
     }
     if (competitorPosts.length > 0) {
-      parts.push("Top competitor post patterns (learn the structure and triggers — apply to user's own stories):");
-      competitorPosts.forEach((p: any, i: number) => {
+      parts.push("Top competitor patterns:");
+      competitorPosts.slice(0, 10).forEach((p: any, i: number) => {
         const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
         const hook = classifyHook(text);
         const emotion = classifyEmotion(text);
-        parts.push(`${i + 1}. [@${p.source_username || "unknown"}] Hook: ${hook} | Trigger: ${emotion} | ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"} | Length: ${text.length} chars | Opens with: "${firstWords}…"`);
+        parts.push(`${i + 1}. @${p.source_username || "?"} — ${hook} + ${emotion} (${p.views || 0} views)`);
       });
     }
     competitorSection = parts.join("\n");
   }
 
-  // === CONTENT BUCKETS ===
+  // === CONTENT BUCKETS (compact — name + audience only) ===
   const buckets = bucketsRes.data || [];
   const bucketsSection = buckets.length > 0
-    ? buckets.map((b: any, i: number) =>
-        `${i + 1}. ${b.name} (Priority: ${b.priority}): ${b.description || ""}\n   Persona: ${b.audience_persona || "Not defined"}`
-      ).join("\n")
+    ? buckets.map((b: any) => `- ${b.name}: ${(b.audience_persona || "General audience").substring(0, 80)}`).join("\n")
     : "No content buckets defined yet.";
 
   // === CONTENT PILLARS + TOPICS ===
@@ -349,9 +388,11 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     (topicsByPillar[t.pillar_id] = topicsByPillar[t.pillar_id] || []).push(t.name);
   }
   const pillarsSection = pillarsList.length > 0
-    ? pillarsList.map((p: any, i: number) => {
+    ? pillarsList.map((p: any) => {
         const topics = topicsByPillar[p.id] || [];
-        return `${i + 1}. ${p.name} (${p.purpose || "general"}) — ${p.percentage || 0}% of content\n   ${p.description || ""}\n   Topics: ${topics.length > 0 ? topics.join(", ") : "None yet"}`;
+        const desc = (p.description || "").substring(0, 60);
+        const topicStr = topics.length > 0 ? ` | Topics: ${topics.slice(0, 5).join(", ")}` : "";
+        return `- ${p.name} (${p.percentage || 0}%): ${desc}${topicStr}`;
       }).join("\n")
     : "No content pillars defined yet.";
 
@@ -408,12 +449,10 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
         const dayName = dayNames[date.getDay()];
         const dayLabel = i === 0 ? `Tomorrow (${dayName})` : `${dayName} ${item.scheduled_date}`;
         const pillarName = pillarNameMap[item.pillar_id] || "Unknown Pillar";
-        const topicName = item.topic_id ? topicIdMap[item.topic_id] : null;
         const archetype = item.archetype || "—";
         const funnel = item.funnel_stage || "—";
         const test = item.is_test_slot ? " [TEST]" : "";
-        const topicPart = topicName ? ` — "${topicName}"` : "";
-        return `${dayLabel}: ${pillarName} × ${archetype}${topicPart} (${funnel})${test}\n  → ${funnelInstruction(funnel)}`;
+        return `${dayLabel}: ${pillarName} × ${archetype} (${funnel})${test}`;
       }).join("\n");
     }
   }
