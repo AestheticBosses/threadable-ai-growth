@@ -30,7 +30,7 @@ const Dashboard = () => {
   const [fetching, setFetching] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [profileRefreshed, setProfileRefreshed] = useState(false);
-  const [refreshingStrategy, setRefreshingStrategy] = useState(false);
+  
 
   const { data: allPosts, isLoading: postsLoading } = usePostsAnalyzed();
 
@@ -147,34 +147,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleRefreshStrategy = async () => {
-    if (!user) return;
-    setRefreshingStrategy(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Not logged in"); return; }
-      const { error } = await supabase.functions.invoke("run-weekly-cmo-loop", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (error) { toast.error(error.message || "Failed to trigger strategy refresh"); return; }
-      toast.success("Strategy refresh triggered — your plan will update in ~2 minutes");
-
-      // Fire summary generation after pipeline has time to complete
-      setTimeout(async () => {
-        const { data: { session: s } } = await supabase.auth.getSession();
-        if (s) {
-          await supabase.functions.invoke("generate-cmo-summary", {
-            headers: { Authorization: `Bearer ${s.access_token}` },
-          });
-        }
-      }, 100000);
-    } catch {
-      toast.error("Failed to trigger strategy refresh");
-    } finally {
-      setRefreshingStrategy(false);
-    }
-  };
-
   const hasAnyData = (allPosts?.length ?? 0) > 0;
   const isLoading = postsLoading && !allPosts;
 
@@ -241,23 +213,6 @@ const Dashboard = () => {
             {/* ── Weekly Refresh Summary ── */}
             <WeeklyRefreshCard />
 
-            {/* ── Manual Strategy Refresh ── */}
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshStrategy}
-                disabled={refreshingStrategy}
-                className="gap-2"
-              >
-                {refreshingStrategy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <span>✦</span>
-                )}
-                {refreshingStrategy ? "Refreshing…" : "Refresh Strategy"}
-              </Button>
-            </div>
 
             {/* ── Section 1: Plan Health Hero ── */}
             <PlanHealthHero />

@@ -90,6 +90,7 @@ const Playbook = () => {
   const [strategyProgress, setStrategyProgress] = useState<Record<string, "pending" | "generating" | "done" | "error">>({});
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
+  const [analyzingOptimizing, setAnalyzingOptimizing] = useState(false);
 
   const isLoading = playbookLoading || profileLoading || bucketsLoading || pillarsLoading;
   const hasV2Strategy = (buckets && buckets.length > 0) || (pillars && pillars.length > 0);
@@ -218,6 +219,33 @@ const Playbook = () => {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // ── Analyze & Optimize (CMO loop + summary) ──
+  const handleAnalyzeOptimize = async () => {
+    if (!user) return;
+    setAnalyzingOptimizing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
+      const { error } = await supabase.functions.invoke("run-weekly-cmo-loop", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) throw new Error(error.message || "Failed to trigger analysis");
+      toast({ title: "Analyzing your data — strategy will optimize in ~2 minutes" });
+      setTimeout(async () => {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        if (s) {
+          await supabase.functions.invoke("generate-cmo-summary", {
+            headers: { Authorization: `Bearer ${s.access_token}` },
+          });
+        }
+      }, 100000);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setAnalyzingOptimizing(false);
     }
   };
 
@@ -586,15 +614,25 @@ const Playbook = () => {
                )}
               </section>
 
-              {/* ── Regenerate Strategy (secondary) ── */}
-              <div className="pt-4 border-t border-border">
-                <button
+              {/* ── Action buttons ── */}
+              <div className="pt-4 border-t border-border flex flex-wrap items-center gap-3">
+                <Button
+                  onClick={handleAnalyzeOptimize}
+                  disabled={analyzingOptimizing}
+                  className="gap-2"
+                >
+                  {analyzingOptimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {analyzingOptimizing ? "Analyzing…" : "Analyze & Optimize"}
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setShowRegenConfirm(true)}
                   disabled={generatingStrategy}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 disabled:opacity-50"
+                  className="gap-2"
                 >
-                  {generatingStrategy ? "Regenerating…" : "Regenerate entire strategy…"}
-                </button>
+                  {generatingStrategy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {generatingStrategy ? "Regenerating…" : "Regenerate Strategy"}
+                </Button>
               </div>
             </div>
           </TabsContent>
@@ -602,14 +640,6 @@ const Playbook = () => {
           {/* ═══ Tab: Archetypes ═══ */}
           <TabsContent value="archetypes">
             <div className="space-y-10 mt-4">
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={handleGeneratePlaybook} disabled={generating} className="gap-2">
-                  {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                  {generating ? "Regenerating…" : "Regenerate Analysis"}
-                </Button>
-              </div>
-
               {/* Archetype Cards */}
               {archetypeDiscovery?.archetypes && archetypeDiscovery.archetypes.length > 0 ? (
                 <section className="space-y-4">
