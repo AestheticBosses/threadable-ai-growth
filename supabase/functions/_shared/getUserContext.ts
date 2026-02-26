@@ -475,8 +475,56 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "=== PLANS ===\n" +
     plansSection;
 
-  // Debug: log context size to help diagnose content quality issues
-  console.log(`[getUserContext] Total context: ${result.length} chars | Sections: identity=${identitySection.length}, stories=${storiesSection.length}, posts=${viewsSection.length}, competitors=${competitorSection.length}, pillars=${pillarsSection.length}, plan=${weekPlanSection.length}`);
+  // === CONTEXT SIZE DEBUG: per-section breakdown ===
+  const sectionSizes: Record<string, number> = {
+    journeyStage: journeySection.length,
+    identity: identitySection.length,
+    profile: profileSection.length,
+    stories: storiesSection.length,
+    offers: offersSection.length,
+    audiences: audiencesSection.length,
+    personal: personalSection.length,
+    voiceStyle: styleSection.length + prefsSection.length,
+    archetypes: archetypesSection.length,
+    templates: templatesSection.length,
+    salesFunnel: funnelSection.length,
+    knowledgeBase: knowledgeSection.length,
+    regressionInsights: insightsSection.length,
+    topPostsByViews: viewsSection.length,
+    topPostsByEngagement: engagementSection.length,
+    recentPosts: recentSection.length,
+    competitors: competitorSection.length,
+    contentBuckets: bucketsSection.length,
+    contentPillars: pillarsSection.length,
+    todayPost: weekPlanSection.length,
+    restOfWeek: restOfWeekSection.length,
+    plans: plansSection.length,
+  };
+
+  // Sort by size descending to surface biggest offenders
+  const sorted = Object.entries(sectionSizes).sort((a, b) => b[1] - a[1]);
+  console.log(`[getUserContext] === CONTEXT SIZE AUDIT ===`);
+  console.log(`[getUserContext] TOTAL: ${result.length} chars`);
+  for (const [name, size] of sorted) {
+    const pct = ((size / result.length) * 100).toFixed(1);
+    const flag = size > 3000 ? " ⚠️ LARGE" : size > 1500 ? " ⚡ MEDIUM" : "";
+    console.log(`[getUserContext]   ${name}: ${size} chars (${pct}%)${flag}`);
+  }
+
+  // Flag specific bloat patterns
+  if (plansSection.includes("{")) {
+    console.log(`[getUserContext] ⚠️ PLANS section contains raw JSON — should be summarized`);
+  }
+  if (profileSection.includes("{")) {
+    console.log(`[getUserContext] ⚠️ PROFILE section contains raw JSON (likely voice_profile) — should be summarized`);
+  }
+  if (knowledgeSection.length > 3000) {
+    console.log(`[getUserContext] ⚠️ KNOWLEDGE BASE is ${knowledgeSection.length} chars — ${knowledge.length} items × up to 500 chars each`);
+  }
+  if (restOfWeekSection.length > 2000) {
+    console.log(`[getUserContext] ⚠️ REST OF WEEK is ${restOfWeekSection.length} chars — ${planItems.length - 1} days with full funnel instructions`);
+  }
+  console.log(`[getUserContext] === END AUDIT ===`);
 
   return result;
 }
