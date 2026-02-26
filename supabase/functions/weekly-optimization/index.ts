@@ -114,7 +114,7 @@ async function processUser(
     .from("content_strategies")
     .select("regression_insights, created_at")
     .eq("user_id", userId)
-    .not("regression_insights", "is", null)
+    .eq("strategy_type", "regression")
     .order("created_at", { ascending: false })
     .limit(2);
 

@@ -76,7 +76,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("posts_analyzed").select("text_content, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("posted_at", { ascending: false }).limit(10),
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
-    supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "regression").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "regression_insights").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("profiles").select("journey_stage, niche, dream_client, end_goal, voice_profile, posting_cadence, traffic_url, mission, follower_count, goal_type, dm_keyword, dm_offer, posts_per_day, revenue_target, business_model, success_metric").eq("id", userId).single(),
     supabase.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number").limit(20),
@@ -233,7 +233,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "";
 
-  // === REGRESSION INSIGHTS (from run-regression: strategy_type='weekly') ===
+  // === REGRESSION INSIGHTS (from run-regression: strategy_type='regression') ===
   const regressionData = regressionRes.data?.regression_insights as any;
   let statInsights = "No statistical regression data available yet.";
   if (regressionData?.human_readable_insights && Array.isArray(regressionData.human_readable_insights)) {

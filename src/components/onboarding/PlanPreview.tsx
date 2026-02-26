@@ -169,7 +169,7 @@ export default function PlanPreview({ journeyStage, goalType, onNavigate }: Plan
           .from("content_strategies")
           .select("regression_insights")
           .eq("user_id", user.id)
-          .not("regression_insights", "is", null)
+          .eq("strategy_type", "regression")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),

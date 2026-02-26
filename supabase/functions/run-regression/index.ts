@@ -374,6 +374,7 @@ Deno.serve(async (req) => {
       .from("content_strategies")
       .insert({
         user_id: userId,
+        strategy_type: "regression",
         regression_insights: regressionInsights,
         week_number: weekNumber,
         year: now.getFullYear(),
