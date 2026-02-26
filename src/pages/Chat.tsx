@@ -284,6 +284,7 @@ const Chat = () => {
 
   // Pending action ref — survives re-renders caused by session creation
   const pendingActionRef = useRef<{ type: string; label?: string; message?: string } | null>(null);
+  const isSendingRef = useRef(false);
 
   // Sidebar editing
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -374,7 +375,10 @@ const Chat = () => {
     // Don't reset flow items if we're in guided or preview mode — those modes
     // manage their own items and a messages.length change (from saving to DB)
     // should not wipe them out.
+    // Also skip if a send is in progress — ensureSession() changes activeSessionId
+    // which would otherwise wipe flowItems before the message is displayed.
     if (flowMode === "guided" || flowMode === "preview") return;
+    if (isSendingRef.current) return;
 
     setHistoryPreviewData(null);
     if (messages.length > 0) {
@@ -936,6 +940,7 @@ const Chat = () => {
       setFlowMode("chat");
       setFlowItems([]);
       setHistoryPreviewData(null);
+      isSendingRef.current = true;
       const sessionId = await ensureSession();
       await sendMessage({ content: msg, role: "user" });
       if (messages.length === 0) {
@@ -952,6 +957,7 @@ const Chat = () => {
           setFlowItems([{ id: "chat-stream", type: "streaming", content: fullResponse }]);
         },
         onDone: async () => {
+          isSendingRef.current = false;
           setFlowItems([]);
           if (fullResponse.trim()) {
             await sendMessage({ content: fullResponse, role: "assistant" });
@@ -960,6 +966,7 @@ const Chat = () => {
           setIsBusy(false);
         },
         onError: async (errMsg) => {
+          isSendingRef.current = false;
           setFlowItems([]);
           toast({ title: "Error", description: errMsg, variant: "destructive" });
           await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant" });
