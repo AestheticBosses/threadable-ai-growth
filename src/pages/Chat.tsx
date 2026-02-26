@@ -16,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { InlineContextCards } from "@/components/chat/ContextSelection";
-import { parsePostIdeas } from "@/components/chat/PostIdeasView";
+import { parsePostIdeas, stripModeTag } from "@/components/chat/PostIdeasView";
 import { DraftingProgress } from "@/components/chat/DraftingProgress";
 import { PostPreviewSplit, tryParseAnalysisJSON, type AnalysisData } from "@/components/chat/PostPreviewSplit";
 import { useQuery } from "@tanstack/react-query";
@@ -540,20 +540,21 @@ const Chat = () => {
       messageHistory: getMessageHistory(),
       onDelta: (chunk) => {
         fullResponse += chunk;
-        updateItem(streamingId, { content: fullResponse });
+        updateItem(streamingId, { content: stripModeTag(fullResponse).text });
       },
       onDone: async () => {
         removeItem(streamingId);
+        const { mode, text: cleanText } = stripModeTag(fullResponse);
         if (fullResponse.trim()) {
           await sendMessage({ content: fullResponse, role: "assistant" });
         }
-        const ideas = parsePostIdeas(fullResponse);
+        const ideas = mode !== 'cmo' ? parsePostIdeas(cleanText) : null;
         if (ideas && ideas.length >= 2) {
           setPostIdeas(ideas);
           addItem({ type: "ai", content: `Here are ${ideas.length} post ideas based on your selection:` });
           addItem({ type: "idea-cards", ideas });
         } else {
-          addItem({ type: "ai", content: fullResponse });
+          addItem({ type: "ai", content: cleanText });
         }
         setIsBusy(false);
       },
@@ -599,20 +600,21 @@ const Chat = () => {
       messageHistory: getMessageHistory(),
       onDelta: (chunk) => {
         fullResponse += chunk;
-        updateItem(streamingId, { content: fullResponse });
+        updateItem(streamingId, { content: stripModeTag(fullResponse).text });
       },
       onDone: async () => {
         removeItem(streamingId);
+        const { mode, text: cleanText } = stripModeTag(fullResponse);
         if (fullResponse.trim()) {
           await sendMessage({ content: fullResponse, role: "assistant" });
         }
-        const ideas = parsePostIdeas(fullResponse);
+        const ideas = mode !== 'cmo' ? parsePostIdeas(cleanText) : null;
         if (ideas && ideas.length >= 2) {
           setPostIdeas(ideas);
           addItem({ type: "ai", content: `Here are some ideas for you:` });
           addItem({ type: "idea-cards", ideas });
         } else {
-          addItem({ type: "ai", content: fullResponse });
+          addItem({ type: "ai", content: cleanText });
         }
         setIsBusy(false);
       },
@@ -977,19 +979,20 @@ const Chat = () => {
         messageHistory: getMessageHistory(),
         onDelta: (chunk) => {
           fullResponse += chunk;
-          updateItem(streamingId, { content: fullResponse });
+          updateItem(streamingId, { content: stripModeTag(fullResponse).text });
         },
         onDone: async () => {
           removeItem(streamingId);
+          const { mode, text: cleanText } = stripModeTag(fullResponse);
           if (fullResponse.trim()) {
             await sendMessage({ content: fullResponse, role: "assistant" });
-            const ideas = parsePostIdeas(fullResponse);
+            const ideas = mode !== 'cmo' ? parsePostIdeas(cleanText) : null;
             if (ideas && ideas.length >= 2) {
               setPostIdeas(ideas);
               addItem({ type: "ai", content: `Here are ${ideas.length} variations for you:` });
               addItem({ type: "idea-cards", ideas });
             } else {
-              addItem({ type: "ai", content: fullResponse });
+              addItem({ type: "ai", content: cleanText });
             }
           }
           setIsBusy(false);
@@ -1304,55 +1307,61 @@ const Chat = () => {
               if (prevIsDraft && thisIsAnalysis) return null;
             }
 
-            // Try parsing as idea cards — works for BOTH "post ideas" and "template" responses
-            const parsedIdeas = parsePostIdeas(m.content);
-            if (parsedIdeas && parsedIdeas.length >= 2) {
-              return (
-                <div key={m.id} className="flex justify-start">
-                  <div className="max-w-[90%] w-full space-y-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
-                      <span className="text-xs font-medium text-muted-foreground">Threadable</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">Here are {parsedIdeas.length} post ideas:</p>
-                    {parsedIdeas.map((idea, i) => (
-                      <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
-                        <h4 className="text-sm font-semibold text-foreground">Idea {i + 1}: {idea.title}</h4>
-                        <div className="max-h-[300px] overflow-y-auto">
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                            {idea.body}
-                          </p>
-                        </div>
-                        {(idea.archetype || idea.funnelStage) && (
-                          <div className="flex gap-2 flex-wrap">
-                            {idea.archetype && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                                {idea.archetype}
-                              </span>
-                            )}
-                            {idea.funnelStage && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground border border-border">
-                                {idea.funnelStage}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleDraftIdea(idea)}
-                          disabled={isBusy}
-                          className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px] w-full md:w-auto"
-                        >
-                          📄 Draft post
-                        </button>
+            // Strip mode tag for assistant messages
+            const { mode: msgMode, text: msgCleanText } = m.role === "assistant" ? stripModeTag(m.content) : { mode: null, text: m.content };
+
+            // Try parsing as idea cards — only for CONTENT mode or untagged (backwards compat)
+            if (msgMode !== 'cmo') {
+              const parsedIdeas = parsePostIdeas(msgCleanText);
+              if (parsedIdeas && parsedIdeas.length >= 2) {
+                return (
+                  <div key={m.id} className="flex justify-start">
+                    <div className="max-w-[90%] w-full space-y-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <img src={threadableIcon} alt="" className="h-5 w-5 rounded" />
+                        <span className="text-xs font-medium text-muted-foreground">Threadable</span>
                       </div>
-                    ))}
+                      <p className="text-sm text-muted-foreground mb-2">Here are {parsedIdeas.length} post ideas:</p>
+                      {parsedIdeas.map((idea, i) => (
+                        <div key={i} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                          <h4 className="text-sm font-semibold text-foreground">Idea {i + 1}: {idea.title}</h4>
+                          <div className="max-h-[300px] overflow-y-auto">
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                              {idea.body}
+                            </p>
+                          </div>
+                          {(idea.archetype || idea.funnelStage) && (
+                            <div className="flex gap-2 flex-wrap">
+                              {idea.archetype && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                                  {idea.archetype}
+                                </span>
+                              )}
+                              {idea.funnelStage && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent text-accent-foreground border border-border">
+                                  {idea.funnelStage}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleDraftIdea(idea)}
+                            disabled={isBusy}
+                            className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors pt-1 disabled:opacity-50 min-h-[44px] w-full md:w-auto"
+                          >
+                            📄 Draft post
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
+                );
+              }
             }
           }
 
-          // Regular message rendering
+          // Regular message rendering — strip mode tag from display
+          const displayText = m.role === "assistant" ? stripModeTag(m.content).text : m.content;
           return (
             <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div className={cn(
@@ -1367,13 +1376,13 @@ const Chat = () => {
                     <span className="text-xs font-medium text-muted-foreground">Threadable</span>
                   </div>
                 )}
-                <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                <p className="text-sm whitespace-pre-wrap">{displayText}</p>
                 {/* "View as preview" button for short AI messages that look like posts */}
-                {m.role === "assistant" && m.content.length > 20 && m.content.length < 600 && (
+                {m.role === "assistant" && displayText.length > 20 && displayText.length < 600 && (
                   <button
                     onClick={() => {
                       setHistoryPreviewData({
-                        postText: m.content,
+                        postText: displayText,
                         analysis: null,
                         analysisRaw: "",
                         status: "draft",

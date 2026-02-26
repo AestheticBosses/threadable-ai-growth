@@ -138,7 +138,10 @@ HARD RULES — enforced without exception:
 2. NO LISTS: No bullet points, dashes, or numbered lists inside post text. Ever.
 3. UNDER 500 CHARACTERS: Hard Threads limit. Count before you output.
 4. NO META: Never explain your strategy inside the post text itself.
-5. NO LABELS: Never include 📌, pillar names, archetype names, or funnel stage tags in post text. Strategy is invisible.`;
+5. NO LABELS: Never include 📌, pillar names, archetype names, or funnel stage tags in post text. Strategy is invisible.
+
+RESPONSE TAG — REQUIRED:
+Always begin your response with exactly [CMO] or [CONTENT] on its own line. Use [CMO] for all CMO Advisor Mode responses. Use [CONTENT] for all Content Creation Mode responses (post drafts, rewrites, post ideas). This tag must be the very first text in your response, before any other content. Never skip it.`;
     // Build messages array (last 20 from history + new message)
     const trimmedHistory = message_history.slice(-20);
     const conversationMessages = [

@@ -38,6 +38,18 @@ function cleanPostBody(body: string): string {
     .trim();
 }
 
+/** Strip [CMO] or [CONTENT] mode tag from the start of AI responses */
+export function stripModeTag(text: string): { mode: 'cmo' | 'content' | null; text: string } {
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('[CMO]')) {
+    return { mode: 'cmo', text: trimmed.slice(5).trimStart() };
+  }
+  if (trimmed.startsWith('[CONTENT]')) {
+    return { mode: 'content', text: trimmed.slice(9).trimStart() };
+  }
+  return { mode: null, text };
+}
+
 export function parsePostIdeas(text: string): PostIdea[] | null {
   if (!text) return null;
 
