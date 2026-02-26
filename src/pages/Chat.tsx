@@ -263,7 +263,10 @@ const Chat = () => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const { messages, isLoading: messagesLoading, sendMessage, updateMessageMetadata, refetch } = useChatMessages(activeSessionId);
   const contextData = useChatContextData();
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => {
+    const state = location.state as { cmoSummaryMessage?: string } | null;
+    return state?.cmoSummaryMessage || "";
+  });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
@@ -323,16 +326,13 @@ const Chat = () => {
     if (recentSession) setActiveSessionId(recentSession.id);
   }, [sessions, sessionsLoading, activeSessionId]);
 
-  // Handle CMO summary navigation state — pre-fill input
-  const cmoHandledRef = useRef(false);
+  // Clear CMO summary navigation state after reading it (prevents re-populate on refresh)
   useEffect(() => {
     const state = location.state as { cmoSummaryMessage?: string } | null;
-    if (state?.cmoSummaryMessage && !cmoHandledRef.current) {
-      cmoHandledRef.current = true;
-      setInput(state.cmoSummaryMessage);
+    if (state?.cmoSummaryMessage) {
       window.history.replaceState({}, document.title);
     }
-  }, [location.state]);
+  }, []);
 
   // Scroll to bottom on flow changes
   useEffect(() => {
