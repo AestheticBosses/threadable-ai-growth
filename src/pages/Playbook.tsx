@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useAuth } from "@/contexts/AuthContext";
@@ -91,6 +91,19 @@ const Playbook = () => {
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [analyzingOptimizing, setAnalyzingOptimizing] = useState(false);
+  const [pipelineStage, setPipelineStage] = useState<string | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<"success" | "timeout" | null>(null);
+  const pipelineStartedAt = useRef<number | null>(null);
+  const pipelineTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearPipelineTimers = useCallback(() => {
+    pipelineTimers.current.forEach(clearTimeout);
+    pipelineTimers.current = [];
+    if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; }
+  }, []);
+
+  useEffect(() => () => clearPipelineTimers(), [clearPipelineTimers]);
 
   const isLoading = playbookLoading || profileLoading || bucketsLoading || pillarsLoading;
   const hasV2Strategy = (buckets && buckets.length > 0) || (pillars && pillars.length > 0);
@@ -223,9 +236,22 @@ const Playbook = () => {
   };
 
   // ── Analyze & Optimize (CMO loop + summary) ──
+  const PIPELINE_STAGES = [
+    { delay: 0, label: "Analyzing your post performance..." },
+    { delay: 15_000, label: "Running statistical regression..." },
+    { delay: 30_000, label: "Discovering content archetypes..." },
+    { delay: 45_000, label: "Optimizing brand strategy..." },
+    { delay: 60_000, label: "Building content plan..." },
+    { delay: 75_000, label: "Generating CMO summary..." },
+    { delay: 90_000, label: "Finalizing your updated strategy..." },
+  ];
+
   const handleAnalyzeOptimize = async () => {
     if (!user) return;
     setAnalyzingOptimizing(true);
+    setPipelineResult(null);
+    clearPipelineTimers();
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
@@ -233,11 +259,54 @@ const Playbook = () => {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (error) throw new Error(error.message || "Failed to trigger analysis");
-      toast({ title: "Analyzing your data — strategy will update in ~2-3 minutes" });
+
+      const startedAt = Date.now();
+      pipelineStartedAt.current = startedAt;
+
+      // Cycle through stage messages
+      for (const stage of PIPELINE_STAGES) {
+        pipelineTimers.current.push(
+          setTimeout(() => setPipelineStage(stage.label), stage.delay)
+        );
+      }
+
+      // Poll for completion every 15s
+      pollTimer.current = setInterval(async () => {
+        try {
+          const { data } = await supabase
+            .from("profiles")
+            .select("weekly_refresh_summary, last_weekly_refresh_at")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (data?.weekly_refresh_summary && data?.last_weekly_refresh_at) {
+            const refreshTime = new Date(data.last_weekly_refresh_at).getTime();
+            if (refreshTime >= startedAt - 5000) {
+              // Summary arrived — but check if weekly_refresh_summary is non-null (means generate-cmo-summary ran)
+              clearPipelineTimers();
+              setPipelineStage(null);
+              setPipelineResult("success");
+              setAnalyzingOptimizing(false);
+              queryClient.invalidateQueries();
+            }
+          }
+        } catch { /* ignore poll errors */ }
+      }, 15_000);
+
+      // Timeout fallback at 4 minutes
+      pipelineTimers.current.push(
+        setTimeout(() => {
+          clearPipelineTimers();
+          setPipelineStage(null);
+          setPipelineResult("timeout");
+          setAnalyzingOptimizing(false);
+          queryClient.invalidateQueries();
+        }, 240_000)
+      );
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
-    } finally {
       setAnalyzingOptimizing(false);
+      setPipelineStage(null);
+      clearPipelineTimers();
     }
   };
 
@@ -608,16 +677,48 @@ const Playbook = () => {
 
               {/* ── Action buttons ── */}
               <div className="pt-4 border-t border-border flex flex-wrap items-start gap-6">
-                <div className="flex flex-col items-center gap-1">
-                  <Button
-                    onClick={handleAnalyzeOptimize}
-                    disabled={analyzingOptimizing}
-                    className="gap-2"
-                  >
-                    {analyzingOptimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {analyzingOptimizing ? "Analyzing…" : "Analyze & Optimize"}
-                  </Button>
-                  <p className="text-xs text-muted-foreground text-center max-w-[220px]">Updates your strategy based on what's actually performing</p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-col items-center gap-1">
+                    <Button
+                      onClick={handleAnalyzeOptimize}
+                      disabled={analyzingOptimizing}
+                      className="gap-2"
+                    >
+                      {analyzingOptimizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      {analyzingOptimizing ? "Analyzing…" : "Analyze & Optimize"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center max-w-[220px]">Updates your strategy based on what's actually performing</p>
+                  </div>
+
+                  {/* Pipeline progress indicator */}
+                  {analyzingOptimizing && pipelineStage && (
+                    <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 px-4 py-3 space-y-1.5 animate-in fade-in duration-300">
+                      <div className="flex items-center gap-2.5">
+                        <span className="relative flex h-2.5 w-2.5 shrink-0">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75" />
+                          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-purple-500" />
+                        </span>
+                        <p className="text-sm font-medium text-foreground">{pipelineStage}</p>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground pl-5">This takes about 2-3 minutes. You can leave this page — it runs in the background.</p>
+                    </div>
+                  )}
+
+                  {/* Success message */}
+                  {pipelineResult === "success" && (
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
+                      <Check className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <p className="text-sm text-foreground">Strategy updated! Check your Command Center for the full summary.</p>
+                    </div>
+                  )}
+
+                  {/* Timeout message */}
+                  {pipelineResult === "timeout" && (
+                    <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
+                      <Loader2 className="h-4 w-4 text-yellow-400 shrink-0" />
+                      <p className="text-sm text-foreground">Taking longer than expected. Check your Command Center in a few minutes.</p>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col items-center gap-1">
                   <Button
