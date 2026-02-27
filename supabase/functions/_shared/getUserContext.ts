@@ -352,25 +352,27 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     ).join("\n");
   }
 
-  // === COMPETITOR INSIGHTS (compact — hook + trigger themes only, top 10) ===
+  // === COMPETITOR INSIGHTS (one line per account — themes + top views, max 5) ===
   const competitorAccounts = competitorAccountsRes.data || [];
   const competitorPosts = competitorPostsRes.data || [];
   let competitorSection = "No competitor accounts saved.";
-  if (competitorAccounts.length > 0 || competitorPosts.length > 0) {
-    const parts: string[] = [];
-    if (competitorAccounts.length > 0) {
-      parts.push("Studying: " + competitorAccounts.map((c: any) => `@${c.threads_username}`).join(", "));
+  if (competitorPosts.length > 0) {
+    // Group posts by account, summarize themes per account
+    const byAccount: Record<string, { hooks: Set<string>; emotions: Set<string>; topViews: number }> = {};
+    for (const p of competitorPosts) {
+      const handle = p.source_username || "unknown";
+      if (!byAccount[handle]) byAccount[handle] = { hooks: new Set(), emotions: new Set(), topViews: 0 };
+      const text = p.text_content || "";
+      byAccount[handle].hooks.add(classifyHook(text));
+      byAccount[handle].emotions.add(classifyEmotion(text));
+      byAccount[handle].topViews = Math.max(byAccount[handle].topViews, p.views || 0);
     }
-    if (competitorPosts.length > 0) {
-      parts.push("Top competitor patterns:");
-      competitorPosts.slice(0, 10).forEach((p: any, i: number) => {
-        const text = p.text_content || "";
-        const hook = classifyHook(text);
-        const emotion = classifyEmotion(text);
-        parts.push(`${i + 1}. @${p.source_username || "?"} — ${hook} + ${emotion} (${p.views || 0} views)`);
-      });
-    }
-    competitorSection = parts.join("\n");
+    competitorSection = Object.entries(byAccount).slice(0, 5).map(([handle, data]) => {
+      const themes = [...data.emotions].slice(0, 3).join(", ");
+      return `@${handle} — themes: ${themes} (top post: ${data.topViews} views)`;
+    }).join("\n");
+  } else if (competitorAccounts.length > 0) {
+    competitorSection = "Studying: " + competitorAccounts.slice(0, 5).map((c: any) => `@${c.threads_username}`).join(", ");
   }
 
   // === CONTENT BUCKETS (compact — name + audience only) ===
@@ -390,8 +392,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const pillarsSection = pillarsList.length > 0
     ? pillarsList.map((p: any) => {
         const topics = topicsByPillar[p.id] || [];
-        const desc = (p.description || "").substring(0, 60);
-        const topicStr = topics.length > 0 ? ` | Topics: ${topics.slice(0, 5).join(", ")}` : "";
+        const desc = (p.description || "").substring(0, 40);
+        const topicStr = topics.length > 0 ? ` | ${topics.slice(0, 3).join(", ")}` : "";
         return `- ${p.name} (${p.percentage || 0}%): ${desc}${topicStr}`;
       }).join("\n")
     : "No content pillars defined yet.";
