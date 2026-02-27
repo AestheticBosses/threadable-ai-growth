@@ -672,7 +672,7 @@ const Chat = () => {
       // Step 1: AI generates the full post from the idea
       addItem({ type: "drafting" });
 
-      const draftPrompt = `Write a complete, ready-to-publish Threads post based on this idea:\n\nTitle: ${idea.title}\nDescription: ${idea.body}\n\nWrite ONLY the post text — no labels, no quotes, no explanation, no "Option 1" headers. Just the single best version of this post, ready to copy-paste to Threads. Use my voice, stories, and real data. Keep it under 500 characters. Start with a scroll-stopping hook.`;
+      const draftPrompt = `Write a complete, ready-to-publish Threads post based on this idea:\n\nTitle: ${idea.title}\nDescription: ${idea.body}\n\nQUALITY GATES — hit ALL of these before outputting:\n- Open with a scroll-stopping hook that uses a confession/story opener or credibility marker\n- Include at least one specific number, dollar amount, or credibility marker\n- End with a conversation-starting question or CTA that drives replies\n- If mentioning Threadable or any product, weave it into the story naturally — never pitch directly\n- Keep it under 500 characters (hard Threads limit)\n- Write ONLY the post text — no labels, no quotes, no explanation`;
 
       const genResp = await fetch(CHAT_URL, {
         method: "POST",
@@ -724,7 +724,7 @@ const Chat = () => {
       improvements: ["Add a specific number or stat to increase credibility", "Consider a direct question at the end to drive comments", "Add one personal detail to make it more specific to your story"]
     });
 
-    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
+    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["optional tweak 1", "optional tweak 2"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
 
     let analysisText = "";
     const analysisController = new AbortController();
@@ -858,7 +858,7 @@ const Chat = () => {
       }
       if (fullText.trim()) {
         // Run analysis
-        const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["improvement 1", "improvement 2", "improvement 3"]}\n\nPost to analyze:\n${fullText}`;
+        const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["optional tweak 1", "optional tweak 2"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
         let analysisText = "";
         const resp2 = await fetch(CHAT_URL, {
           method: "POST",
