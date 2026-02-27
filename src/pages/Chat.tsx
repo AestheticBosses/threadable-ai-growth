@@ -721,10 +721,10 @@ const Chat = () => {
       hook: "The opening line creates immediate tension by subverting expectations.",
       content: "Delivers a clear insight using relatable business experience.",
       ending: "Closes with a punchy contrast that reinforces the core message.",
-      improvements: ["Add a specific number or stat to increase credibility", "Consider a direct question at the end to drive comments", "Add one personal detail to make it more specific to your story"]
+      improvements: ["This post is ready to publish as-is"]
     });
 
-    const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["optional tweak 1", "optional tweak 2"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
+    const analysisPrompt = `Analyze this Threads post using the user's actual performance data from context. Reference specific regression insights, archetype performance, and what's been proven to work. The user's context data is already in your conversation history from the system prompt — use it. When evaluating the hook, reference which hook types drive the most views in their data. When evaluating the content, reference which archetypes perform best. When suggesting tweaks, ground them in specific numbers from their regression analysis.\n\nRespond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["<tweak_if_needed>", "<tweak_if_needed>"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
 
     let analysisText = "";
     const analysisController = new AbortController();
@@ -777,6 +777,13 @@ const Chat = () => {
       analysisText = fallbackAnalysis;
       setPostAnalysis(analysisText);
       parsed = tryParseAnalysisJSON(fallbackAnalysis);
+    }
+    // Strip placeholder improvements the AI copied from the example
+    if (parsed?.improvements) {
+      const hasPlaceholder = parsed.improvements.some((imp: string) =>
+        imp.includes("<tweak") || imp.includes("optional tweak") || imp.includes("Add a specific number") || imp.includes("Consider a direct question") || imp.includes("Add one personal detail")
+      );
+      if (hasPlaceholder) parsed.improvements = ["This post is ready to publish as-is"];
     }
     setParsedAnalysisData(parsed);
 
@@ -858,7 +865,7 @@ const Chat = () => {
       }
       if (fullText.trim()) {
         // Run analysis
-        const analysisPrompt = `Analyze this Threads post. Respond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["optional tweak 1", "optional tweak 2"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
+        const analysisPrompt = `Analyze this Threads post using the user's actual performance data from context. Reference specific regression insights, archetype performance, and what's been proven to work. The user's context data is already in your conversation history from the system prompt — use it. When evaluating the hook, reference which hook types drive the most views in their data. When evaluating the content, reference which archetypes perform best. When suggesting tweaks, ground them in specific numbers from their regression analysis.\n\nRespond in EXACTLY this JSON format with no preamble, no markdown, no explanation:\n\n{"angle": "2-3 sentences about what perspective the post takes", "hook": "2-3 sentences about why the opening line works", "content": "2-3 sentences about what value the post delivers", "ending": "2-3 sentences about how it closes", "improvements": ["<tweak_if_needed>", "<tweak_if_needed>"]}\n\nRULES FOR THE "improvements" FIELD:\n- Reframe as optional polish-level tweaks, NOT problems\n- Only suggest tweaks if something is genuinely weak — max 2\n- If the post hits all quality gates (strong hook, credibility marker, CTA, under 500 chars, natural voice), return improvements as: ["This post is ready to publish as-is"]\n- Never contradict the post's core angle or strategy\n- The analysis should make the writer CONFIDENT about posting, not second-guess it\n\nPost to analyze:\n${fullText}`;
         let analysisText = "";
         const resp2 = await fetch(CHAT_URL, {
           method: "POST",
@@ -894,6 +901,13 @@ const Chat = () => {
           }
 
           const parsed = tryParseAnalysisJSON(analysisText);
+          // Strip placeholder improvements the AI copied from the example
+          if (parsed?.improvements) {
+            const hasPlaceholder = parsed.improvements.some((imp: string) =>
+              imp.includes("<tweak") || imp.includes("optional tweak") || imp.includes("Add a specific number") || imp.includes("Consider a direct question") || imp.includes("Add one personal detail")
+            );
+            if (hasPlaceholder) parsed.improvements = ["This post is ready to publish as-is"];
+          }
           setParsedAnalysisData(parsed);
 
           // Save new draft with metadata
