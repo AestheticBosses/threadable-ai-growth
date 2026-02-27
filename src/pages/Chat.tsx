@@ -647,35 +647,9 @@ const Chat = () => {
     // If the post is already complete (under 500 chars, no brackets), skip AI generation
     const isCompletePost = idea.body.length > 0 && idea.body.length <= 500 && !idea.body.includes('[') && !idea.body.includes(']');
 
-    if (isCompletePost) {
-      console.log("[handleDraftIdea] Post already complete, skipping AI generation");
-      // Set preview mode BEFORE any sendMessage to prevent useEffect from resetting state
-      setDraftedPost(idea.body);
-      setFlowMode("preview");
-
-      addItem({ type: "user", content: `Draft: ${idea.title}` });
-      await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
-
-      // Save to DB with metadata so publish/queue works
-      const metadata: ChatMessageMetadata = {
-        type: "drafted_post",
-        post_text: idea.body,
-        analysis: null,
-        status: "draft",
-        queue_id: null,
-        published_at: null,
-      };
-      const savedMsg = await sendMessage({ content: idea.body, role: "assistant", metadata });
-      setDraftMessageId(savedMsg.id);
-
-      setIsBusy(false);
-      return;
-    }
-
     addItem({ type: "user", content: `Draft: ${idea.title}` });
     await sendMessage({ content: `Draft: ${idea.title}`, role: "user" });
 
-    addItem({ type: "drafting" });
     setFlowMode("preview");
 
     const { data: { session } } = await supabase.auth.getSession();
@@ -687,48 +661,58 @@ const Chat = () => {
       apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     };
 
-    // Step 1: AI generates the full post from the idea
-    const draftPrompt = `Write a complete, ready-to-publish Threads post based on this idea:\n\nTitle: ${idea.title}\nDescription: ${idea.body}\n\nWrite ONLY the post text — no labels, no quotes, no explanation, no "Option 1" headers. Just the single best version of this post, ready to copy-paste to Threads. Use my voice, stories, and real data. Keep it under 500 characters. Start with a scroll-stopping hook.`;
-
     let fullText = "";
-    const genResp = await fetch(CHAT_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ message: draftPrompt, message_history: getMessageHistory() }),
-    });
 
-    if (genResp.ok && genResp.body) {
-      const reader = genResp.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buf.indexOf("\n")) !== -1) {
-          let line = buf.slice(0, idx);
-          buf = buf.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const j = line.slice(6).trim();
-          if (j === "[DONE]") break;
-          try {
-            const p = JSON.parse(j);
-            const c = p.choices?.[0]?.delta?.content;
-            if (c) { fullText += c; setDraftedPost(fullText); }
-          } catch {}
-        }
-      }
-    }
-
-    console.log("[handleDraftIdea] Generation complete. Text length:", fullText.length, "| First 100:", fullText.substring(0, 100));
-
-    // Fallback: if generation failed, use the idea body as-is
-    if (!fullText.trim()) {
-      console.log("[handleDraftIdea] Generation empty, falling back to idea body");
+    if (isCompletePost) {
+      // Post text is ready — skip AI generation, go straight to analysis
+      console.log("[handleDraftIdea] Post already complete, skipping AI generation — analysis will still fire");
       fullText = idea.body;
       setDraftedPost(fullText);
+    } else {
+      // Step 1: AI generates the full post from the idea
+      addItem({ type: "drafting" });
+
+      const draftPrompt = `Write a complete, ready-to-publish Threads post based on this idea:\n\nTitle: ${idea.title}\nDescription: ${idea.body}\n\nWrite ONLY the post text — no labels, no quotes, no explanation, no "Option 1" headers. Just the single best version of this post, ready to copy-paste to Threads. Use my voice, stories, and real data. Keep it under 500 characters. Start with a scroll-stopping hook.`;
+
+      const genResp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message: draftPrompt, message_history: getMessageHistory() }),
+      });
+
+      if (genResp.ok && genResp.body) {
+        const reader = genResp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          let idx: number;
+          while ((idx = buf.indexOf("\n")) !== -1) {
+            let line = buf.slice(0, idx);
+            buf = buf.slice(idx + 1);
+            if (line.endsWith("\r")) line = line.slice(0, -1);
+            if (!line.startsWith("data: ")) continue;
+            const j = line.slice(6).trim();
+            if (j === "[DONE]") break;
+            try {
+              const p = JSON.parse(j);
+              const c = p.choices?.[0]?.delta?.content;
+              if (c) { fullText += c; setDraftedPost(fullText); }
+            } catch {}
+          }
+        }
+      }
+
+      console.log("[handleDraftIdea] Generation complete. Text length:", fullText.length, "| First 100:", fullText.substring(0, 100));
+
+      // Fallback: if generation failed, use the idea body as-is
+      if (!fullText.trim()) {
+        console.log("[handleDraftIdea] Generation empty, falling back to idea body");
+        fullText = idea.body;
+        setDraftedPost(fullText);
+      }
     }
 
     // Step 2: Analyze the generated post
