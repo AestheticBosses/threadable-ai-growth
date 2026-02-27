@@ -155,7 +155,7 @@ Always begin your response with exactly [CMO] or [CONTENT] on its own line. Use 
     if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY is not configured");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
 
     const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
