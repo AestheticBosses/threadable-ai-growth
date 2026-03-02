@@ -12,27 +12,23 @@ interface PipelineStep {
   body?: Record<string, unknown>;
 }
 
-function fireStep(
+async function runStep(
   supabaseUrl: string,
   endpoint: string,
   authToken: string,
   body: Record<string, unknown> = {},
-): void {
-  fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
+): Promise<{ ok: boolean; status: number; message: string }> {
+  const res = await fetch(`${supabaseUrl}/functions/v1/${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${authToken}`,
     },
     body: JSON.stringify(body),
-  })
-    .then(async (res) => {
-      const text = await res.text().catch(() => "");
-      console.log(`[cmo-loop] ${endpoint} → ${res.status} | ${text.slice(0, 300)}`);
-    })
-    .catch((e) => {
-      console.error(`[cmo-loop] ${endpoint} → FIRE ERROR: ${e.message}`);
-    });
+  });
+
+  const text = await res.text().catch(() => "");
+  return { ok: res.ok, status: res.status, message: text.slice(0, 300) };
 }
 
 Deno.serve(async (req) => {
@@ -61,37 +57,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[cmo-loop] Starting fire-and-forget pipeline for user ${user.id}`);
-
-    // --- Pipeline steps with staggered delays ---
-    const steps: PipelineStep[] = [
-      { name: "run-analysis", endpoint: "run-analysis" },
-      { name: "run-regression", endpoint: "run-regression" },
-      { name: "discover-archetypes", endpoint: "discover-archetypes" },
-      { name: "branding-plan", endpoint: "generate-plans", body: { plan_type: "branding_plan" } },
-      { name: "funnel-strategy", endpoint: "generate-plans", body: { plan_type: "funnel_strategy" } },
-      { name: "content-plan", endpoint: "generate-plans", body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] } },
-    ];
-
-    const DELAY_MS = 15_000;
-
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
-      const delay = i * DELAY_MS;
-      setTimeout(() => {
-        console.log(`[cmo-loop] Firing step: ${step.name} (delay=${delay}ms)`);
-        fireStep(supabaseUrl, step.endpoint, jwt, step.body || {});
-      }, delay);
-    }
-
-    // --- Fire summary generation after pipeline completes (90s delay) ---
-    const SUMMARY_DELAY_MS = 90_000;
-    setTimeout(() => {
-      console.log(`[cmo-loop] Firing step: generate-cmo-summary (delay=${SUMMARY_DELAY_MS}ms)`);
-      fireStep(supabaseUrl, "generate-cmo-summary", jwt);
-    }, SUMMARY_DELAY_MS);
-
-    // --- Mark refresh timestamp immediately ---
+    // --- Mark refresh timestamp FIRST so frontend knows pipeline is running ---
     const { error: updateError } = await adminClient
       .from("profiles")
       .update({ last_weekly_refresh_at: new Date().toISOString() })
@@ -101,18 +67,47 @@ Deno.serve(async (req) => {
       console.error("[cmo-loop] Profile update error:", updateError);
     }
 
-    console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — returning immediately`);
+    console.log(`[cmo-loop] Starting sequential pipeline for user ${user.id}`);
+    const pipelineStart = Date.now();
 
-    const allSteps = [
-      ...steps.map((s, i) => ({ name: s.name, delay_seconds: i * 15 })),
-      { name: "generate-cmo-summary", delay_seconds: 90 },
+    // --- Pipeline steps — sequential with await ---
+    const steps: PipelineStep[] = [
+      { name: "run-analysis", endpoint: "run-analysis" },
+      { name: "run-regression", endpoint: "run-regression" },
+      { name: "discover-archetypes", endpoint: "discover-archetypes" },
+      { name: "branding-plan", endpoint: "generate-plans", body: { plan_type: "branding_plan" } },
+      { name: "funnel-strategy", endpoint: "generate-plans", body: { plan_type: "funnel_strategy" } },
+      { name: "content-plan", endpoint: "generate-plans", body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] } },
+      { name: "generate-cmo-summary", endpoint: "generate-cmo-summary" },
     ];
+
+    const results: { name: string; ok: boolean; status: number; durationMs: number; message: string }[] = [];
+
+    for (const step of steps) {
+      const stepStart = Date.now();
+      console.log(`[cmo-loop] >>> Starting step: ${step.name}`);
+
+      try {
+        const result = await runStep(supabaseUrl, step.endpoint, jwt, step.body || {});
+        const durationMs = Date.now() - stepStart;
+        results.push({ name: step.name, ok: result.ok, status: result.status, durationMs, message: result.message });
+        console.log(`[cmo-loop] <<< ${step.name} → ${result.status} (${durationMs}ms) | ${result.message}`);
+      } catch (err: any) {
+        const durationMs = Date.now() - stepStart;
+        results.push({ name: step.name, ok: false, status: 0, durationMs, message: err.message });
+        console.error(`[cmo-loop] <<< ${step.name} → ERROR (${durationMs}ms): ${err.message}`);
+      }
+    }
+
+    const totalMs = Date.now() - pipelineStart;
+    console.log(`[cmo-loop] Pipeline complete for user ${user.id} — ${totalMs}ms total`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: "CMO pipeline triggered — strategy will update in background",
-        steps: allSteps,
+        message: "CMO pipeline complete",
+        totalMs,
+        steps: results.map((r) => ({ name: r.name, ok: r.ok, status: r.status, durationMs: r.durationMs })),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
