@@ -67,10 +67,9 @@ Deno.serve(async (req) => {
       console.error("[cmo-loop] Profile update error:", updateError);
     }
 
-    console.log(`[cmo-loop] Starting sequential pipeline for user ${user.id}`);
-    const pipelineStart = Date.now();
+    console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — running in background via waitUntil`);
 
-    // --- Pipeline steps — sequential with await ---
+    // --- Run all steps sequentially in the background ---
     const steps: PipelineStep[] = [
       { name: "run-analysis", endpoint: "run-analysis" },
       { name: "run-regression", endpoint: "run-regression" },
@@ -81,33 +80,36 @@ Deno.serve(async (req) => {
       { name: "generate-cmo-summary", endpoint: "generate-cmo-summary" },
     ];
 
-    const results: { name: string; ok: boolean; status: number; durationMs: number; message: string }[] = [];
+    // EdgeRuntime.waitUntil keeps the function alive after the response is sent.
+    // The sequential pipeline runs in the background (up to 400s on paid plan).
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime.waitUntil((async () => {
+      const pipelineStart = Date.now();
+      console.log(`[cmo-loop] Background pipeline starting for user ${user.id}`);
 
-    for (const step of steps) {
-      const stepStart = Date.now();
-      console.log(`[cmo-loop] >>> Starting step: ${step.name}`);
+      for (const step of steps) {
+        const stepStart = Date.now();
+        console.log(`[cmo-loop] >>> Starting step: ${step.name}`);
 
-      try {
-        const result = await runStep(supabaseUrl, step.endpoint, jwt, step.body || {});
-        const durationMs = Date.now() - stepStart;
-        results.push({ name: step.name, ok: result.ok, status: result.status, durationMs, message: result.message });
-        console.log(`[cmo-loop] <<< ${step.name} → ${result.status} (${durationMs}ms) | ${result.message}`);
-      } catch (err: any) {
-        const durationMs = Date.now() - stepStart;
-        results.push({ name: step.name, ok: false, status: 0, durationMs, message: err.message });
-        console.error(`[cmo-loop] <<< ${step.name} → ERROR (${durationMs}ms): ${err.message}`);
+        try {
+          const result = await runStep(supabaseUrl, step.endpoint, jwt, step.body || {});
+          const durationMs = Date.now() - stepStart;
+          console.log(`[cmo-loop] <<< ${step.name} → ${result.status} (${durationMs}ms) | ${result.message}`);
+        } catch (err: any) {
+          const durationMs = Date.now() - stepStart;
+          console.error(`[cmo-loop] <<< ${step.name} → ERROR (${durationMs}ms): ${err.message}`);
+        }
       }
-    }
 
-    const totalMs = Date.now() - pipelineStart;
-    console.log(`[cmo-loop] Pipeline complete for user ${user.id} — ${totalMs}ms total`);
+      const totalMs = Date.now() - pipelineStart;
+      console.log(`[cmo-loop] Background pipeline complete for user ${user.id} — ${totalMs}ms total`);
+    })());
 
+    // Return immediately — pipeline runs in background
     return new Response(
       JSON.stringify({
         success: true,
-        message: "CMO pipeline complete",
-        totalMs,
-        steps: results.map((r) => ({ name: r.name, ok: r.ok, status: r.status, durationMs: r.durationMs })),
+        message: "CMO pipeline triggered — strategy will update in background",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

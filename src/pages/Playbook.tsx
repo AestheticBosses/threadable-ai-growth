@@ -256,15 +256,42 @@ const Playbook = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast({ title: "Not logged in", variant: "destructive" }); return; }
 
+      // Fire the pipeline — returns immediately, runs in background via waitUntil
+      const { error } = await supabase.functions.invoke("run-weekly-cmo-loop", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error) throw new Error(error.message || "Failed to trigger analysis");
+
       const startedAt = Date.now();
       pipelineStartedAt.current = startedAt;
 
-      // Start stage messages immediately (before awaiting the pipeline)
+      // Cycle through stage messages
       for (const stage of PIPELINE_STAGES) {
         pipelineTimers.current.push(
           setTimeout(() => setPipelineStage(stage.label), stage.delay)
         );
       }
+
+      // Poll for completion every 15s
+      pollTimer.current = setInterval(async () => {
+        try {
+          const { data } = await supabase
+            .from("profiles")
+            .select("weekly_refresh_summary, last_weekly_refresh_at")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (data?.weekly_refresh_summary && data?.last_weekly_refresh_at) {
+            const refreshTime = new Date(data.last_weekly_refresh_at).getTime();
+            if (refreshTime >= startedAt - 5000) {
+              clearPipelineTimers();
+              setPipelineStage(null);
+              setPipelineResult("success");
+              setAnalyzingOptimizing(false);
+              queryClient.invalidateQueries();
+            }
+          }
+        } catch { /* ignore poll errors */ }
+      }, 15_000);
 
       // Timeout fallback at 5 minutes
       pipelineTimers.current.push(
@@ -276,24 +303,6 @@ const Playbook = () => {
           queryClient.invalidateQueries();
         }, 300_000)
       );
-
-      // Await the full pipeline — it now runs sequentially and returns when done
-      const { error } = await supabase.functions.invoke("run-weekly-cmo-loop", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-
-      // Pipeline finished (or errored) — clean up and show result
-      clearPipelineTimers();
-      setPipelineStage(null);
-      setAnalyzingOptimizing(false);
-      queryClient.invalidateQueries();
-
-      if (error) {
-        setPipelineResult("timeout");
-        throw new Error(error.message || "Pipeline failed");
-      }
-
-      setPipelineResult("success");
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
       setAnalyzingOptimizing(false);
