@@ -83,6 +83,8 @@ Also provide:
 - A recommended weekly posting schedule (7 days) using these archetypes
 - 3 rules for new creators in this niche
 
+Be concise — each description under 100 characters, each template under 120 characters, each rule under 80 characters.
+
 Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
 
 Return this exact JSON structure:
@@ -91,12 +93,12 @@ Return this exact JSON structure:
     {
       "name": "Archetype Name",
       "emoji": "🔥",
-      "description": "What this content type is and why it works",
+      "description": "What this content type is and why it works (under 100 chars)",
       "drives": "primary metric it drives (views/likes/reposts/replies)",
       "avg_views": 0,
       "avg_engagement": 0,
       "key_ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
-      "template": "Fill-in-the-blank template for writing this type",
+      "template": "Fill-in-the-blank template for writing this type (under 120 chars)",
       "recommended_percentage": 30,
       "example_posts": ["example post idea 1", "example post idea 2"]
     }
@@ -159,6 +161,8 @@ Also provide:
 - A recommended weekly posting schedule (7 days) using these archetypes
 - 3 rules validated by their data
 
+Be concise — each description under 100 characters, each template under 120 characters, each rule under 80 characters.
+
 Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Use double-quoted keys and string values only.
 
 Return this exact JSON structure:
@@ -167,12 +171,12 @@ Return this exact JSON structure:
     {
       "name": "Archetype Name",
       "emoji": "🔥",
-      "description": "What this content type is and why it works",
+      "description": "What this content type is and why it works (under 100 chars)",
       "drives": "primary metric it drives (views/likes/reposts/replies)",
       "avg_views": 0,
       "avg_engagement": 0,
       "key_ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"],
-      "template": "Fill-in-the-blank template for writing this type",
+      "template": "Fill-in-the-blank template for writing this type (under 120 chars)",
       "recommended_percentage": 30,
       "example_posts": ["title of example post 1", "title of example post 2"]
     }
@@ -200,7 +204,7 @@ Return this exact JSON structure:
       },
       body: JSON.stringify({
         model: 'claude-opus-4-6',
-        max_tokens: 2000,
+        max_tokens: 4096,
         messages: [{
           role: 'user',
           content: promptContent
