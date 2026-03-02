@@ -41,6 +41,7 @@ verify_jwt = false
 
 [functions.discover-archetypes]
 verify_jwt = false
+wall_clock_timeout = 150
 
 [functions.generate-playbook]
 verify_jwt = false
@@ -56,6 +57,7 @@ verify_jwt = false
 
 [functions.generate-plans]
 verify_jwt = false
+wall_clock_timeout = 150
 
 [functions.chat-with-threadable]
 verify_jwt = false
@@ -84,3 +86,4 @@ wall_clock_timeout = 300  # 5 minutes — pipeline runs 7 sequential steps
 
 [functions.generate-cmo-summary]
 verify_jwt = false
+wall_clock_timeout = 150

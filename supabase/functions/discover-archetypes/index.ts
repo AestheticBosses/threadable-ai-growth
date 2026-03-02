@@ -188,9 +188,8 @@ Return this exact JSON structure:
 }`
     }
 
-    // 55-second timeout
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
