@@ -147,13 +147,15 @@ export function useChatMessages(sessionId: string | null) {
       content,
       role,
       metadata,
+      sessionIdOverride,
     }: {
       content: string;
       role: "user" | "assistant";
       metadata?: ChatMessageMetadata | null;
+      sessionIdOverride?: string;
     }) => {
       const insertData: any = {
-        session_id: sessionId,
+        session_id: sessionIdOverride || sessionId,
         user_id: user!.id,
         role,
         content,

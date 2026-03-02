@@ -427,7 +427,7 @@ const Chat = () => {
     const sessionId = await ensureSession();
 
     if (opts?.saveToDb !== false) {
-      await sendMessage({ content: msg, role: "user" });
+      await sendMessage({ content: msg, role: "user", sessionIdOverride: sessionId });
       if (messages.length === 0) {
         const autoTitle = generateTitleFromMessage(msg);
         await updateTitle({ id: sessionId, title: autoTitle });
@@ -447,7 +447,7 @@ const Chat = () => {
       onDone: async () => {
         removeItem(streamingId);
         if (fullResponse.trim()) {
-          await sendMessage({ content: fullResponse, role: "assistant" });
+          await sendMessage({ content: fullResponse, role: "assistant", sessionIdOverride: sessionId });
           addItem({ type: "ai", content: fullResponse });
         }
         opts?.onComplete?.(fullResponse);
@@ -940,7 +940,7 @@ const Chat = () => {
       setHistoryPreviewData(null);
       isSendingRef.current = true;
       const sessionId = await ensureSession();
-      await sendMessage({ content: msg, role: "user" });
+      await sendMessage({ content: msg, role: "user", sessionIdOverride: sessionId });
       if (messages.length === 0) {
         await updateTitle({ id: sessionId, title: generateTitleFromMessage(msg) });
       }
@@ -958,7 +958,7 @@ const Chat = () => {
           isSendingRef.current = false;
           setFlowItems([]);
           if (fullResponse.trim()) {
-            await sendMessage({ content: fullResponse, role: "assistant" });
+            await sendMessage({ content: fullResponse, role: "assistant", sessionIdOverride: sessionId });
           }
           await refetch();
           setIsBusy(false);
@@ -967,7 +967,7 @@ const Chat = () => {
           isSendingRef.current = false;
           setFlowItems([]);
           toast({ title: "Error", description: errMsg, variant: "destructive" });
-          await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant" });
+          await sendMessage({ content: `⚠️ ${errMsg}`, role: "assistant", sessionIdOverride: sessionId });
           await refetch();
           setIsBusy(false);
         },
