@@ -105,7 +105,7 @@ export function WeeklyRefreshCard() {
     if (!user?.id) return;
     await supabase
       .from("profiles")
-      .update({ weekly_refresh_summary: null })
+      .update({ weekly_refresh_summary: null, last_weekly_refresh_at: null })
       .eq("id", user.id);
     queryClient.invalidateQueries({ queryKey: ["weekly-refresh-summary"] });
     toast({ title: "Strategy applied", description: "Your plan is up to date" });
