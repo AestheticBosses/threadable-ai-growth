@@ -56,13 +56,31 @@ function minutesToTimeStr(mins: number, templateStr: string): string {
 function deriveBestTimes(regressionInsights: any, count: number): string[] {
   const hourAverages = regressionInsights?.hour_averages;
   if (!Array.isArray(hourAverages) || hourAverages.length === 0) {
+    console.log("[deriveBestTimes] no hour_averages, using defaults");
     return ["9:00 AM", "12:00 PM", "5:00 PM"]; // sensible defaults
   }
+  console.log("[deriveBestTimes] raw hour_averages:", JSON.stringify(hourAverages));
+
+  // Filter out hours with only 1 post (noise) and unreasonable hours (before 6 AM)
+  const MIN_POST_COUNT = 2;
+  const MIN_HOUR = 6; // 6 AM — don't schedule posts before this
+  const filtered = hourAverages.filter((h: any) => (h.count || 0) >= MIN_POST_COUNT && (h.hour ?? 0) >= MIN_HOUR);
+  console.log("[deriveBestTimes] after filtering (count>=2, hour>=6):", JSON.stringify(filtered));
+
+  // If filtering removed everything, fall back to all hours >= MIN_HOUR (ignore count)
+  const pool = filtered.length > 0 ? filtered : hourAverages.filter((h: any) => (h.hour ?? 0) >= MIN_HOUR);
+  if (pool.length === 0) {
+    console.log("[deriveBestTimes] no valid hours after filtering, using defaults");
+    return ["9:00 AM", "12:00 PM", "5:00 PM"];
+  }
+
   // Take top N hours by avg performance, then sort chronologically
-  const topHours = [...hourAverages]
+  const topHours = [...pool]
     .sort((a: any, b: any) => (b.avg || 0) - (a.avg || 0))
     .slice(0, count);
   topHours.sort((a: any, b: any) => a.hour - b.hour);
+  console.log("[deriveBestTimes] top hours selected:", JSON.stringify(topHours));
+
   return topHours.map((h: any) => {
     const hour = h.hour ?? 0;
     const period = hour >= 12 ? "PM" : "AM";
@@ -122,26 +140,33 @@ function generateTodaySlots(
  * the earliest anchor or after the latest anchor.
  */
 function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
-  if (totalPosts <= bestTimes.length) return bestTimes.slice(0, totalPosts);
+  console.log("[expandTimeSlots] input bestTimes:", JSON.stringify(bestTimes), "totalPosts:", totalPosts);
+
+  if (totalPosts <= bestTimes.length) {
+    console.log("[expandTimeSlots] enough anchors, slicing to", totalPosts);
+    return bestTimes.slice(0, totalPosts);
+  }
   if (bestTimes.length === 0) return ["09:00"];
   if (bestTimes.length === 1) {
-    // Single anchor — can't place between, so space outward in 30-min increments
     const template = bestTimes[0];
     const anchor = parseToMinutes(bestTimes[0]);
+    console.log("[expandTimeSlots] single anchor at", anchor, "mins, spacing outward");
     return Array.from({ length: totalPosts }, (_, i) =>
       minutesToTimeStr(anchor + i * 30, template)
     );
   }
 
   const template = bestTimes[0];
-  // Start with anchor times in minutes
   const slots = bestTimes.map(parseToMinutes).sort((a, b) => a - b);
   const firstAnchor = slots[0];
   const lastAnchor = slots[slots.length - 1];
   const extraNeeded = totalPosts - slots.length;
 
+  console.log("[expandTimeSlots] parsed minutes:", JSON.stringify(slots));
+  console.log("[expandTimeSlots] firstAnchor:", firstAnchor, `(${minutesToTimeStr(firstAnchor, template)})`, "lastAnchor:", lastAnchor, `(${minutesToTimeStr(lastAnchor, template)})`);
+  console.log("[expandTimeSlots] extraNeeded:", extraNeeded);
+
   for (let n = 0; n < extraNeeded; n++) {
-    // Find the largest gap between consecutive slots
     let maxGap = -1;
     let maxIdx = 0;
     for (let i = 0; i < slots.length - 1; i++) {
@@ -151,18 +176,18 @@ function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
         maxIdx = i;
       }
     }
-    // Insert at midpoint, rounded to nearest 5 minutes
     const mid = slots[maxIdx] + Math.floor(maxGap / 2);
     const rounded = Math.round(mid / 5) * 5;
-    // Clamp to stay between neighbors (minimum 3 min apart)
     const clamped = Math.max(slots[maxIdx] + 3, Math.min(rounded, slots[maxIdx + 1] - 3));
+    console.log(`[expandTimeSlots] insert #${n+1}: gap=${maxGap}min between ${slots[maxIdx]}-${slots[maxIdx+1]}, mid=${mid}, rounded=${rounded}, clamped=${clamped}`);
     slots.splice(maxIdx + 1, 0, clamped);
   }
 
-  // Safety: ensure all slots stay within the original anchor range
-  return slots
-    .filter(m => m >= firstAnchor && m <= lastAnchor)
-    .map((m) => minutesToTimeStr(m, template));
+  console.log("[expandTimeSlots] slots before filter:", JSON.stringify(slots));
+  const filtered = slots.filter(m => m >= firstAnchor && m <= lastAnchor);
+  console.log("[expandTimeSlots] slots after filter:", JSON.stringify(filtered));
+
+  return filtered.map((m) => minutesToTimeStr(m, template));
 }
 
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
@@ -532,8 +557,16 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     (profileSnapshot as any).niche = snapshotProfile?.niche ?? null;
     (profileSnapshot as any).mission = snapshotProfile?.mission ?? null;
 
-    // Upsert into user_plans
-    const { error: upsertError } = await supabase.from("user_plans").upsert(
+    // Diagnostic: log planData keys and critical fields before upsert
+    console.log("[generate-plans] PRE-UPSERT planData keys:", Object.keys(planData));
+    console.log("[generate-plans] PRE-UPSERT planData.best_times:", JSON.stringify(planData.best_times));
+    console.log("[generate-plans] PRE-UPSERT planData.original_best_times:", JSON.stringify(planData.original_best_times));
+    console.log("[generate-plans] PRE-UPSERT planData.today_best_times:", JSON.stringify(planData.today_best_times));
+    console.log("[generate-plans] PRE-UPSERT planData.today_day_name:", planData.today_day_name);
+    console.log("[generate-plans] PRE-UPSERT planData.posts_per_day:", planData.posts_per_day);
+
+    // Upsert into user_plans — use admin (service role) to bypass RLS
+    const { error: upsertError } = await admin.from("user_plans").upsert(
       {
         user_id: user.id,
         plan_type,
