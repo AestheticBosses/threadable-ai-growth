@@ -309,10 +309,26 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
-    // Force posts_per_day to match profile even if AI hallucinated a different value
+    // Force posts_per_day to match profile, capped by available time slots
     if (plan_type === "content_plan") {
-      console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
-      planData.posts_per_day = postsPerDay;
+      const bestTimesCount = Array.isArray(planData.best_times) ? planData.best_times.length : 3;
+      const cappedPostsPerDay = Math.min(postsPerDay, bestTimesCount);
+      console.log("[generate-plans] best_times:", JSON.stringify(planData.best_times));
+      console.log("[generate-plans] best_times count:", bestTimesCount);
+      console.log("[generate-plans] postsPerDay from profile:", postsPerDay);
+      console.log("[generate-plans] cappedPostsPerDay:", cappedPostsPerDay);
+      console.log("[generate-plans] daily_plan BEFORE cap:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
+      planData.posts_per_day = cappedPostsPerDay;
+
+      // Trim excess posts from each day to match available slots
+      if (Array.isArray(planData.daily_plan)) {
+        for (const day of planData.daily_plan) {
+          if (Array.isArray(day.posts) && day.posts.length > cappedPostsPerDay) {
+            day.posts = day.posts.slice(0, cappedPostsPerDay);
+          }
+        }
+      }
+      console.log("[generate-plans] daily_plan AFTER cap:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
     }
 
     // Force funnel percentages to fixed values regardless of AI output

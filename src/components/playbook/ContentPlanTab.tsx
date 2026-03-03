@@ -35,13 +35,14 @@ export function ContentPlanTab() {
   const isGenerating = generate.isPending;
 
   // Defensive parsing — plan_data may be a string or malformed
+  // Always deep-clone so we can safely mutate (React Query may freeze cached data)
   let plan: any = null;
   try {
     const raw = query.data?.plan_data;
     if (typeof raw === "string") {
       plan = JSON.parse(raw);
     } else if (raw && typeof raw === "object") {
-      plan = raw;
+      plan = JSON.parse(JSON.stringify(raw));
     }
     // Ensure critical fields are arrays
     if (plan) {
@@ -55,6 +56,20 @@ export function ContentPlanTab() {
   }
 
   console.log("[ContentPlanTab] full plan JSON:", JSON.stringify(plan, null, 2));
+
+  // Cap posts per day to the number of available time slots (no wrapping)
+  const bestTimesRaw: string[] = Array.isArray(plan?.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
+  if (plan && Array.isArray(plan.daily_plan)) {
+    const maxSlots = bestTimesRaw.length;
+    for (const day of plan.daily_plan) {
+      if (Array.isArray(day.posts) && day.posts.length > maxSlots) {
+        day.posts = day.posts.slice(0, maxSlots);
+      }
+    }
+    if (plan.posts_per_day > maxSlots) {
+      plan.posts_per_day = maxSlots;
+    }
+  }
 
   // Sort daily_plan so today's day comes first, then future days, then past days
   if (plan && Array.isArray(plan.daily_plan) && plan.daily_plan.length > 0) {
@@ -145,19 +160,19 @@ export function ContentPlanTab() {
     return safeISOString(date);
   };
 
-  // Collect all posts from the plan
+  // Collect all posts from the plan (capped to available time slots)
   const getAllPlanPosts = () => {
     if (!plan?.daily_plan) return [];
 
     const allPosts: any[] = [];
-    const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
 
     plan.daily_plan.forEach((dayPlan: any) => {
       const dayName = dayPlan.day;
       if (!dayPlan.posts || !Array.isArray(dayPlan.posts)) return;
 
       dayPlan.posts.forEach((post: any, index: number) => {
-        const time = bestTimes[index % bestTimes.length] || "09:00";
+        if (index >= bestTimesRaw.length) return; // skip posts beyond available slots
+        const time = bestTimesRaw[index] || "09:00";
         const scheduledTime = getScheduledDateTime(dayName, time);
         if (!scheduledTime) return;
 
@@ -367,21 +382,41 @@ export function ContentPlanTab() {
     );
   }
 
-  // Check if a time slot has already passed today
+  // Check if an entire day is in the past, or if a specific time slot has passed
   const DAY_NAMES_CHECK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const nowForCheck = new Date();
   const todayDayName = DAY_NAMES_CHECK[nowForCheck.getDay()];
+  const todayIdx = nowForCheck.getDay();
+
+  const isDayInPast = (dayName: string): boolean => {
+    const dayIdx = DAY_NAMES_CHECK.indexOf(dayName);
+    if (dayIdx === -1) return false;
+    // Days are sorted relative to today; a day is "past" if its offset puts it after today in the week cycle
+    // i.e. yesterday = offset 6, day before = offset 5, etc.
+    const offset = (dayIdx - todayIdx + 7) % 7;
+    return offset > 0 && offset >= 6; // only yesterday (offset 6) is truly "past" in a 7-day view
+  };
 
   const isSlotPassed = (dayName: string, timeStr: string): boolean => {
+    if (isDayInPast(dayName)) return true;
     if (dayName !== todayDayName) return false;
     const parsed = parseTimeFlexible(timeStr);
     if (!parsed) return false;
-    // Build a Date object for today at the slot's local time + 5 min buffer
     const now = new Date();
     const slotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parsed.hours, parsed.minutes, 0, 0);
-    // Only mark as passed if slot time + 5 minutes is before current local time
     const BUFFER_MS = 5 * 60 * 1000;
     return (slotDate.getTime() + BUFFER_MS) < now.getTime();
+  };
+
+  // Filter a day's posts to only upcoming slots (for today), returns all posts for future days
+  const getUpcomingPosts = (dayName: string, posts: any[]): { post: any; originalIndex: number }[] => {
+    if (!posts) return [];
+    return posts
+      .map((post: any, i: number) => ({ post, originalIndex: i }))
+      .filter(({ originalIndex }) => {
+        const slotTime = bestTimesRaw[originalIndex] || "09:00";
+        return !isSlotPassed(dayName, slotTime);
+      });
   };
 
   // Checkbox component for post rows
@@ -497,7 +532,10 @@ export function ContentPlanTab() {
             {postsPerDay <= 5 ? (
               /* CARD GRID — 1-5 posts/day */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {plan.daily_plan?.map((day: any) => (
+                {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
+                  const upcoming = getUpcomingPosts(day.day, day.posts);
+                  if (upcoming.length === 0) return null;
+                  return (
                   <Card key={day.day} className="group">
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-center gap-2">
@@ -505,15 +543,13 @@ export function ContentPlanTab() {
                         <p className="text-sm font-bold text-foreground">{day.day}</p>
                       </div>
                       <div className="space-y-2">
-                        {day.posts?.map((post: any, i: number) => {
+                        {upcoming.map(({ post, originalIndex: i }) => {
                           const postKey = `${day.day}-${i}`;
                           const isDrafted = draftedPosts.has(postKey);
                           const isDrafting = draftingPostKey === postKey;
-                          const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
-                          const slotTime = bestTimes[i % bestTimes.length] || "09:00";
-                          const passed = isSlotPassed(day.day, slotTime);
+                          const slotTime = bestTimesRaw[i] || "09:00";
                           return (
-                            <div key={i} className={cn("rounded-lg border border-border p-3 space-y-2 group", passed && "opacity-40")}>
+                            <div key={i} className="rounded-lg border border-border p-3 space-y-2 group">
                               <div className="flex items-start gap-2">
                                 <PostCheckbox postKey={postKey} />
                                 <div className="flex-1 space-y-2">
@@ -522,11 +558,6 @@ export function ContentPlanTab() {
                                     <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                       {post.funnel_stage}
                                     </Badge>
-                                    {passed && (
-                                      <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30">
-                                        Passed
-                                      </Badge>
-                                    )}
                                     {isDrafted && (
                                       <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
                                         <Check className="h-2.5 w-2.5" /> Drafted
@@ -572,40 +603,37 @@ export function ContentPlanTab() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             ) : postsPerDay <= 10 ? (
               /* COMPACT LIST — 6-10 posts/day */
               <div className="space-y-4">
-                {plan.daily_plan?.map((day: any) => (
+                {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
+                  const upcoming = getUpcomingPosts(day.day, day.posts);
+                  if (upcoming.length === 0) return null;
+                  return (
                   <Card key={day.day} className="group">
                     <CardContent className="p-4 space-y-2">
                       <div className="flex items-center gap-2">
                         <DaySelectAll day={day} dayName={day.day} />
                         <p className="text-sm font-bold text-foreground">
-                          {day.day} <span className="text-muted-foreground font-normal">({day.posts?.length || 0} posts)</span>
+                          {day.day} <span className="text-muted-foreground font-normal">({upcoming.length} posts)</span>
                         </p>
                       </div>
                       <div className="divide-y divide-border">
-                        {day.posts?.map((post: any, i: number) => {
+                        {upcoming.map(({ post, originalIndex: i }) => {
                           const postKey = `${day.day}-${i}`;
                           const isDrafting = draftingPostKey === postKey;
-                          const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
-                          const time = bestTimes[i % bestTimes.length] || "09:00";
-                          const passed = isSlotPassed(day.day, time);
+                          const time = bestTimesRaw[i] || "09:00";
                           return (
-                            <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", passed && "opacity-40")}>
+                            <div key={i} className="flex items-center gap-3 py-2 text-xs group">
                               <PostCheckbox postKey={postKey} />
                               <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                               <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                               <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                 {post.funnel_stage}
                               </Badge>
-                              {passed && (
-                                <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30 shrink-0">
-                                  Passed
-                                </Badge>
-                              )}
                               <span className="text-muted-foreground truncate flex-1">
                                 {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                               </span>
@@ -624,16 +652,19 @@ export function ContentPlanTab() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               /* ACCORDION — 11-30 posts/day */
               <div className="space-y-2">
-                {plan.daily_plan?.map((day: any) => {
+                {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
+                  const upcoming = getUpcomingPosts(day.day, day.posts);
+                  if (upcoming.length === 0) return null;
                   const isOpen = expandedDays.has(day.day);
-                  const tofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "TOF").length;
-                  const mofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "MOF").length;
-                  const bofCount = (day.posts || []).filter((p: any) => p.funnel_stage === "BOF").length;
+                  const tofCount = upcoming.filter(({ post }) => post.funnel_stage === "TOF").length;
+                  const mofCount = upcoming.filter(({ post }) => post.funnel_stage === "MOF").length;
+                  const bofCount = upcoming.filter(({ post }) => post.funnel_stage === "BOF").length;
                   return (
                     <Collapsible
                       key={day.day}
@@ -654,7 +685,7 @@ export function ContentPlanTab() {
                               {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                               <p className="text-sm font-bold text-foreground">{day.day}</p>
                               <span className="text-xs text-muted-foreground">
-                                {day.posts?.length || 0} posts
+                                {upcoming.length} posts
                               </span>
                             </div>
                             <div className="flex gap-2 text-[10px]">
@@ -666,25 +697,18 @@ export function ContentPlanTab() {
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <div className="px-4 pb-4 divide-y divide-border">
-                            {day.posts?.map((post: any, i: number) => {
+                            {upcoming.map(({ post, originalIndex: i }) => {
                               const postKey = `${day.day}-${i}`;
                               const isDrafting = draftingPostKey === postKey;
-                              const bestTimes = Array.isArray(plan.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
-                              const time = bestTimes[i % bestTimes.length] || "09:00";
-                              const passed = isSlotPassed(day.day, time);
+                              const time = bestTimesRaw[i] || "09:00";
                               return (
-                                <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", passed && "opacity-40")}>
+                                <div key={i} className="flex items-center gap-3 py-2 text-xs group">
                                   <PostCheckbox postKey={postKey} />
                                   <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                                   <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
                                   <Badge className={`text-[10px] shrink-0 ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                     {post.funnel_stage}
                                   </Badge>
-                                  {passed && (
-                                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-muted-foreground/30 shrink-0">
-                                      Passed
-                                    </Badge>
-                                  )}
                                   <span className="text-muted-foreground truncate flex-1">
                                     {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                                   </span>
