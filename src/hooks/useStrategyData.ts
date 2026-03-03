@@ -130,6 +130,7 @@ export interface ContentPlanItem {
 export interface ProfileStrategy {
   mission: string | null;
   posting_cadence: string | null;
+  max_posts_per_day: number | null;
   traffic_url: string | null;
 }
 
@@ -142,7 +143,7 @@ export function useProfileStrategy() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("profiles")
-        .select("mission, posting_cadence, traffic_url")
+        .select("mission, posting_cadence, max_posts_per_day, traffic_url")
         .eq("id", user!.id)
         .single();
       if (error) throw error;

@@ -98,6 +98,8 @@ If a BRANDING PLAN and FUNNEL STRATEGY are provided in the context, you MUST use
 
 The creator's profile includes max_posts_per_day. You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.
 
+IMPORTANT: The number of posts per day is INDEPENDENT of best_times. best_times lists the user's preferred posting windows (e.g. 4 times), but the user may want MORE posts than time slots (e.g. 7 posts/day with 4 best times). Always generate exactly posts_per_day posts for each day regardless of how many best_times you output. Time slot assignment happens separately after generation.
+
 Be extremely concise. Each topic must be under 80 characters. Each hook_idea must be one line only, under 100 characters — just the opening hook sentence, nothing more. No multi-line hook ideas. Total JSON response must be under 6000 tokens.
 
 This keeps hook ideas as short planning seeds. Full post text gets generated later by generate-draft-posts.

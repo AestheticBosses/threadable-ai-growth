@@ -58,10 +58,10 @@ const PURPOSE_ICONS: Record<string, string> = {
 };
 
 const CADENCE_LABELS: Record<string, string> = {
-  "7x_week": "7x/week (daily)",
-  "5x_week": "5x/week (weekdays)",
-  "3x_week": "3x/week",
-  "2x_week": "2x/week",
+  "7x_week": "7 days/week",
+  "5x_week": "5 days/week",
+  "3x_week": "3 days/week",
+  "2x_week": "2 days/week",
 };
 
 const Playbook = () => {
@@ -496,9 +496,13 @@ const Playbook = () => {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Your Mission</p>
                 <p className="text-sm text-foreground leading-relaxed">{profileStrategy.mission}</p>
-                {profileStrategy.posting_cadence && (
+                {(profileStrategy.posting_cadence || profileStrategy.max_posts_per_day) && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Posting: {CADENCE_LABELS[profileStrategy.posting_cadence] || profileStrategy.posting_cadence}
+                    {profileStrategy.max_posts_per_day && profileStrategy.max_posts_per_day > 1
+                      ? `${profileStrategy.max_posts_per_day} posts/day`
+                      : profileStrategy.max_posts_per_day === 1 ? "1 post/day" : ""}
+                    {profileStrategy.posting_cadence && profileStrategy.max_posts_per_day ? " · " : ""}
+                    {profileStrategy.posting_cadence ? (CADENCE_LABELS[profileStrategy.posting_cadence] || profileStrategy.posting_cadence) : ""}
                   </p>
                 )}
               </div>
