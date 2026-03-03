@@ -61,14 +61,27 @@ export function ContentPlanTab() {
   const bestTimesRaw: string[] = Array.isArray(plan?.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
   // Original regression-backed best times for display in Weekly Overview
   const originalBestTimes: string[] = Array.isArray(plan?.original_best_times) ? plan.original_best_times : bestTimesRaw;
+  // Day/time checks — declared early so getPostTime can reference todayDayName
+  const DAY_NAMES_CHECK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const nowForCheck = new Date();
+  const todayDayName = DAY_NAMES_CHECK[nowForCheck.getDay()];
+  const todayIdx = nowForCheck.getDay();
+  // Today-specific time slots (all in the future at generation time)
+  const todayBestTimes: string[] = Array.isArray(plan?.today_best_times) ? plan.today_best_times : bestTimesRaw;
+  const todayDayFromPlan: string = plan?.today_day_name || "";
+  // Helper: get the right time array for a given day
+  const getPostTime = (dayName: string, postIndex: number): string => {
+    if (dayName === todayDayName && dayName === todayDayFromPlan) {
+      return todayBestTimes[postIndex] || "09:00";
+    }
+    return bestTimesRaw[postIndex] || "09:00";
+  };
 
   // Sort daily_plan so today's day comes first, then future days, then past days
   if (plan && Array.isArray(plan.daily_plan) && plan.daily_plan.length > 0) {
-    const DAY_ORDER = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const todayIdx = new Date().getDay(); // 0=Sun
     plan.daily_plan.sort((a: any, b: any) => {
-      const aIdx = DAY_ORDER.indexOf(a.day);
-      const bIdx = DAY_ORDER.indexOf(b.day);
+      const aIdx = DAY_NAMES_CHECK.indexOf(a.day);
+      const bIdx = DAY_NAMES_CHECK.indexOf(b.day);
       // Offset so today = 0, tomorrow = 1, etc.
       const aOff = (aIdx - todayIdx + 7) % 7;
       const bOff = (bIdx - todayIdx + 7) % 7;
@@ -162,7 +175,7 @@ export function ContentPlanTab() {
       if (!dayPlan.posts || !Array.isArray(dayPlan.posts)) return;
 
       dayPlan.posts.forEach((post: any, index: number) => {
-        const time = bestTimesRaw[index] || "09:00";
+        const time = getPostTime(dayName, index);
         const scheduledTime = getScheduledDateTime(dayName, time);
         if (!scheduledTime) return;
 
@@ -373,11 +386,6 @@ export function ContentPlanTab() {
   }
 
   // Check if an entire day is in the past, or if a specific time slot has passed
-  const DAY_NAMES_CHECK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const nowForCheck = new Date();
-  const todayDayName = DAY_NAMES_CHECK[nowForCheck.getDay()];
-  const todayIdx = nowForCheck.getDay();
-
   const isDayInPast = (dayName: string): boolean => {
     const dayIdx = DAY_NAMES_CHECK.indexOf(dayName);
     if (dayIdx === -1) return false;
@@ -404,7 +412,7 @@ export function ContentPlanTab() {
     return posts
       .map((post: any, i: number) => ({ post, originalIndex: i }))
       .filter(({ originalIndex }) => {
-        const slotTime = bestTimesRaw[originalIndex] || "09:00";
+        const slotTime = getPostTime(dayName, originalIndex);
         return !isSlotPassed(dayName, slotTime);
       });
   };
@@ -537,7 +545,7 @@ export function ContentPlanTab() {
                           const postKey = `${day.day}-${i}`;
                           const isDrafted = draftedPosts.has(postKey);
                           const isDrafting = draftingPostKey === postKey;
-                          const slotTime = bestTimesRaw[i] || "09:00";
+                          const slotTime = getPostTime(day.day, i);
                           return (
                             <div key={i} className="rounded-lg border border-border p-3 space-y-2 group">
                               <div className="flex items-start gap-2">
@@ -615,7 +623,7 @@ export function ContentPlanTab() {
                         {upcoming.map(({ post, originalIndex: i }) => {
                           const postKey = `${day.day}-${i}`;
                           const isDrafting = draftingPostKey === postKey;
-                          const time = bestTimesRaw[i] || "09:00";
+                          const time = getPostTime(day.day, i);
                           return (
                             <div key={i} className="flex items-center gap-3 py-2 text-xs group">
                               <PostCheckbox postKey={postKey} />
@@ -690,7 +698,7 @@ export function ContentPlanTab() {
                             {upcoming.map(({ post, originalIndex: i }) => {
                               const postKey = `${day.day}-${i}`;
                               const isDrafting = draftingPostKey === postKey;
-                              const time = bestTimesRaw[i] || "09:00";
+                              const time = getPostTime(day.day, i);
                               return (
                                 <div key={i} className="flex items-center gap-3 py-2 text-xs group">
                                   <PostCheckbox postKey={postKey} />

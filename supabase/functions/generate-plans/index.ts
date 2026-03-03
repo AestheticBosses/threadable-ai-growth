@@ -72,6 +72,51 @@ function deriveBestTimes(regressionInsights: any, count: number): string[] {
 }
 
 /**
+ * Generate time slots for today starting from NOW.
+ * Filters regression best times to those still in the future,
+ * then fills remaining slots between now and 11:00 PM.
+ */
+function generateTodaySlots(
+  regressionBestTimes: string[],
+  totalPosts: number,
+  nowMinutes: number
+): string[] {
+  const END_OF_DAY = 23 * 60; // 11:00 PM
+  const template = regressionBestTimes[0] || "9:00 AM";
+
+  // Filter regression best times to those still in the future (15 min buffer)
+  const bufferNow = nowMinutes + 15;
+  const futureAnchors = regressionBestTimes.filter(t => parseToMinutes(t) >= bufferNow);
+
+  if (futureAnchors.length >= totalPosts) {
+    return expandTimeSlots(futureAnchors, totalPosts);
+  }
+
+  if (futureAnchors.length === 0) {
+    // No anchors left — evenly space from ~now to 11 PM
+    const startMin = Math.ceil(bufferNow / 5) * 5;
+    if (startMin >= END_OF_DAY) {
+      return Array.from({ length: totalPosts }, () => minutesToTimeStr(END_OF_DAY, template));
+    }
+    if (totalPosts === 1) {
+      return [minutesToTimeStr(startMin, template)];
+    }
+    const gap = Math.floor((END_OF_DAY - startMin) / (totalPosts - 1));
+    return Array.from({ length: totalPosts }, (_, i) =>
+      minutesToTimeStr(Math.min(startMin + i * gap, END_OF_DAY), template)
+    );
+  }
+
+  // Some future anchors + need more — add end-of-day boundary for expansion
+  const lastAnchorMin = parseToMinutes(futureAnchors[futureAnchors.length - 1]);
+  const anchorsForExpansion = [...futureAnchors];
+  if (END_OF_DAY - lastAnchorMin > 60) {
+    anchorsForExpansion.push(minutesToTimeStr(END_OF_DAY, template));
+  }
+  return expandTimeSlots(anchorsForExpansion, totalPosts);
+}
+
+/**
  * Expand best posting times to fill totalPosts unique slots.
  * Anchors on bestTimes, places extras at midpoints of largest gaps.
  */
@@ -248,7 +293,7 @@ serve(async (req) => {
       });
     }
 
-    const { plan_type, include_plans } = await req.json();
+    const { plan_type, include_plans, client_now_minutes, client_day } = await req.json();
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
@@ -324,10 +369,9 @@ serve(async (req) => {
         `You MUST output "posts_per_day": ${postsPerDay}. Each day in daily_plan MUST have exactly ${postsPerDay} posts. This is non-negotiable.`
       );
 
-    // Determine today's day name for anchoring the plan
-    const today = new Date();
+    // Determine today's day name — prefer client's local day over server UTC
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const todayName = dayNames[today.getDay()];
+    const todayName = (client_day && dayNames.includes(client_day)) ? client_day : dayNames[new Date().getDay()];
     const todayAnchor = `\nToday is ${todayName}. The 7-day plan must start from ${todayName} and go forward from there. Do not start from Monday unless today is Monday.\n`;
 
     const basePrompt =
@@ -432,6 +476,16 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
       console.log("[generate-plans] expanded best_times:", JSON.stringify(expandedTimes));
       console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
+
+      // For TODAY specifically, generate time slots starting from NOW
+      const nowMins = typeof client_now_minutes === "number" ? client_now_minutes : (new Date().getUTCHours() * 60 + new Date().getUTCMinutes());
+      const todayInPlan = planData.daily_plan?.find((d: any) => d.day === todayName);
+      if (todayInPlan) {
+        const todaySlots = generateTodaySlots(regressionBestTimes, postsPerDay, nowMins);
+        planData.today_best_times = todaySlots;
+        planData.today_day_name = todayName;
+        console.log("[generate-plans] nowMinutes:", nowMins, "today_best_times:", JSON.stringify(todaySlots));
+      }
     }
 
     // Force funnel percentages to fixed values regardless of AI output

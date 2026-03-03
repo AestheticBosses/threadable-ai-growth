@@ -74,8 +74,13 @@ function useGeneratePlan(planType: PlanType) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
 
+      const now = new Date();
       const res = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: planType },
+        body: {
+          plan_type: planType,
+          client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+          client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
