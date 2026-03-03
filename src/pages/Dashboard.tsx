@@ -4,16 +4,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { PlanHealthHero } from "@/components/dashboard/PlanHealthHero";
 import { WeeklyPipeline } from "@/components/dashboard/WeeklyPipeline";
 import { DailyActionBoard } from "@/components/dashboard/DailyActionBoard";
-import { LogResultCard } from "@/components/dashboard/LogResultCard";
 import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 
 import { WeeklyRefreshCard } from "@/components/dashboard/WeeklyRefreshCard";
-import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
 import { WeeklyApprovalGate } from "@/components/dashboard/WeeklyApprovalGate";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { BarChart3, RefreshCw, Brain, Loader2, User } from "lucide-react";
+import { BarChart3, RefreshCw, Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -186,7 +184,7 @@ const Dashboard = () => {
           />
         ) : (
           <div className="space-y-6">
-            {/* Account strip */}
+            {/* 1. Account strip */}
             <div className="rounded-xl border border-border bg-card/50 px-4 py-2.5 flex items-center gap-3">
               <Avatar className="h-9 w-9 border border-border">
                 <AvatarImage src={profile?.threads_profile_picture_url ?? undefined} />
@@ -210,34 +208,26 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* ── Weekly Refresh Summary ── */}
+            {/* 2. Weekly Refresh Summary */}
             <WeeklyRefreshCard />
 
-
-            {/* ── Section 1: Plan Health Hero ── */}
-            <PlanHealthHero />
-
-            {/* ── Weekly Approval Gate (self-hides when no drafts) ── */}
-            <WeeklyApprovalGate />
-
-            {/* ── Milestone Card ── */}
-            <MilestoneCard />
-
-            {/* ── Daily Action Board ── */}
-            <DailyActionBoard />
-
-            {/* ── Log Results Card (#3) ── */}
-            <LogResultCard />
-
-            {/* ── Section 2: This Week's Pipeline ── */}
-            <WeeklyPipeline />
-
-            {/* ── Section 3: This Week's Performance ── */}
+            {/* 3. Weekly Performance (moved from bottom) */}
             <WeeklyPerformance />
 
+            {/* 4. Plan Health Hero */}
+            <PlanHealthHero />
 
-            {/* Quick Actions */}
-            <QuickActionsCard />
+            {/* 5. Weekly Approval Gate (self-hides when no drafts) */}
+            <WeeklyApprovalGate />
+
+            {/* 6. Milestone Card */}
+            <MilestoneCard />
+
+            {/* 7. Daily Action Board (now includes Log Results) */}
+            <DailyActionBoard />
+
+            {/* 8. This Week's Pipeline */}
+            <WeeklyPipeline />
           </div>
         )}
       </div>

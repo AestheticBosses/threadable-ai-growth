@@ -32,6 +32,12 @@ const FUNNEL_META: Record<string, { label: string; color: string; dot: string; d
   },
 };
 
+const FUNNEL_WHY: Record<string, string> = {
+  TOF: "reaches new people",
+  MOF: "builds trust with warm leads",
+  BOF: "drives conversions",
+};
+
 function getWhyToday(archetype: string | null | undefined, funnelStage: string | null | undefined, isTest: boolean, regressionData: any): string {
   const credLift = regressionData?.views_insights?.boolean_feature_lifts?.has_credibility_marker;
   const testLabel = isTest ? "This is a test slot — we're validating a new angle." : "This is a proven format — we're scaling what works.";
@@ -66,7 +72,7 @@ export function PlanHealthHero() {
     queryFn: async () => {
       if (!user?.id) return null;
 
-      const [profileRes, planRes, scheduledRes, draftsRes, regressionRes, weekPlanRes] = await Promise.all([
+      const [profileRes, planRes, scheduledRes, draftsRes, regressionRes, regressionActualRes, weekPlanRes, userPlanRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("threads_username, threads_user_id")
@@ -89,6 +95,7 @@ export function PlanHealthHero() {
           .select("id")
           .eq("user_id", user.id)
           .eq("status", "draft"),
+        // BUG FIX: query weekly for general regression_insights
         supabase
           .from("content_strategies")
           .select("regression_insights")
@@ -97,19 +104,40 @@ export function PlanHealthHero() {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
+        // BUG FIX: also query strategy_type="regression" for actual regression data
+        supabase
+          .from("content_strategies")
+          .select("strategy_data, regression_insights")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "regression")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
         supabase
           .from("content_plan_items")
-          .select("funnel_stage, is_test_slot")
+          .select("funnel_stage, is_test_slot, archetype")
           .eq("user_id", user.id)
           .gte("scheduled_date", weekStartStr)
           .lte("scheduled_date", weekEndStr),
+        // Fetch user_plans for today_best_times
+        supabase
+          .from("user_plans")
+          .select("plan_data")
+          .eq("user_id", user.id)
+          .eq("plan_type", "content_plan")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       const profile = profileRes.data;
       const planItems = planRes.data ?? [];
       const scheduledPosts = scheduledRes.data ?? [];
       const draftPosts = draftsRes.data ?? [];
-      const regressionData = regressionRes.data?.regression_insights as any;
+      // Prefer regression-specific data, fall back to weekly
+      const regressionData = regressionActualRes.data?.regression_insights as any
+        ?? regressionActualRes.data?.strategy_data as any
+        ?? regressionRes.data?.regression_insights as any;
       const weekItems = weekPlanRes.data ?? [];
 
       const threadsConnected = !!(profile?.threads_username || profile?.threads_user_id);
@@ -173,6 +201,18 @@ export function PlanHealthHero() {
       if (bofCount === 0) gaps.push("no Conversion posts scheduled");
       if (mofCount === 0) gaps.push("no Trust posts planned");
 
+      // Archetype distribution for contextual "why" line
+      const archetypeCounts: Record<string, number> = {};
+      for (const item of weekItems) {
+        if (item.archetype) {
+          archetypeCounts[item.archetype] = (archetypeCounts[item.archetype] ?? 0) + 1;
+        }
+      }
+
+      // Today's best time from user_plans
+      const planData = userPlanRes.data?.plan_data as any;
+      const todayBestTime = planData?.today_best_times?.[0] ?? null;
+
       return {
         threadsConnected,
         hasPlan,
@@ -192,6 +232,8 @@ export function PlanHealthHero() {
         mofCount,
         bofCount,
         gaps,
+        archetypeCounts,
+        todayBestTime,
       };
     },
     enabled: !!user?.id,
@@ -258,6 +300,17 @@ export function PlanHealthHero() {
   const featuredTopic = hasTodayItem ? todayTopic : nextTopic;
   const featuredLabel = hasTodayItem ? "Today's Post" : "Next Post";
 
+  // Build contextual why line
+  const buildContextualWhy = (item: typeof featuredItem) => {
+    if (!item?.archetype || !data.archetypeCounts) return null;
+    const count = data.archetypeCounts[item.archetype] ?? 0;
+    const funnelWhy = item.funnel_stage ? FUNNEL_WHY[item.funnel_stage] : null;
+    if (count > 0 && funnelWhy) {
+      return `Your ${count === 1 ? "1st" : count === 2 ? "2nd" : count === 3 ? "3rd" : `${count}th`} ${item.archetype} post this week — ${item.funnel_stage} posts ${funnelWhy}`;
+    }
+    return null;
+  };
+
   const handleGenerate = () => {
     const params = new URLSearchParams();
     if (featuredItem?.archetype) params.set("archetype", featuredItem.archetype);
@@ -310,7 +363,7 @@ export function PlanHealthHero() {
           </Button>
         </div>
 
-        {/* Funnel mix health (#6) */}
+        {/* Funnel mix health */}
         {data.gaps.length > 0 ? (
           <div className="flex items-start gap-2 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-2.5">
             <AlertCircle className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
@@ -356,6 +409,8 @@ export function PlanHealthHero() {
                 label="Next Post"
                 onGenerate={handleGenerate}
                 regressionData={regressionData}
+                contextualWhy={buildContextualWhy(nextUnpostedItem)}
+                scheduledTime={null}
               />
             )}
           </div>
@@ -367,6 +422,8 @@ export function PlanHealthHero() {
             label={featuredLabel}
             onGenerate={handleGenerate}
             regressionData={regressionData}
+            contextualWhy={buildContextualWhy(featuredItem)}
+            scheduledTime={hasTodayItem ? data.todayBestTime : null}
           />
         ) : (
           <div className="rounded-lg border border-border bg-muted/10 px-4 py-3 flex items-center justify-between gap-3">
@@ -389,6 +446,8 @@ function TodayPostCard({
   label,
   onGenerate,
   regressionData,
+  contextualWhy,
+  scheduledTime,
 }: {
   planItem: { archetype?: string | null; funnel_stage?: string | null; scheduled_date?: string | null; is_test_slot?: boolean | null };
   pillarName?: string | null;
@@ -396,6 +455,8 @@ function TodayPostCard({
   label: string;
   onGenerate: () => void;
   regressionData?: any;
+  contextualWhy?: string | null;
+  scheduledTime?: string | null;
 }) {
   const funnel = planItem.funnel_stage ? FUNNEL_META[planItem.funnel_stage] ?? null : null;
   const whyToday = getWhyToday(planItem.archetype, planItem.funnel_stage, !!planItem.is_test_slot, regressionData);
@@ -415,11 +476,12 @@ function TodayPostCard({
             {planItem.is_test_slot ? "TEST" : "SCALE"}
           </span>
         )}
-        {planItem.scheduled_date && (
-          <span className="text-xs text-muted-foreground ml-auto">
-            {format(parseISO(planItem.scheduled_date), "EEEE, MMM d")}
-          </span>
-        )}
+        <span className="text-xs text-muted-foreground ml-auto flex items-center gap-1.5">
+          {planItem.scheduled_date && format(parseISO(planItem.scheduled_date), "EEEE, MMM d")}
+          {scheduledTime && (
+            <span className="text-primary font-medium">at {scheduledTime}</span>
+          )}
+        </span>
       </div>
 
       {/* Pillar × Archetype */}
@@ -440,6 +502,11 @@ function TodayPostCard({
         )}
       </div>
 
+      {/* Contextual "why" line */}
+      {contextualWhy && (
+        <p className="text-xs text-primary/80 font-medium">{contextualWhy}</p>
+      )}
+
       {/* Funnel stage pill + Why today */}
       {funnel && (
         <div className="space-y-1.5">
@@ -452,14 +519,17 @@ function TodayPostCard({
         </div>
       )}
 
-      {/* CTA */}
-      <Button
-        onClick={onGenerate}
-        className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-      >
-        <Sparkles className="h-4 w-4" />
-        Generate {label} →
-      </Button>
+      {/* CTA — standard size, right-aligned */}
+      <div className="flex justify-end">
+        <Button
+          onClick={onGenerate}
+          size="sm"
+          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+        >
+          <Sparkles className="h-4 w-4" />
+          Generate {label} →
+        </Button>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,13 @@ const ARCHETYPE_ICONS: Record<string, string> = {
   "Window": "🪟",
 };
 
+const ARCHETYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "Vault Drop": { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
+  "Truth Bomb": { bg: "bg-yellow-500/10", text: "text-yellow-400", border: "border-yellow-500/20" },
+  "Hot Take": { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
+  "Window": { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20" },
+};
+
 type DayStatus = "published" | "scheduled" | "drafted" | "planned" | "empty";
 
 function StatusBadge({ status }: { status: DayStatus }) {
@@ -89,7 +96,7 @@ export function WeeklyPipeline() {
       const weekStartStr = format(weekStart, "yyyy-MM-dd");
       const weekEndStr = format(weekEnd, "yyyy-MM-dd");
 
-      const [planRes, scheduledRes, pillarsRes, regressionRes] = await Promise.all([
+      const [planRes, scheduledRes, pillarsRes, regressionWeeklyRes, regressionActualRes] = await Promise.all([
         supabase
           .from("content_plan_items")
           .select("id, scheduled_date, archetype, funnel_stage, status, pillar_id, topic_id, post_id, is_test_slot")
@@ -107,11 +114,21 @@ export function WeeklyPipeline() {
           .select("id, name")
           .eq("user_id", user.id)
           .eq("is_active", true),
+        // Keep weekly query for fallback
         supabase
           .from("content_strategies")
           .select("regression_insights")
           .eq("user_id", user.id)
           .eq("strategy_type", "weekly")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        // BUG FIX: also fetch strategy_type="regression" for actual regression data
+        supabase
+          .from("content_strategies")
+          .select("strategy_data, regression_insights")
+          .eq("user_id", user.id)
+          .eq("strategy_type", "regression")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -121,11 +138,16 @@ export function WeeklyPipeline() {
       const testCount = planItems.filter(i => i.is_test_slot).length;
       const scaleCount = planItems.filter(i => !i.is_test_slot).length;
 
+      // Prefer regression-specific data, fall back to weekly
+      const regressionData = regressionActualRes.data?.regression_insights as any
+        ?? regressionActualRes.data?.strategy_data as any
+        ?? regressionWeeklyRes.data?.regression_insights as any;
+
       return {
         planItems,
         scheduledPosts: scheduledRes.data ?? [],
         pillars: pillarsRes.data ?? [],
-        regressionData: regressionRes.data?.regression_insights as any,
+        regressionData,
         testCount,
         scaleCount,
       };
@@ -188,7 +210,7 @@ export function WeeklyPipeline() {
         </span>
       </div>
 
-      {/* "What changed" strip (#4) */}
+      {/* "What changed" strip */}
       {changeMessage && (
         <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/10 px-4 py-2.5">
           <TrendingUp className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
@@ -199,6 +221,9 @@ export function WeeklyPipeline() {
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((day, i) => {
           const isActionable = todayNeedsPost(day);
+          const archetypeName = day.planItem?.archetype ?? "";
+          const archetypeColor = ARCHETYPE_COLORS[archetypeName] ?? null;
+
           return (
             <button
               key={i}
@@ -221,7 +246,6 @@ export function WeeklyPipeline() {
                     {format(day.dayDate, "d")}
                   </p>
                 </div>
-                {/* Test/Scale badge (#2) */}
                 {day.planItem && day.planItem.is_test_slot != null && (
                   <span className={`text-[8px] font-bold px-1 py-0.5 rounded-full border leading-none ${
                     day.planItem.is_test_slot
@@ -245,11 +269,17 @@ export function WeeklyPipeline() {
                 <div className="flex-1" />
               )}
 
-              {/* Archetype */}
-              {day.planItem?.archetype && (
-                <span className="text-[10px] text-muted-foreground truncate">
-                  {ARCHETYPE_ICONS[day.planItem.archetype] ?? ""} {day.planItem.archetype}
-                </span>
+              {/* Archetype — color-coded */}
+              {archetypeName && (
+                archetypeColor ? (
+                  <span className={`text-[10px] font-medium truncate px-1 py-0.5 rounded border ${archetypeColor.bg} ${archetypeColor.text} ${archetypeColor.border}`}>
+                    {ARCHETYPE_ICONS[archetypeName] ?? ""} {archetypeName}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground truncate px-1 py-0.5 rounded border border-border bg-muted/10">
+                    {ARCHETYPE_ICONS[archetypeName] ?? ""} {archetypeName}
+                  </span>
+                )
               )}
 
               {/* Status badge */}
