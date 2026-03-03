@@ -57,19 +57,10 @@ export function ContentPlanTab() {
 
   console.log("[ContentPlanTab] full plan JSON:", JSON.stringify(plan, null, 2));
 
-  // Cap posts per day to the number of available time slots (no wrapping)
+  // Expanded time slots (one per post) for slot assignment
   const bestTimesRaw: string[] = Array.isArray(plan?.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
-  if (plan && Array.isArray(plan.daily_plan)) {
-    const maxSlots = bestTimesRaw.length;
-    for (const day of plan.daily_plan) {
-      if (Array.isArray(day.posts) && day.posts.length > maxSlots) {
-        day.posts = day.posts.slice(0, maxSlots);
-      }
-    }
-    if (plan.posts_per_day > maxSlots) {
-      plan.posts_per_day = maxSlots;
-    }
-  }
+  // Original regression-backed best times for display in Weekly Overview
+  const originalBestTimes: string[] = Array.isArray(plan?.original_best_times) ? plan.original_best_times : bestTimesRaw;
 
   // Sort daily_plan so today's day comes first, then future days, then past days
   if (plan && Array.isArray(plan.daily_plan) && plan.daily_plan.length > 0) {
@@ -160,7 +151,7 @@ export function ContentPlanTab() {
     return safeISOString(date);
   };
 
-  // Collect all posts from the plan (capped to available time slots)
+  // Collect all posts from the plan
   const getAllPlanPosts = () => {
     if (!plan?.daily_plan) return [];
 
@@ -171,7 +162,6 @@ export function ContentPlanTab() {
       if (!dayPlan.posts || !Array.isArray(dayPlan.posts)) return;
 
       dayPlan.posts.forEach((post: any, index: number) => {
-        if (index >= bestTimesRaw.length) return; // skip posts beyond available slots
         const time = bestTimesRaw[index] || "09:00";
         const scheduledTime = getScheduledDateTime(dayName, time);
         if (!scheduledTime) return;
@@ -510,7 +500,7 @@ export function ContentPlanTab() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Best posting times</p>
-                  <p className="text-sm text-foreground">{plan.best_times?.join(", ")}</p>
+                  <p className="text-sm text-foreground">{originalBestTimes.join(", ")}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Primary archetypes</p>

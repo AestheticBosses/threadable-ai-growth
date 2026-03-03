@@ -11,6 +11,79 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Parse a time string like "7:00 AM", "7:00 AM CST", "14:30" into minutes since midnight.
+ */
+function parseToMinutes(timeStr: string): number {
+  const cleaned = timeStr.replace(/\s+[A-Z]{2,4}$/i, "").trim();
+  const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = parseInt(ampmMatch[2], 10);
+    const period = ampmMatch[3].toUpperCase();
+    if (period === "PM" && h < 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  const parts = cleaned.split(":").map(Number);
+  return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+
+/**
+ * Format minutes since midnight back to a time string.
+ * Matches the format of the original best times (12h with suffix, or 24h).
+ */
+function minutesToTimeStr(mins: number, templateStr: string): string {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  // Detect format from template
+  const hasSuffix = templateStr.match(/\s+([A-Z]{2,4})$/i);
+  const is12h = /AM|PM/i.test(templateStr);
+  if (is12h) {
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    const base = `${h12}:${String(m).padStart(2, "0")} ${period}`;
+    return hasSuffix ? `${base} ${hasSuffix[1].toUpperCase()}` : base;
+  }
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Expand best posting times to fill totalPosts unique slots.
+ * First slots use bestTimes as anchors, extras are placed at midpoints of largest gaps.
+ * Returns sorted array of totalPosts time strings.
+ */
+function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
+  if (totalPosts <= bestTimes.length) return bestTimes.slice(0, totalPosts);
+  if (bestTimes.length === 0) return ["09:00"];
+
+  const template = bestTimes[0];
+  // Start with anchor times in minutes
+  const slots = bestTimes.map(parseToMinutes).sort((a, b) => a - b);
+  const extraNeeded = totalPosts - slots.length;
+
+  for (let n = 0; n < extraNeeded; n++) {
+    // Find the largest gap between consecutive slots
+    let maxGap = -1;
+    let maxIdx = 0;
+    for (let i = 0; i < slots.length - 1; i++) {
+      const gap = slots[i + 1] - slots[i];
+      if (gap > maxGap) {
+        maxGap = gap;
+        maxIdx = i;
+      }
+    }
+    // Insert at midpoint, rounded to nearest 5 minutes
+    const mid = slots[maxIdx] + Math.floor(maxGap / 2);
+    const rounded = Math.round(mid / 5) * 5;
+    // Clamp to avoid duplicates (minimum 3 min apart)
+    const clamped = Math.max(slots[maxIdx] + 3, Math.min(rounded, slots[maxIdx + 1] - 3));
+    slots.splice(maxIdx + 1, 0, clamped);
+  }
+
+  return slots.map((m) => minutesToTimeStr(m, template));
+}
+
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
 
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
@@ -309,26 +382,23 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
-    // Force posts_per_day to match profile, capped by available time slots
+    // Force posts_per_day to match profile and expand time slots to cover all posts
     if (plan_type === "content_plan") {
-      const bestTimesCount = Array.isArray(planData.best_times) ? planData.best_times.length : 3;
-      const cappedPostsPerDay = Math.min(postsPerDay, bestTimesCount);
-      console.log("[generate-plans] best_times:", JSON.stringify(planData.best_times));
-      console.log("[generate-plans] best_times count:", bestTimesCount);
+      const originalBestTimes: string[] = Array.isArray(planData.best_times) ? planData.best_times : ["09:00", "12:30", "17:00"];
+      console.log("[generate-plans] original best_times:", JSON.stringify(originalBestTimes));
       console.log("[generate-plans] postsPerDay from profile:", postsPerDay);
-      console.log("[generate-plans] cappedPostsPerDay:", cappedPostsPerDay);
-      console.log("[generate-plans] daily_plan BEFORE cap:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
-      planData.posts_per_day = cappedPostsPerDay;
+      console.log("[generate-plans] daily_plan posts:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
 
-      // Trim excess posts from each day to match available slots
-      if (Array.isArray(planData.daily_plan)) {
-        for (const day of planData.daily_plan) {
-          if (Array.isArray(day.posts) && day.posts.length > cappedPostsPerDay) {
-            day.posts = day.posts.slice(0, cappedPostsPerDay);
-          }
-        }
-      }
-      console.log("[generate-plans] daily_plan AFTER cap:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
+      // Store original regression-backed best times for display
+      planData.original_best_times = originalBestTimes;
+
+      // Expand time slots so every post gets a unique slot
+      const expandedTimes = expandTimeSlots(originalBestTimes, postsPerDay);
+      planData.best_times = expandedTimes;
+      planData.posts_per_day = postsPerDay;
+
+      console.log("[generate-plans] expanded best_times:", JSON.stringify(expandedTimes));
+      console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
     }
 
     // Force funnel percentages to fixed values regardless of AI output
