@@ -204,13 +204,15 @@ export function ContentPlanTab() {
     const time = getPostTime(dayName, postIndex);
     const scheduledDateTime = getScheduledDateTime(dayName, time);
     if (!scheduledDateTime) return null;
-    const targetDate = scheduledDateTime.slice(0, 10); // YYYY-MM-DD
+    // Use local time for date comparison to avoid UTC date shifting
+    const targetDateObj = new Date(scheduledDateTime);
+    const targetDate = targetDateObj.toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
 
     const match = weekScheduledPosts.find((sp: any) => {
       if (!sp.scheduled_for) return false;
-      const spDate = new Date(sp.scheduled_for).toISOString().slice(0, 10);
+      const spDate = new Date(sp.scheduled_for).toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
       if (spDate !== targetDate) return false;
-      if (sp.content_category && sp.content_category === post.archetype) return true;
+      // Only match by hook text content, not just archetype (archetypes repeat across days)
       if (post.hook_idea && sp.text_content?.includes(post.hook_idea.slice(0, 30))) return true;
       return false;
     });
