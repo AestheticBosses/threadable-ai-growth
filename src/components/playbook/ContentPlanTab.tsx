@@ -397,7 +397,9 @@ export function ContentPlanTab() {
     // Days are sorted relative to today; a day is "past" if its offset puts it after today in the week cycle
     // i.e. yesterday = offset 6, day before = offset 5, etc.
     const offset = (dayIdx - todayIdx + 7) % 7;
-    return offset > 0 && offset >= 6; // only yesterday (offset 6) is truly "past" in a 7-day view
+    const result = offset > 0 && offset >= 6; // only yesterday (offset 6) is truly "past" in a 7-day view
+    console.log("[isDayInPast]", dayName, "todayIdx=", todayIdx, "dayIdx=", dayIdx, "offset=", offset, "result=", result);
+    return result;
   };
 
   const isSlotPassed = (dayName: string, timeStr: string): boolean => {
@@ -414,12 +416,16 @@ export function ContentPlanTab() {
   // Filter a day's posts to only upcoming slots (for today), returns all posts for future days
   const getUpcomingPosts = (dayName: string, posts: any[]): { post: any; originalIndex: number }[] => {
     if (!posts) return [];
-    return posts
+    const result = posts
       .map((post: any, i: number) => ({ post, originalIndex: i }))
       .filter(({ originalIndex }) => {
         const slotTime = getPostTime(dayName, originalIndex);
-        return !isSlotPassed(dayName, slotTime);
+        const passed = isSlotPassed(dayName, slotTime);
+        console.log("[getUpcomingPosts] slot", dayName, "idx=", originalIndex, "time=", slotTime, "passed=", passed);
+        return !passed;
       });
+    console.log("[getUpcomingPosts]", dayName, "total posts:", posts.length, "upcoming:", result.length);
+    return result;
   };
 
   // Checkbox component for post rows
@@ -535,8 +541,9 @@ export function ContentPlanTab() {
             {postsPerDay <= 5 ? (
               /* CARD GRID — 1-5 posts/day */
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
+              {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
                   const upcoming = getUpcomingPosts(day.day, day.posts);
+                  console.log("[render-card]", day.day, "upcoming count:", upcoming.length, "isDayInPast:", isDayInPast(day.day));
                   if (upcoming.length === 0) return null;
                   return (
                   <Card key={day.day} className="group">
@@ -614,6 +621,7 @@ export function ContentPlanTab() {
               <div className="space-y-4">
                 {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
                   const upcoming = getUpcomingPosts(day.day, day.posts);
+                  console.log("[render-list]", day.day, "upcoming count:", upcoming.length, "isDayInPast:", isDayInPast(day.day));
                   if (upcoming.length === 0) return null;
                   return (
                   <Card key={day.day} className="group">
@@ -663,6 +671,7 @@ export function ContentPlanTab() {
               <div className="space-y-2">
                 {plan.daily_plan?.filter((day: any) => !isDayInPast(day.day)).map((day: any) => {
                   const upcoming = getUpcomingPosts(day.day, day.posts);
+                  console.log("[render-accordion]", day.day, "upcoming count:", upcoming.length, "isDayInPast:", isDayInPast(day.day));
                   if (upcoming.length === 0) return null;
                   const isOpen = expandedDays.has(day.day);
                   const tofCount = upcoming.filter(({ post }) => post.funnel_stage === "TOF").length;
