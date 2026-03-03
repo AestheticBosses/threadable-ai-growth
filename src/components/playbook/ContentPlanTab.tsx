@@ -114,6 +114,22 @@ export function ContentPlanTab() {
 
   const hasAnySelected = selectedPosts.size > 0;
 
+  // Query scheduled posts for this week to show drafted/scheduled status
+  const { data: weekScheduledPosts } = useQuery({
+    queryKey: ["content-plan-scheduled", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from("scheduled_posts")
+        .select("id, scheduled_for, status, content_category, text_content, source")
+        .eq("user_id", user.id)
+        .in("status", ["draft", "approved", "scheduled", "published"])
+        .order("scheduled_for", { ascending: true });
+      return data ?? [];
+    },
+    enabled: !!user?.id && !!plan,
+  });
+
   // Safe date parsing helper
   const safeISOString = (date: Date): string | null => {
     try {
@@ -127,13 +143,25 @@ export function ContentPlanTab() {
   // Safe time parsing helper — handles "HH:MM", "H:MM AM", "H:MM AM EST" etc.
   const parseTimeFlexible = (timeStr: string): { hours: number; minutes: number } | null => {
     try {
-      // Strip timezone suffixes like "EST", "PST" etc.
-      const cleaned = timeStr.replace(/\s+[A-Z]{2,4}$/i, "").trim();
-      const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      const trimmed = timeStr.trim();
+      // Try AM/PM on raw string FIRST (before stripping any suffix)
+      const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
       if (ampmMatch) {
         let h = parseInt(ampmMatch[1], 10);
         const m = parseInt(ampmMatch[2], 10);
         const period = ampmMatch[3].toUpperCase();
+        if (period === "PM" && h < 12) h += 12;
+        if (period === "AM" && h === 12) h = 0;
+        if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+        return { hours: h, minutes: m };
+      }
+      // Strip timezone suffixes (EST, PST, CST) then retry AM/PM
+      const cleaned = trimmed.replace(/\s+[A-Z]{2,4}$/i, "").trim();
+      const ampmMatch2 = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (ampmMatch2) {
+        let h = parseInt(ampmMatch2[1], 10);
+        const m = parseInt(ampmMatch2[2], 10);
+        const period = ampmMatch2[3].toUpperCase();
         if (period === "PM" && h < 12) h += 12;
         if (period === "AM" && h === 12) h = 0;
         if (h < 0 || h > 23 || m < 0 || m > 59) return null;
@@ -155,7 +183,8 @@ export function ContentPlanTab() {
     if (dayIdx === -1) return null;
 
     const now = new Date();
-    const diff = dayIdx - now.getDay();
+    let diff = dayIdx - now.getDay();
+    if (diff < 0) diff += 7;
     const date = new Date(now);
     date.setDate(now.getDate() + diff);
 
@@ -167,6 +196,32 @@ export function ContentPlanTab() {
     }
 
     return safeISOString(date);
+  };
+
+  // Match plan posts to already-scheduled posts to show status badges
+  const getPostStatus = (dayName: string, post: any, postIndex: number): string | null => {
+    if (!weekScheduledPosts?.length) return null;
+    const time = getPostTime(dayName, postIndex);
+    const scheduledDateTime = getScheduledDateTime(dayName, time);
+    if (!scheduledDateTime) return null;
+    const targetDate = scheduledDateTime.slice(0, 10); // YYYY-MM-DD
+
+    const match = weekScheduledPosts.find((sp: any) => {
+      if (!sp.scheduled_for) return false;
+      const spDate = new Date(sp.scheduled_for).toISOString().slice(0, 10);
+      if (spDate !== targetDate) return false;
+      if (sp.content_category && sp.content_category === post.archetype) return true;
+      if (post.hook_idea && sp.text_content?.includes(post.hook_idea.slice(0, 30))) return true;
+      return false;
+    });
+    return match?.status ?? null;
+  };
+
+  const statusBadgeConfig: Record<string, { label: string; className: string }> = {
+    draft: { label: "Drafted", className: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30" },
+    approved: { label: "Scheduled", className: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
+    scheduled: { label: "Scheduled", className: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
+    published: { label: "Published", className: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
   };
 
   // Collect all posts from the plan
@@ -228,7 +283,14 @@ export function ContentPlanTab() {
       if (daysUntil < 0) daysUntil += 7;
       const schedDate = new Date(now);
       schedDate.setDate(schedDate.getDate() + daysUntil);
-      schedDate.setHours(9, 0, 0, 0);
+      // Use the actual time slot for this post
+      const actualTime = getPostTime(dayName, postIndex);
+      const parsedTime = parseTimeFlexible(actualTime);
+      if (parsedTime) {
+        schedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
+      } else {
+        schedDate.setHours(9, 0, 0, 0); // fallback
+      }
 
       const isoString = safeISOString(schedDate);
       if (!isoString) throw new Error("Failed to create valid scheduled time");
@@ -554,8 +616,10 @@ export function ContentPlanTab() {
                           const isDrafted = draftedPosts.has(postKey);
                           const isDrafting = draftingPostKey === postKey;
                           const slotTime = getPostTime(day.day, i);
+                          const postStatus = getPostStatus(day.day, post, i);
+                          const statusCfg = postStatus ? statusBadgeConfig[postStatus] : null;
                           return (
-                            <div key={i} className="rounded-lg border border-border p-3 space-y-2 group">
+                            <div key={i} className={cn("rounded-lg border border-border p-3 space-y-2 group", postStatus && "opacity-60")}>
                               <div className="flex items-start gap-2">
                                 <PostCheckbox postKey={postKey} />
                                 <div className="flex-1 space-y-2">
@@ -564,7 +628,12 @@ export function ContentPlanTab() {
                                     <Badge className={`text-[10px] ${FUNNEL_BADGE[post.funnel_stage] || FUNNEL_BADGE.TOF}`}>
                                       {post.funnel_stage}
                                     </Badge>
-                                    {isDrafted && (
+                                    {statusCfg && (
+                                      <Badge variant="outline" className={cn("text-[10px] gap-0.5", statusCfg.className)}>
+                                        <Check className="h-2.5 w-2.5" /> {statusCfg.label}
+                                      </Badge>
+                                    )}
+                                    {isDrafted && !postStatus && (
                                       <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5">
                                         <Check className="h-2.5 w-2.5" /> Drafted
                                       </Badge>
@@ -633,8 +702,10 @@ export function ContentPlanTab() {
                           const postKey = `${day.day}-${i}`;
                           const isDrafting = draftingPostKey === postKey;
                           const time = getPostTime(day.day, i);
+                          const postStatus = getPostStatus(day.day, post, i);
+                          const statusCfg = postStatus ? statusBadgeConfig[postStatus] : null;
                           return (
-                            <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                            <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", postStatus && "opacity-60")}>
                               <PostCheckbox postKey={postKey} />
                               <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                               <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
@@ -644,7 +715,11 @@ export function ContentPlanTab() {
                               <span className="text-muted-foreground truncate flex-1">
                                 {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                               </span>
-                              {draftedPosts.has(postKey) ? (
+                              {statusCfg ? (
+                                <Badge variant="outline" className={cn("text-[10px] gap-0.5 shrink-0", statusCfg.className)}>
+                                  <Check className="h-2.5 w-2.5" /> {statusCfg.label}
+                                </Badge>
+                              ) : draftedPosts.has(postKey) ? (
                                 <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5 shrink-0">
                                   <Check className="h-2.5 w-2.5" /> Drafted
                                 </Badge>
@@ -709,8 +784,10 @@ export function ContentPlanTab() {
                               const postKey = `${day.day}-${i}`;
                               const isDrafting = draftingPostKey === postKey;
                               const time = getPostTime(day.day, i);
+                              const postStatus = getPostStatus(day.day, post, i);
+                              const statusCfg = postStatus ? statusBadgeConfig[postStatus] : null;
                               return (
-                                <div key={i} className="flex items-center gap-3 py-2 text-xs group">
+                                <div key={i} className={cn("flex items-center gap-3 py-2 text-xs group", postStatus && "opacity-60")}>
                                   <PostCheckbox postKey={postKey} />
                                   <span className="text-muted-foreground font-mono w-14 shrink-0">{time}</span>
                                   <Badge variant="outline" className="text-[10px] shrink-0">{post.archetype}</Badge>
@@ -720,7 +797,11 @@ export function ContentPlanTab() {
                                   <span className="text-muted-foreground truncate flex-1">
                                     {post.hook_idea ? `"${post.hook_idea}"` : post.topic}
                                   </span>
-                                  {draftedPosts.has(postKey) ? (
+                                  {statusCfg ? (
+                                    <Badge variant="outline" className={cn("text-[10px] gap-0.5 shrink-0", statusCfg.className)}>
+                                      <Check className="h-2.5 w-2.5" /> {statusCfg.label}
+                                    </Badge>
+                                  ) : draftedPosts.has(postKey) ? (
                                     <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30 gap-0.5 shrink-0">
                                       <Check className="h-2.5 w-2.5" /> Drafted
                                     </Badge>
