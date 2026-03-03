@@ -36,22 +36,44 @@ function parseToMinutes(timeStr: string): number {
 function minutesToTimeStr(mins: number, templateStr: string): string {
   const h = Math.floor(mins / 60) % 24;
   const m = mins % 60;
-  // Detect format from template
-  const hasSuffix = templateStr.match(/\s+([A-Z]{2,4})$/i);
+  // Detect timezone suffix (CST, EST, etc.) — exclude AM/PM from match
+  const suffixMatch = templateStr.match(/\s+([A-Z]{2,4})$/i);
+  const tzSuffix = suffixMatch && !/^(AM|PM)$/i.test(suffixMatch[1]) ? suffixMatch[1].toUpperCase() : null;
   const is12h = /AM|PM/i.test(templateStr);
   if (is12h) {
     const period = h >= 12 ? "PM" : "AM";
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
     const base = `${h12}:${String(m).padStart(2, "0")} ${period}`;
-    return hasSuffix ? `${base} ${hasSuffix[1].toUpperCase()}` : base;
+    return tzSuffix ? `${base} ${tzSuffix}` : base;
   }
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 /**
+ * Derive best posting times from regression hour_averages data.
+ * Returns top N hours sorted chronologically, formatted as "H:MM AM".
+ */
+function deriveBestTimes(regressionInsights: any, count: number): string[] {
+  const hourAverages = regressionInsights?.hour_averages;
+  if (!Array.isArray(hourAverages) || hourAverages.length === 0) {
+    return ["9:00 AM", "12:00 PM", "5:00 PM"]; // sensible defaults
+  }
+  // Take top N hours by avg performance, then sort chronologically
+  const topHours = [...hourAverages]
+    .sort((a: any, b: any) => (b.avg || 0) - (a.avg || 0))
+    .slice(0, count);
+  topHours.sort((a: any, b: any) => a.hour - b.hour);
+  return topHours.map((h: any) => {
+    const hour = h.hour ?? 0;
+    const period = hour >= 12 ? "PM" : "AM";
+    const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+    return `${h12}:00 ${period}`;
+  });
+}
+
+/**
  * Expand best posting times to fill totalPosts unique slots.
- * First slots use bestTimes as anchors, extras are placed at midpoints of largest gaps.
- * Returns sorted array of totalPosts time strings.
+ * Anchors on bestTimes, places extras at midpoints of largest gaps.
  */
 function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
   if (totalPosts <= bestTimes.length) return bestTimes.slice(0, totalPosts);
@@ -98,7 +120,7 @@ If a BRANDING PLAN and FUNNEL STRATEGY are provided in the context, you MUST use
 
 The creator's profile includes max_posts_per_day. You MUST use this exact number for posts_per_day in your output. Do not default to 1. If max_posts_per_day is 3, output 3 posts per day. If max_posts_per_day is 7, output 7 posts per day. Each day in daily_plan must have exactly posts_per_day posts.
 
-IMPORTANT: The number of posts per day is INDEPENDENT of best_times. best_times lists the user's preferred posting windows (e.g. 4 times), but the user may want MORE posts than time slots (e.g. 7 posts/day with 4 best times). Always generate exactly posts_per_day posts for each day regardless of how many best_times you output. Time slot assignment happens separately after generation.
+IMPORTANT: Do NOT generate best_times — posting times are derived from regression data and injected separately. Always generate exactly posts_per_day posts for each day. Time slot assignment happens after generation.
 
 Be extremely concise. Each topic must be under 80 characters. Each hook_idea must be one line only, under 100 characters — just the opening hook sentence, nothing more. No multi-line hook ideas. Total JSON response must be under 6000 tokens.
 
@@ -111,7 +133,6 @@ FUNNEL MIX RULES for daily schedule:
 Respond ONLY with valid JSON in this format:
 {
   "posts_per_day": number,
-  "best_times": ["time1", "time2"],
   "primary_archetypes": [{"name": "...", "percentage": number}],
   "daily_plan": [
     {
@@ -241,8 +262,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch getUserContext, profile settings, and journey stage in parallel
-    const [userContext, { data: profile }, journeyStage] = await Promise.all([
+    // Fetch getUserContext, profile settings, journey stage, and regression data in parallel
+    const [userContext, { data: profile }, journeyStage, { data: regressionRow }] = await Promise.all([
       getUserContext(admin, user.id),
       admin
         .from("profiles")
@@ -250,6 +271,14 @@ serve(async (req) => {
         .eq("id", user.id)
         .maybeSingle(),
       fetchJourneyStage(admin, user.id),
+      admin
+        .from("content_strategies")
+        .select("regression_insights")
+        .eq("user_id", user.id)
+        .eq("strategy_type", "regression")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     const stageConfig = getStageConfig(journeyStage);
@@ -384,18 +413,20 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
-    // Force posts_per_day to match profile and expand time slots to cover all posts
+    // Force posts_per_day to match profile and derive best times from regression data
     if (plan_type === "content_plan") {
-      const originalBestTimes: string[] = Array.isArray(planData.best_times) ? planData.best_times : ["09:00", "12:30", "17:00"];
-      console.log("[generate-plans] original best_times:", JSON.stringify(originalBestTimes));
+      // Single source of truth: derive best posting times from regression hour_averages
+      const regressionInsights = (regressionRow as any)?.regression_insights;
+      const regressionBestTimes = deriveBestTimes(regressionInsights, Math.min(postsPerDay, 4));
+      console.log("[generate-plans] regression-derived best_times:", JSON.stringify(regressionBestTimes));
       console.log("[generate-plans] postsPerDay from profile:", postsPerDay);
       console.log("[generate-plans] daily_plan posts:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
 
-      // Store original regression-backed best times for display
-      planData.original_best_times = originalBestTimes;
+      // Store regression-backed best times for display (Weekly Overview)
+      planData.original_best_times = regressionBestTimes;
 
       // Expand time slots so every post gets a unique slot
-      const expandedTimes = expandTimeSlots(originalBestTimes, postsPerDay);
+      const expandedTimes = expandTimeSlots(regressionBestTimes, postsPerDay);
       planData.best_times = expandedTimes;
       planData.posts_per_day = postsPerDay;
 
