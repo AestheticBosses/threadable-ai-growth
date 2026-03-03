@@ -56,6 +56,9 @@ export function ContentPlanTab() {
   }
 
   console.log("[ContentPlanTab] full plan JSON:", JSON.stringify(plan, null, 2));
+  console.log("[ContentPlanTab] today_best_times:", plan?.today_best_times);
+  console.log("[ContentPlanTab] today_day_name:", plan?.today_day_name);
+  console.log("[ContentPlanTab] best_times:", plan?.best_times);
 
   // Expanded time slots (one per post) for slot assignment
   const bestTimesRaw: string[] = Array.isArray(plan?.best_times) ? plan.best_times : ["09:00", "12:30", "17:00"];
@@ -71,10 +74,12 @@ export function ContentPlanTab() {
   const todayDayFromPlan: string = plan?.today_day_name || "";
   // Helper: get the right time array for a given day
   const getPostTime = (dayName: string, postIndex: number): string => {
-    if (dayName === todayDayName && dayName === todayDayFromPlan) {
-      return todayBestTimes[postIndex] || "09:00";
-    }
-    return bestTimesRaw[postIndex] || "09:00";
+    const useToday = dayName === todayDayName && dayName === todayDayFromPlan;
+    const time = useToday
+      ? (todayBestTimes[postIndex] || "09:00")
+      : (bestTimesRaw[postIndex] || "09:00");
+    console.log(`[getPostTime] day=${dayName} idx=${postIndex} useToday=${useToday} todayDayName=${todayDayName} todayDayFromPlan=${todayDayFromPlan} → ${time}`);
+    return time;
   };
 
   // Sort daily_plan so today's day comes first, then future days, then past days
