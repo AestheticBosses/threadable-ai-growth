@@ -394,26 +394,23 @@ export function ContentPlanTab() {
   const isDayInPast = (dayName: string): boolean => {
     const dayIdx = DAY_NAMES_CHECK.indexOf(dayName);
     if (dayIdx === -1) return false;
-    // Days are sorted relative to today; a day is "past" if its offset puts it after today in the week cycle
-    // i.e. yesterday = offset 6, day before = offset 5, etc.
+    // Today is NEVER in the past
+    if (dayIdx === todayIdx) return false;
     const offset = (dayIdx - todayIdx + 7) % 7;
-    const result = offset > 0 && offset >= 6; // only yesterday (offset 6) is truly "past" in a 7-day view
+    // Only days with offset >= 6 (i.e. yesterday) are "past" in a 7-day rolling view
+    const result = offset >= 6;
     console.log("[isDayInPast]", dayName, "todayIdx=", todayIdx, "dayIdx=", dayIdx, "offset=", offset, "result=", result);
     return result;
   };
 
   const isSlotPassed = (dayName: string, timeStr: string): boolean => {
     if (isDayInPast(dayName)) return true;
-    if (dayName !== todayDayName) return false;
-    const parsed = parseTimeFlexible(timeStr);
-    if (!parsed) return false;
-    const now = new Date();
-    const slotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parsed.hours, parsed.minutes, 0, 0);
-    const BUFFER_MS = 5 * 60 * 1000;
-    return (slotDate.getTime() + BUFFER_MS) < now.getTime();
+    // For today, NEVER hide slots — user wants to see all posts they just generated
+    if (dayName === todayDayName) return false;
+    return false;
   };
 
-  // Filter a day's posts to only upcoming slots (for today), returns all posts for future days
+  // Filter a day's posts to only upcoming slots — for today, return ALL posts
   const getUpcomingPosts = (dayName: string, posts: any[]): { post: any; originalIndex: number }[] => {
     if (!posts) return [];
     const result = posts
@@ -421,7 +418,6 @@ export function ContentPlanTab() {
       .filter(({ originalIndex }) => {
         const slotTime = getPostTime(dayName, originalIndex);
         const passed = isSlotPassed(dayName, slotTime);
-        console.log("[getUpcomingPosts] slot", dayName, "idx=", originalIndex, "time=", slotTime, "passed=", passed);
         return !passed;
       });
     console.log("[getUpcomingPosts]", dayName, "total posts:", posts.length, "upcoming:", result.length);
