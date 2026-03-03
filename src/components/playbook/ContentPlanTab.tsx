@@ -275,24 +275,11 @@ export function ContentPlanTab() {
 
     setDraftingPostKey(key);
     try {
-      const now = new Date();
-      const dayOfWeek = now.getDay();
-      const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      const dayIdx = dayNames.indexOf(dayName);
-      let daysUntil = dayIdx >= 0 ? dayIdx - dayOfWeek : 1;
-      if (daysUntil < 0) daysUntil += 7;
-      const schedDate = new Date(now);
-      schedDate.setDate(schedDate.getDate() + daysUntil);
-      // Use the actual time slot for this post
+      // Use the actual time slot for this post (today_best_times for today, best_times for future days)
       const actualTime = getPostTime(dayName, postIndex);
-      const parsedTime = parseTimeFlexible(actualTime);
-      if (parsedTime) {
-        schedDate.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
-      } else {
-        schedDate.setHours(9, 0, 0, 0); // fallback
-      }
-
-      const isoString = safeISOString(schedDate);
+      // Reuse getScheduledDateTime for consistent date+time calculation
+      const isoString = getScheduledDateTime(dayName, actualTime);
+      console.log(`[handleInlineDraft] day=${dayName} postIndex=${postIndex} actualTime=${actualTime} isoString=${isoString}`);
       if (!isoString) throw new Error("Failed to create valid scheduled time");
 
       const res = await supabase.functions.invoke("generate-draft-posts", {
