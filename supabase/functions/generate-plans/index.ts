@@ -118,15 +118,26 @@ function generateTodaySlots(
 
 /**
  * Expand best posting times to fill totalPosts unique slots.
- * Anchors on bestTimes, places extras at midpoints of largest gaps.
+ * Extra slots are placed ONLY between the first and last anchor — never before
+ * the earliest anchor or after the latest anchor.
  */
 function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
   if (totalPosts <= bestTimes.length) return bestTimes.slice(0, totalPosts);
   if (bestTimes.length === 0) return ["09:00"];
+  if (bestTimes.length === 1) {
+    // Single anchor — can't place between, so space outward in 30-min increments
+    const template = bestTimes[0];
+    const anchor = parseToMinutes(bestTimes[0]);
+    return Array.from({ length: totalPosts }, (_, i) =>
+      minutesToTimeStr(anchor + i * 30, template)
+    );
+  }
 
   const template = bestTimes[0];
   // Start with anchor times in minutes
   const slots = bestTimes.map(parseToMinutes).sort((a, b) => a - b);
+  const firstAnchor = slots[0];
+  const lastAnchor = slots[slots.length - 1];
   const extraNeeded = totalPosts - slots.length;
 
   for (let n = 0; n < extraNeeded; n++) {
@@ -143,12 +154,15 @@ function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
     // Insert at midpoint, rounded to nearest 5 minutes
     const mid = slots[maxIdx] + Math.floor(maxGap / 2);
     const rounded = Math.round(mid / 5) * 5;
-    // Clamp to avoid duplicates (minimum 3 min apart)
+    // Clamp to stay between neighbors (minimum 3 min apart)
     const clamped = Math.max(slots[maxIdx] + 3, Math.min(rounded, slots[maxIdx + 1] - 3));
     slots.splice(maxIdx + 1, 0, clamped);
   }
 
-  return slots.map((m) => minutesToTimeStr(m, template));
+  // Safety: ensure all slots stay within the original anchor range
+  return slots
+    .filter(m => m >= firstAnchor && m <= lastAnchor)
+    .map((m) => minutesToTimeStr(m, template));
 }
 
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
@@ -293,7 +307,9 @@ serve(async (req) => {
       });
     }
 
-    const { plan_type, include_plans, client_now_minutes, client_day } = await req.json();
+    const body = await req.json();
+    const { plan_type, include_plans, client_now_minutes, client_day } = body;
+    console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "raw body keys:", Object.keys(body));
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
@@ -358,6 +374,7 @@ serve(async (req) => {
       }
     }
 
+    // postsPerDay comes from profiles.max_posts_per_day — never hardcode this
     const postsPerDay = profile?.max_posts_per_day ?? 1;
     console.log("[generate-plans] postsPerDay:", postsPerDay, "plan_type:", plan_type);
 
@@ -461,7 +478,8 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     if (plan_type === "content_plan") {
       // Single source of truth: derive best posting times from regression hour_averages
       const regressionInsights = (regressionRow as any)?.regression_insights;
-      const regressionBestTimes = deriveBestTimes(regressionInsights, Math.min(postsPerDay, 4));
+      // No cap — pull as many top-performing hours as postsPerDay from regression
+      const regressionBestTimes = deriveBestTimes(regressionInsights, postsPerDay);
       console.log("[generate-plans] regression-derived best_times:", JSON.stringify(regressionBestTimes));
       console.log("[generate-plans] postsPerDay from profile:", postsPerDay);
       console.log("[generate-plans] daily_plan posts:", planData.daily_plan?.map((d: any) => `${d.day}: ${d.posts?.length} posts`));
