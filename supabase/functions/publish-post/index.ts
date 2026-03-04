@@ -10,6 +10,34 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Fire-and-forget: wait 5 minutes then call fetch-user-posts to refresh posts_analyzed.
+ * Uses setTimeout so the publish response is not blocked.
+ */
+function scheduleMetricRefresh(
+  _adminClient: any,
+  userId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+) {
+  console.log(`[publish-post] Scheduled metric refresh for user ${userId} in 5 minutes`);
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/fetch-user-posts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      console.log(`[publish-post] Metric refresh for ${userId}: ${res.status}`);
+    } catch (e) {
+      console.warn(`[publish-post] Metric refresh failed for ${userId}:`, e);
+    }
+  }, 5 * 60 * 1000); // 5 minutes
+}
+
 async function publishSinglePost(
   adminClient: any,
   post: { id: string; user_id: string; text_content: string },
@@ -146,6 +174,9 @@ Deno.serve(async (req) => {
           error_message: null,
         }).eq("id", postId);
 
+        // Schedule async metric refresh after 5 minutes so Threads accumulates initial metrics
+        scheduleMetricRefresh(adminClient, userId, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
         return new Response(JSON.stringify({ success: true, threads_media_id: result.threads_media_id }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -254,6 +285,13 @@ Deno.serve(async (req) => {
       }
 
       if (i < duePosts.length - 1) await sleep(3000);
+    }
+
+    // Schedule metric refresh for all users who had posts published in this batch
+    if (published > 0) {
+      for (const uid of userIds) {
+        scheduleMetricRefresh(adminClient, uid, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      }
     }
 
     return new Response(JSON.stringify({ published, failed, errors }), {

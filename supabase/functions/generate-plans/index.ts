@@ -887,6 +887,66 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
+    // Populate content_plan_items from plan_data so generate-week-posts and getUserContext have data
+    if (plan_type === "content_plan" && planData?.daily_plan) {
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        // Delete future planned items (keep drafted/published ones)
+        await admin
+          .from("content_plan_items")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("status", "planned")
+          .gte("scheduled_date", today);
+
+        // Calculate scheduled_date for each day in the plan
+        const todayIdx = dayNames.indexOf(todayName);
+        const now = new Date();
+        const items: any[] = [];
+        let weekNum = 1;
+
+        for (let dayOffset = 0; dayOffset < planData.daily_plan.length; dayOffset++) {
+          const dayPlan = planData.daily_plan[dayOffset];
+          if (!dayPlan?.posts || !Array.isArray(dayPlan.posts)) continue;
+
+          // Calculate the date for this day
+          const date = new Date(now);
+          date.setDate(now.getDate() + dayOffset);
+          const scheduledDate = date.toISOString().split("T")[0];
+          if (dayOffset >= 7) weekNum = 2;
+
+          for (const post of dayPlan.posts) {
+            items.push({
+              user_id: user.id,
+              plan_week: weekNum,
+              plan_day: dayOffset % 7,
+              scheduled_date: scheduledDate,
+              archetype: post.archetype || null,
+              funnel_stage: post.funnel_stage || "TOF",
+              is_test_slot: post.is_test_slot || false,
+              status: "planned",
+            });
+          }
+        }
+
+        if (items.length > 0) {
+          // Insert in batches of 50 to avoid payload limits
+          for (let i = 0; i < items.length; i += 50) {
+            const batch = items.slice(i, i + 50);
+            const { error: insertErr } = await admin
+              .from("content_plan_items")
+              .insert(batch);
+            if (insertErr) {
+              console.warn("[generate-plans] content_plan_items batch insert error:", insertErr.message);
+            }
+          }
+          console.log(`[generate-plans] Populated ${items.length} content_plan_items from plan_data`);
+        }
+      } catch (planItemsErr: any) {
+        console.warn("[generate-plans] content_plan_items population failed (non-critical):", planItemsErr?.message);
+      }
+    }
+
     return new Response(JSON.stringify({ plan_data: planData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
