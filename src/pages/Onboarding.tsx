@@ -45,6 +45,7 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
   { id: "regression", label: "Running regression analysis…", status: "waiting" },
   { id: "archetypes", label: "Discovering your content archetypes…", status: "waiting" },
   { id: "identity", label: "Extracting your identity…", status: "waiting" },
+  { id: "vault", label: "Mining stories, numbers & knowledge…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Building your audience segments…", status: "waiting" },
