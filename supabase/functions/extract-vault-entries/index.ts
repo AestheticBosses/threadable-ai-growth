@@ -55,15 +55,15 @@ Deno.serve(async (req) => {
 
     console.log(`[extract-vault] Starting for user ${userId}`);
 
-    // 1. Query posts — top 50 by views + most recent 50, dedup
+    // 1. Query posts — top 25 by views + most recent 25, dedup, truncate to 200 chars
     const [topRes, recentRes] = await Promise.all([
-      supabase.from("posts_analyzed").select("id, text_content").eq("user_id", userId).order("views", { ascending: false }).limit(50),
-      supabase.from("posts_analyzed").select("id, text_content").eq("user_id", userId).order("posted_at", { ascending: false }).limit(50),
+      supabase.from("posts_analyzed").select("id, text_content").eq("user_id", userId).order("views", { ascending: false }).limit(25),
+      supabase.from("posts_analyzed").select("id, text_content").eq("user_id", userId).order("posted_at", { ascending: false }).limit(25),
     ]);
 
     const postsMap = new Map<string, string>();
     for (const p of [...(topRes.data || []), ...(recentRes.data || [])]) {
-      if (p.text_content && !postsMap.has(p.id)) postsMap.set(p.id, p.text_content);
+      if (p.text_content && !postsMap.has(p.id)) postsMap.set(p.id, p.text_content.substring(0, 200));
     }
     const allPosts = Array.from(postsMap.values());
     if (allPosts.length === 0) throw new Error("No posts found to analyze");
@@ -127,7 +127,7 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
 
     // 4. Call Anthropic
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+    const timeout = setTimeout(() => controller.abort(), 115000);
 
     const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -138,7 +138,7 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 8192,
+        max_tokens: 4096,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
       }),
