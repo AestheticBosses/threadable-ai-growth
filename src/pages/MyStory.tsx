@@ -21,6 +21,7 @@ const PROGRESS_STEPS = [
   "Extracting your professional identity...",
   "Finding your stories and experiences...",
   "Identifying your offers and audience...",
+  "Extracting knowledge base & numbers...",
 ];
 
 function ExtractionOverlay({ postCount }: { postCount: number }) {
