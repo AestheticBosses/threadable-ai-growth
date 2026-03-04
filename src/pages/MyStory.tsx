@@ -96,7 +96,6 @@ const MyStory = () => {
     showReview,
     setShowReview,
   } = useExtractIdentity();
-  const { extract: extractVault, isExtracting: isExtractingVault } = useExtractVaultEntries();
 
   // Handle autofill query param
   const autofillTriggeredRef = useCallback((node: null) => {}, []);
