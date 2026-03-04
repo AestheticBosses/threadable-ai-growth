@@ -15,12 +15,24 @@ const corsHeaders = {
  * Parse a time string like "7:00 AM", "7:00 AM CST", "14:30" into minutes since midnight.
  */
 function parseToMinutes(timeStr: string): number {
-  const cleaned = timeStr.replace(/\s+[A-Z]{2,4}$/i, "").trim();
-  const ampmMatch = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const trimmed = timeStr.trim();
+  // Try AM/PM on raw string FIRST (before stripping timezone suffix)
+  const ampmMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (ampmMatch) {
     let h = parseInt(ampmMatch[1], 10);
     const m = parseInt(ampmMatch[2], 10);
     const period = ampmMatch[3].toUpperCase();
+    if (period === "PM" && h < 12) h += 12;
+    if (period === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  // Strip timezone suffixes (EST, PST, CST) then retry AM/PM
+  const cleaned = trimmed.replace(/\s+[A-Z]{2,4}$/i, "").trim();
+  const ampmMatch2 = cleaned.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch2) {
+    let h = parseInt(ampmMatch2[1], 10);
+    const m = parseInt(ampmMatch2[2], 10);
+    const period = ampmMatch2[3].toUpperCase();
     if (period === "PM" && h < 12) h += 12;
     if (period === "AM" && h === 12) h = 0;
     return h * 60 + m;
@@ -93,6 +105,7 @@ function deriveBestTimes(regressionInsights: any, count: number): string[] {
  * Generate time slots for today starting from NOW.
  * Filters regression best times to those still in the future,
  * then fills remaining slots between now and 11:00 PM.
+ * Supports up to 20 posts with minimum 3-minute gaps.
  */
 function generateTodaySlots(
   regressionBestTimes: string[],
@@ -100,46 +113,65 @@ function generateTodaySlots(
   nowMinutes: number
 ): string[] {
   const END_OF_DAY = 23 * 60; // 11:00 PM
+  const MIN_GAP = 3;
   const template = regressionBestTimes[0] || "9:00 AM";
 
-  // Filter regression best times to those still in the future (15 min buffer)
+  // Start 15 min from now, rounded to nearest 5
   const bufferNow = nowMinutes + 15;
-  const futureAnchors = regressionBestTimes.filter(t => parseToMinutes(t) >= bufferNow);
+  const startMin = Math.ceil(bufferNow / 5) * 5;
+
+  if (startMin >= END_OF_DAY) {
+    // Too late — return single slot at end of day
+    console.log("[generateTodaySlots] past 11 PM, returning single end-of-day slot");
+    return [minutesToTimeStr(END_OF_DAY, template)];
+  }
+
+  // Filter regression times to future ones within today's remaining window
+  const futureAnchors = regressionBestTimes
+    .map(parseToMinutes)
+    .filter(m => m >= bufferNow && m <= END_OF_DAY)
+    .sort((a, b) => a - b);
 
   if (futureAnchors.length >= totalPosts) {
-    return expandTimeSlots(futureAnchors, totalPosts);
+    return futureAnchors.slice(0, totalPosts).map(m => minutesToTimeStr(m, template));
   }
 
-  if (futureAnchors.length === 0) {
-    // No anchors left — evenly space from ~now to 11 PM
-    const startMin = Math.ceil(bufferNow / 5) * 5;
-    if (startMin >= END_OF_DAY) {
-      return Array.from({ length: totalPosts }, () => minutesToTimeStr(END_OF_DAY, template));
+  // Start with available future anchors
+  const slots = [...futureAnchors];
+
+  // Fill gaps using startMin and END_OF_DAY as virtual boundaries
+  while (slots.length < totalPosts) {
+    const withBounds = [...new Set([startMin, ...slots, END_OF_DAY])].sort((a, b) => a - b);
+    let maxGap = -1, gapStart = 0, gapEnd = 0;
+    for (let i = 0; i < withBounds.length - 1; i++) {
+      const gap = withBounds[i + 1] - withBounds[i];
+      if (gap > maxGap) { maxGap = gap; gapStart = withBounds[i]; gapEnd = withBounds[i + 1]; }
     }
-    if (totalPosts === 1) {
-      return [minutesToTimeStr(startMin, template)];
-    }
-    const gap = Math.floor((END_OF_DAY - startMin) / (totalPosts - 1));
-    return Array.from({ length: totalPosts }, (_, i) =>
-      minutesToTimeStr(Math.min(startMin + i * gap, END_OF_DAY), template)
-    );
+    if (maxGap < MIN_GAP * 2) break; // Can't fit more slots
+    const mid = gapStart + Math.floor(maxGap / 2);
+    const rounded = Math.round(mid / 5) * 5;
+    const clamped = Math.max(gapStart + MIN_GAP, Math.min(rounded, gapEnd - MIN_GAP));
+    slots.push(clamped);
+    slots.sort((a, b) => a - b);
   }
 
-  // Some future anchors + need more — add end-of-day boundary for expansion
-  const lastAnchorMin = parseToMinutes(futureAnchors[futureAnchors.length - 1]);
-  const anchorsForExpansion = [...futureAnchors];
-  if (END_OF_DAY - lastAnchorMin > 60) {
-    anchorsForExpansion.push(minutesToTimeStr(END_OF_DAY, template));
-  }
-  return expandTimeSlots(anchorsForExpansion, totalPosts);
+  const unique = [...new Set(slots)].sort((a, b) => a - b);
+  console.log("[generateTodaySlots] nowMinutes:", nowMinutes, "startMin:", startMin, "slots:", JSON.stringify(unique.map(m => minutesToTimeStr(m, template))));
+  return unique.slice(0, totalPosts).map(m => minutesToTimeStr(m, template));
 }
 
 /**
  * Expand best posting times to fill totalPosts unique slots.
- * Extra slots are placed ONLY between the first and last anchor — never before
- * the earliest anchor or after the latest anchor.
+ * Distributes slots across the full waking window (6 AM - 11 PM),
+ * using anchor times as seed points and filling gaps iteratively.
+ * Supports up to 20 posts with minimum 3-minute gaps.
+ * All generated times are rounded to nearest 5 minutes.
  */
 function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
+  const WAKING_START = 6 * 60;  // 6:00 AM = 360 min
+  const WAKING_END = 23 * 60;   // 11:00 PM = 1380 min
+  const MIN_GAP = 3;
+
   console.log("[expandTimeSlots] input bestTimes:", JSON.stringify(bestTimes), "totalPosts:", totalPosts);
 
   if (totalPosts <= bestTimes.length) {
@@ -147,47 +179,45 @@ function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
     return bestTimes.slice(0, totalPosts);
   }
   if (bestTimes.length === 0) return ["09:00"];
-  if (bestTimes.length === 1) {
-    const template = bestTimes[0];
-    const anchor = parseToMinutes(bestTimes[0]);
-    console.log("[expandTimeSlots] single anchor at", anchor, "mins, spacing outward");
-    return Array.from({ length: totalPosts }, (_, i) =>
-      minutesToTimeStr(anchor + i * 30, template)
-    );
-  }
 
   const template = bestTimes[0];
-  const slots = bestTimes.map(parseToMinutes).sort((a, b) => a - b);
-  const firstAnchor = slots[0];
-  const lastAnchor = slots[slots.length - 1];
-  const extraNeeded = totalPosts - slots.length;
+  const anchors = bestTimes.map(parseToMinutes)
+    .filter(m => m >= WAKING_START && m <= WAKING_END)
+    .sort((a, b) => a - b);
 
-  console.log("[expandTimeSlots] parsed minutes:", JSON.stringify(slots));
-  console.log("[expandTimeSlots] firstAnchor:", firstAnchor, `(${minutesToTimeStr(firstAnchor, template)})`, "lastAnchor:", lastAnchor, `(${minutesToTimeStr(lastAnchor, template)})`);
-  console.log("[expandTimeSlots] extraNeeded:", extraNeeded);
-
-  for (let n = 0; n < extraNeeded; n++) {
-    let maxGap = -1;
-    let maxIdx = 0;
-    for (let i = 0; i < slots.length - 1; i++) {
-      const gap = slots[i + 1] - slots[i];
-      if (gap > maxGap) {
-        maxGap = gap;
-        maxIdx = i;
-      }
-    }
-    const mid = slots[maxIdx] + Math.floor(maxGap / 2);
-    const rounded = Math.round(mid / 5) * 5;
-    const clamped = Math.max(slots[maxIdx] + 3, Math.min(rounded, slots[maxIdx + 1] - 3));
-    console.log(`[expandTimeSlots] insert #${n+1}: gap=${maxGap}min between ${slots[maxIdx]}-${slots[maxIdx+1]}, mid=${mid}, rounded=${rounded}, clamped=${clamped}`);
-    slots.splice(maxIdx + 1, 0, clamped);
+  // If all anchors fell outside waking hours, evenly distribute
+  if (anchors.length === 0) {
+    console.log("[expandTimeSlots] no anchors in waking window, distributing evenly");
+    const gap = totalPosts > 1 ? Math.floor((WAKING_END - WAKING_START) / (totalPosts - 1)) : 0;
+    return Array.from({ length: totalPosts }, (_, i) => {
+      const m = Math.min(WAKING_START + i * gap, WAKING_END);
+      return minutesToTimeStr(Math.round(m / 5) * 5, template);
+    });
   }
 
-  console.log("[expandTimeSlots] slots before filter:", JSON.stringify(slots));
-  const filtered = slots.filter(m => m >= firstAnchor && m <= lastAnchor);
-  console.log("[expandTimeSlots] slots after filter:", JSON.stringify(filtered));
+  // Start with anchor points
+  const slots = [...anchors];
+  console.log("[expandTimeSlots] anchors in waking window:", JSON.stringify(slots.map(m => minutesToTimeStr(m, template))));
 
-  return filtered.map((m) => minutesToTimeStr(m, template));
+  // Iteratively insert at midpoint of largest gap, using waking window as virtual boundaries
+  while (slots.length < totalPosts) {
+    const withBounds = [...new Set([WAKING_START, ...slots, WAKING_END])].sort((a, b) => a - b);
+    let maxGap = -1, gapStart = 0, gapEnd = 0;
+    for (let i = 0; i < withBounds.length - 1; i++) {
+      const gap = withBounds[i + 1] - withBounds[i];
+      if (gap > maxGap) { maxGap = gap; gapStart = withBounds[i]; gapEnd = withBounds[i + 1]; }
+    }
+    if (maxGap < MIN_GAP * 2) break; // Can't fit more slots
+    const mid = gapStart + Math.floor(maxGap / 2);
+    const rounded = Math.round(mid / 5) * 5;
+    const clamped = Math.max(gapStart + MIN_GAP, Math.min(rounded, gapEnd - MIN_GAP));
+    slots.push(clamped);
+    slots.sort((a, b) => a - b);
+  }
+
+  const unique = [...new Set(slots)].sort((a, b) => a - b);
+  console.log("[expandTimeSlots] final slots:", JSON.stringify(unique.map(m => minutesToTimeStr(m, template))));
+  return unique.slice(0, totalPosts).map(m => minutesToTimeStr(m, template));
 }
 
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
@@ -303,6 +333,48 @@ Respond ONLY with valid JSON in this format:
   },
   "conversion_path": "description of how stages connect"
 }`;
+
+/**
+ * Helper: call Anthropic API with timeout and return raw text response.
+ */
+async function callAnthropicForPlan(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+  timeoutMs: number = 120000,
+): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "claude-opus-4-6",
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("Anthropic error:", res.status, errText);
+      throw new Error("AI generation failed");
+    }
+    const data = await res.json();
+    return data.content?.[0]?.text || "";
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw e;
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -444,56 +516,59 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
-
-    let anthropicRes: Response;
-    try {
-      anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: "claude-opus-4-6",
-          max_tokens: Math.min(3000 + (postsPerDay * 600), 10000),
-          system: systemPrompt,
-          messages: [{ role: "user", content: siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext }],
-        }),
-      });
-      clearTimeout(timeoutId);
-    } catch (e) {
-      clearTimeout(timeoutId);
-      console.error("Fetch error:", e);
-      return new Response(JSON.stringify({ error: "AI request failed or timed out. Please try again." }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error("Anthropic error:", anthropicRes.status, errText);
-      return new Response(JSON.stringify({ error: "AI generation failed" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const anthropicData = await anthropicRes.json();
-    const rawText = anthropicData.content?.[0]?.text || "";
-    console.log("Raw AI response length:", rawText.length);
+    // Build user message once (shared by single and batch paths)
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext;
 
     let planData: any;
     try {
-      planData = safeParseJSON(rawText);
-      if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
-    } catch (e) {
-      console.error("JSON parse error:", e, "Raw:", rawText.slice(0, 500));
-      return new Response(JSON.stringify({ error: "Plan generation was cut short — please try again." }), {
+      if (plan_type === "content_plan" && postsPerDay > 10) {
+        // Batch generation: split 7 days into 2 batches to avoid timeout
+        const todayIdx = dayNames.indexOf(todayName);
+        const orderedDays = Array.from({ length: 7 }, (_, i) => dayNames[(todayIdx + i) % 7]);
+        const batch1Days = orderedDays.slice(0, 3);
+        const batch2Days = orderedDays.slice(3);
+        const baseSystemPrompt = basePrompt + stageBlock;
+
+        console.log("[generate-plans] BATCH MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
+
+        // Batch 1: first 3 days + primary_archetypes
+        const batch1MaxTokens = Math.min(3000 + batch1Days.length * postsPerDay * 100, 10000);
+        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
+        const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, batch1MaxTokens);
+        console.log("[generate-plans] batch1 response length:", raw1.length);
+        const batch1Data = safeParseJSON(raw1);
+        if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
+
+        // Batch 2: remaining 4 days + weekly_themes
+        const batch2MaxTokens = Math.min(3000 + batch2Days.length * postsPerDay * 100, 10000);
+        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes.\n`;
+        const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, batch2MaxTokens);
+        console.log("[generate-plans] batch2 response length:", raw2.length);
+        const batch2Data = safeParseJSON(raw2);
+        if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
+
+        // Combine: batch 1 metadata + both daily_plans + batch 2 weekly_themes
+        planData = {
+          ...batch1Data,
+          daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || [])],
+          weekly_themes: batch2Data.weekly_themes || batch1Data.weekly_themes || [],
+        };
+        console.log("[generate-plans] BATCH COMBINE: batch1 days:", batch1Data.daily_plan?.length, "batch2 days:", batch2Data.daily_plan?.length, "total:", planData.daily_plan.length);
+      } else {
+        // Single call for <= 10 posts/day or non-content-plan types
+        const maxTokens = Math.min(3000 + (postsPerDay * 600), 10000);
+        const rawText = await callAnthropicForPlan(ANTHROPIC_API_KEY, systemPrompt, userMessage, maxTokens);
+        console.log("Raw AI response length:", rawText.length);
+        planData = safeParseJSON(rawText);
+        if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
+      }
+    } catch (e: any) {
+      console.error("AI generation error:", e);
+      const isTimeout = e?.message?.includes("abort") || e?.message?.includes("timed out");
+      const errorMsg = isTimeout
+        ? "AI request timed out. Please try again."
+        : "Plan generation failed — please try again.";
+      return new Response(JSON.stringify({ error: errorMsg }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
