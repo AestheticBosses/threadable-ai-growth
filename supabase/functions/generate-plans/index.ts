@@ -222,6 +222,19 @@ function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
 
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
 
+CRITICAL: Vary post lengths dramatically. Some posts should be under 30 words — raw, punchy, identity-driven. Some should be medium (30-80 words). Some can be longer deep-dives (80-150 words). The regression data below tells you what length performs best for this creator — follow it. Short viral posts often outperform long educational ones.
+
+Archetypes are starting points, not constraints. You may create hybrid posts that blend two archetypes, or freestyle posts that don't fit any archetype cleanly. Label hybrid posts with both archetypes (e.g., 'Dad-Founder Confessional × Build-In-Public'). Label pure identity/vulnerability posts as 'Raw Operator'. The goal is authentic variety, not formula adherence. At least 3-4 posts per day should break the archetype mold.
+
+Mix these formats across each day:
+- Identity stacks: short posts that layer who you are in one breath (e.g., 'I'm 35 with ADHD, two kids, and building an AI app after bedtime.')
+- Data drops: specific numbers from real results, no fluff
+- Hot takes: controversial or contrarian one-liners under 20 words
+- Story hooks: open a loop in the first line that demands the reader keep going
+- Proof posts: screenshots, metrics, or receipts with minimal caption
+- Confessionals: raw vulnerability, no lesson attached
+Do NOT make every post educational or lesson-based. Most viral posts are identity-first, lesson-second.
+
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
@@ -236,7 +249,7 @@ The creator's profile includes max_posts_per_day. You MUST use this exact number
 
 IMPORTANT: Do NOT generate best_times — posting times are derived from regression data and injected separately. Always generate exactly posts_per_day posts for each day. Time slot assignment happens after generation.
 
-Be extremely concise. Each topic must be under 80 characters. Each hook_idea must be one line only, under 100 characters — just the opening hook sentence, nothing more. No multi-line hook ideas. Total JSON response must be under 6000 tokens.
+Be extremely concise. Each topic must be under 80 characters. Each hook_idea must be one line only, under 100 characters — just the opening hook sentence, nothing more. No multi-line hook ideas. Hook ideas should match the post's target length. For short posts (<30 words), the hook IS the entire post. Don't write a hook that implies a longer post if the post should be short. Total JSON response must be under 6000 tokens.
 
 This keeps hook ideas as short planning seeds. Full post text gets generated later by generate-draft-posts.
 
@@ -561,8 +574,34 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       });
     }
 
+    // Build dynamic regression word count insight for content plans
+    let regressionLengthBlock = "";
+    if (plan_type === "content_plan") {
+      const regInsights = (regressionRow as any)?.regression_insights;
+      if (regInsights) {
+        const optRange = regInsights.optimal_word_count_range;
+        const wordCoeff = regInsights.correlations?.find?.((c: any) => c.feature === "word_count");
+        const shortLift = regInsights.boolean_lifts?.find?.((b: any) => b.feature === "is_short_form");
+        const parts: string[] = [];
+        if (optRange?.min && optRange?.max) {
+          parts.push(`Regression data shows optimal post length for this creator is ${optRange.min}-${optRange.max} words.`);
+        }
+        if (shortLift?.lift_pct !== undefined) {
+          const dir = shortLift.lift_pct > 0 ? "more" : "fewer";
+          parts.push(`Posts under 30 words get ${Math.abs(Math.round(shortLift.lift_pct))}% ${dir} views than average.`);
+        } else if (wordCoeff?.correlation !== undefined) {
+          const dir = wordCoeff.correlation < 0 ? "shorter posts tend to get more views" : "longer posts tend to get more views";
+          parts.push(`Word count correlation: ${dir} (r=${wordCoeff.correlation.toFixed(2)}).`);
+        }
+        if (parts.length > 0) {
+          parts.push("Adjust your length distribution accordingly.");
+          regressionLengthBlock = "\n=== REGRESSION LENGTH INSIGHTS ===\n" + parts.join(" ") + "\n";
+        }
+      }
+    }
+
     // Build user message once (shared by single and batch paths)
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + "\n" + userContext;
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + "\n" + userContext;
 
     let planData: any;
     try {
