@@ -15,6 +15,7 @@ export function useExtractIdentity() {
   const [extractedData, setExtractedData] = useState<ExtractedIdentity | null>(null);
   const [postCount, setPostCount] = useState(0);
   const [showReview, setShowReview] = useState(false);
+  const [phase, setPhase] = useState<ExtractionPhase>("idle");
 
   const extract = async () => {
     if (!user) return;
