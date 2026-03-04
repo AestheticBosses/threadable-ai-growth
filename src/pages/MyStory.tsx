@@ -9,10 +9,9 @@ import { NumbersSection } from "@/components/identity/NumbersSection";
 import { StoriesSection } from "@/components/identity/StoriesSection";
 import { IdentityReviewModal } from "@/components/identity/IdentityReviewModal";
 import { useExtractIdentity } from "@/hooks/useExtractIdentity";
-import { useExtractVaultEntries } from "@/hooks/useExtractVaultEntries";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles, Check, Wand2 } from "lucide-react";
+import { Loader2, Sparkles, Check } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { IdentityCompleteness } from "@/components/identity/IdentityCompleteness";
@@ -22,6 +21,7 @@ const PROGRESS_STEPS = [
   "Extracting your professional identity...",
   "Finding your stories and experiences...",
   "Identifying your offers and audience...",
+  "Extracting knowledge base & numbers...",
 ];
 
 function ExtractionOverlay({ postCount }: { postCount: number }) {
@@ -96,7 +96,6 @@ const MyStory = () => {
     showReview,
     setShowReview,
   } = useExtractIdentity();
-  const { extract: extractVault, isExtracting: isExtractingVault } = useExtractVaultEntries();
 
   // Handle autofill query param
   const autofillTriggeredRef = useCallback((node: null) => {}, []);
@@ -154,25 +153,6 @@ const MyStory = () => {
 
         <div id="about-you"><AboutYouSection /></div>
         <div id="stories">
-          <div className="flex items-center justify-between mb-2">
-            <div />
-            {hasPosts && (
-              <Button
-                onClick={extractVault}
-                disabled={isExtractingVault}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-              >
-                {isExtractingVault ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wand2 className="h-3.5 w-3.5" />
-                )}
-                {isExtractingVault ? "Analyzing posts..." : "Auto-Fill from Posts"}
-              </Button>
-            )}
-          </div>
           <StoriesSection />
         </div>
         <div id="numbers"><NumbersSection /></div>

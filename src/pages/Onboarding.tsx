@@ -45,6 +45,7 @@ const SEASONED_PIPELINE: PipelineStepDef[] = [
   { id: "regression", label: "Running regression analysis…", status: "waiting" },
   { id: "archetypes", label: "Discovering your content archetypes…", status: "waiting" },
   { id: "identity", label: "Extracting your identity…", status: "waiting" },
+  { id: "vault", label: "Mining stories, numbers & knowledge…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Building your audience segments…", status: "waiting" },
@@ -58,6 +59,7 @@ const NEW_PIPELINE: PipelineStepDef[] = [
   { id: "fetch", label: "Checking your Threads account…", status: "waiting" },
   { id: "archetypes", label: "Identifying winning content patterns…", status: "waiting" },
   { id: "identity", label: "Building your starter identity…", status: "waiting" },
+  { id: "vault", label: "Mining stories, numbers & knowledge…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Building your audience segments…", status: "waiting" },
@@ -329,6 +331,7 @@ const Onboarding = () => {
     }
 
     await invokeStep("identity", "extract-identity", { user_id: user.id });
+    await invokeStep("vault", "extract-vault-entries", {});
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
 
     if (archetypesOk) {
@@ -395,6 +398,7 @@ const Onboarding = () => {
     }
 
     await invokeStep("identity", "extract-identity", {});
+    await invokeStep("vault", "extract-vault-entries", {});
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
     await invokeStep("playbook", "generate-playbook", { user_id: user.id });
 

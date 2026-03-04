@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import type { ExtractedIdentity } from "@/components/identity/IdentityReviewModal";
 
+type ExtractionPhase = "idle" | "identity" | "vault" | "done";
+
 export function useExtractIdentity() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -13,6 +15,7 @@ export function useExtractIdentity() {
   const [extractedData, setExtractedData] = useState<ExtractedIdentity | null>(null);
   const [postCount, setPostCount] = useState(0);
   const [showReview, setShowReview] = useState(false);
+  const [phase, setPhase] = useState<ExtractionPhase>("idle");
 
   const extract = async () => {
     if (!user) return;
@@ -140,14 +143,34 @@ export function useExtractIdentity() {
       qc.invalidateQueries({ queryKey: ["user-audiences", user.id] });
       qc.invalidateQueries({ queryKey: ["user-personal-info", user.id] });
 
-      toast({ title: "Identity saved! ✅", description: "You can edit any section on the Identity page." });
       setShowReview(false);
       setExtractedData(null);
+
+      // Step 2: Run vault extraction (KB, numbers, untapped angles)
+      setPhase("vault");
+      try {
+        const { data: vaultData, error: vaultError } = await supabase.functions.invoke("extract-vault-entries");
+        if (vaultError) throw vaultError;
+        if (vaultData?.error) throw new Error(vaultData.error);
+        const { stories = 0, numbers = 0, knowledge_base = 0, untapped_angles = 0 } = vaultData;
+        qc.invalidateQueries({ queryKey: ["story-vault"] });
+        qc.invalidateQueries({ queryKey: ["knowledge-base"] });
+        qc.invalidateQueries({ queryKey: ["content-strategies"] });
+        toast({
+          title: "Full extraction complete! ✅",
+          description: `Identity saved + ${knowledge_base} knowledge entries, ${numbers} numbers, ${untapped_angles} angles extracted.`,
+        });
+      } catch (vaultErr: any) {
+        console.error("vault extraction error:", vaultErr);
+        toast({ title: "Identity saved, but vault extraction failed", description: "You can run 'Extract from Posts' on the Knowledge Base page.", variant: "destructive" });
+      }
+      setPhase("done");
     } catch (e: any) {
       console.error("save identity error:", e);
       toast({ title: "Save failed", description: e.message || "Please try again.", variant: "destructive" });
     } finally {
       setIsSaving(false);
+      setPhase("idle");
     }
   };
 
@@ -160,5 +183,6 @@ export function useExtractIdentity() {
     postCount,
     showReview,
     setShowReview,
+    phase,
   };
 }
