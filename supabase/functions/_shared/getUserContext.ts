@@ -30,6 +30,69 @@ function classifyEmotion(text: string): string {
 }
 
 /**
+ * Build a raw regression data section from regression_insights for AI context.
+ * Includes coefficients, r_squared, and optimal word count when available.
+ */
+function buildRawRegressionSection(regressionData: any): string {
+  if (!regressionData) return "";
+
+  const parts: string[] = ["=== RAW REGRESSION DATA ===", "Use these coefficients to calibrate post length, style, and format decisions.", ""];
+
+  // Correlations / coefficients
+  const correlations = regressionData.correlations || regressionData.coefficients;
+  if (Array.isArray(correlations) && correlations.length > 0) {
+    parts.push("Feature coefficients (correlation with views):");
+    for (const c of correlations) {
+      const name = c.feature || c.name || "unknown";
+      const val = c.correlation ?? c.coefficient ?? c.value;
+      if (val !== undefined) {
+        parts.push(`  ${name}: ${typeof val === "number" ? val.toFixed(4) : val}`);
+      }
+    }
+    parts.push("");
+  }
+
+  // Boolean feature lifts
+  const lifts = regressionData.boolean_lifts;
+  if (Array.isArray(lifts) && lifts.length > 0) {
+    parts.push("Boolean feature lifts (% change in views when present):");
+    for (const l of lifts) {
+      const name = l.feature || l.name || "unknown";
+      const lift = l.lift_pct ?? l.lift;
+      if (lift !== undefined) {
+        const sign = lift > 0 ? "+" : "";
+        parts.push(`  ${name}: ${sign}${typeof lift === "number" ? lift.toFixed(1) : lift}%`);
+      }
+    }
+    parts.push("");
+  }
+
+  // R-squared
+  const rSquared = regressionData.r_squared ?? regressionData.rSquared;
+  if (rSquared !== undefined) {
+    parts.push(`R² (model fit): ${typeof rSquared === "number" ? rSquared.toFixed(4) : rSquared}`);
+  }
+
+  // Optimal word count
+  const optRange = regressionData.optimal_word_count_range;
+  if (optRange?.min !== undefined && optRange?.max !== undefined) {
+    parts.push(`Optimal word count range: ${optRange.min}-${optRange.max} words`);
+  }
+
+  // Best posting times
+  const bestDay = regressionData.best_posting_day;
+  const bestHour = regressionData.best_posting_hour;
+  if (bestDay?.day) parts.push(`Best posting day: ${bestDay.day} (avg ${bestDay.avg_views || 0} views)`);
+  if (bestHour?.hour !== undefined) parts.push(`Best posting hour: ${bestHour.hour}:00 (avg ${bestHour.avg_views || 0} views)`);
+
+  parts.push("", "Positive coefficients = this variable INCREASES views. Negative = DECREASES views.", "");
+
+  // Only return if we had actual data
+  if (parts.length <= 5) return ""; // Only header + footer, no real data
+  return parts.join("\n") + "\n\n";
+}
+
+/**
  * Shared utility: fetches the COMPLETE user context for AI edge functions.
  * All AI-calling edge functions should use this to ensure consistent context.
  */
@@ -503,6 +566,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     knowledgeSection + "\n\n" +
     "=== KEY INSIGHTS FROM DATA ===\n" +
     insightsSection + "\n\n" +
+    buildRawRegressionSection(regressionData) +
     postsBlock + "\n\n" +
     "=== COMPETITOR POST PATTERNS (learn the structure and triggers — do NOT copy their words) ===\n" +
     competitorSection + "\n\n" +
