@@ -183,5 +183,6 @@ export function useExtractIdentity() {
     postCount,
     showReview,
     setShowReview,
+    phase,
   };
 }

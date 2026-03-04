@@ -153,25 +153,6 @@ const MyStory = () => {
 
         <div id="about-you"><AboutYouSection /></div>
         <div id="stories">
-          <div className="flex items-center justify-between mb-2">
-            <div />
-            {hasPosts && (
-              <Button
-                onClick={extractVault}
-                disabled={isExtractingVault}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-              >
-                {isExtractingVault ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Wand2 className="h-3.5 w-3.5" />
-                )}
-                {isExtractingVault ? "Analyzing posts..." : "Auto-Fill from Posts"}
-              </Button>
-            )}
-          </div>
           <StoriesSection />
         </div>
         <div id="numbers"><NumbersSection /></div>
