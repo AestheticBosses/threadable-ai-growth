@@ -720,41 +720,29 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           .limit(100);
 
         if (existingPosts && existingPosts.length > 0) {
-          // Build set of 8-word sequences from existing posts
-          function getFirstNWords(text: string, n: number): string {
-            return text.trim().split(/\s+/).slice(0, n).join(" ").toLowerCase();
-          }
-          const existingFirst8 = existingPosts
-            .map((p: any) => p.text_content)
-            .filter(Boolean)
-            .map((t: string) => getFirstNWords(t, 8));
+          const existingTexts = existingPosts.map((p: any) => (p.text_content || "").toLowerCase().slice(0, 300));
 
           let flaggedCount = 0;
           for (const day of planData.daily_plan) {
             if (!day.posts || !Array.isArray(day.posts)) continue;
             for (const post of day.posts) {
               if (!post.hook_idea) continue;
-              const hookFirst8 = getFirstNWords(post.hook_idea, 8);
-              const hookWords = post.hook_idea.toLowerCase();
-              let matched = false;
-              for (let i = 0; i < existingPosts.length; i++) {
-                const existingText = (existingPosts[i] as any).text_content?.toLowerCase() || "";
-                // Check if existing post contains hook's first 8 words
-                if (hookFirst8.split(/\s+/).length >= 8 && existingText.includes(hookFirst8)) {
-                  matched = true;
-                  break;
+              const hookLower = post.hook_idea.toLowerCase();
+              const hookWords = hookLower.split(/\s+/);
+
+              for (const existing of existingTexts) {
+                // Check all 5-word sliding windows in the hook against existing post text
+                for (let i = 0; i <= hookWords.length - 5; i++) {
+                  const chunk = hookWords.slice(i, i + 5).join(" ");
+                  if (existing.includes(chunk)) {
+                    post.needs_remix = true;
+                    console.log(`[dedup] Hook too similar to existing post: "${post.hook_idea.slice(0, 60)}..."`);
+                    break;
+                  }
                 }
-                // Check if hook contains existing post's first 8 words
-                if (existingFirst8[i] && existingFirst8[i].split(/\s+/).length >= 8 && hookWords.includes(existingFirst8[i])) {
-                  matched = true;
-                  break;
-                }
+                if (post.needs_remix) break;
               }
-              if (matched) {
-                post.needs_remix = true;
-                flaggedCount++;
-                console.warn(`[dedup] Hook too similar to existing post: ${post.hook_idea.substring(0, 60)}...`);
-              }
+              if (post.needs_remix) flaggedCount++;
             }
           }
           console.log(`[dedup] Checked ${planData.daily_plan.reduce((s: number, d: any) => s + (d.posts?.length || 0), 0)} hooks against ${existingPosts.length} existing posts. Flagged: ${flaggedCount}`);
