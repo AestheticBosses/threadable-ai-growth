@@ -123,6 +123,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     topicsRes,
     planItemsRes,
     untappedAnglesRes,
+    scheduledPostsRes,
+    cmoProfileRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -155,6 +157,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("connected_topics").select("id, pillar_id, name").eq("user_id", userId).eq("is_active", true),
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(14),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "untapped_angles").limit(1).maybeSingle(),
+    supabase.from("scheduled_posts").select("content_category, funnel_stage, scheduled_for, status").eq("user_id", userId).in("status", ["draft", "approved", "scheduled"]).order("scheduled_for", { ascending: true }).limit(10),
+    supabase.from("profiles").select("weekly_refresh_summary, last_weekly_refresh_at").eq("id", userId).single(),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -365,12 +369,40 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   let contentPlanSummary = "Not generated yet";
   if (contentPlan?.plan_data) {
     const cp = contentPlan.plan_data as any;
-    const cadence = cp.posting_cadence || cp.cadence || "";
-    const themes = cp.themes || cp.weekly_themes || [];
-    contentPlanSummary = cadence ? `Cadence: ${cadence}` : "Active";
-    if (Array.isArray(themes) && themes.length > 0) {
-      contentPlanSummary += ` | Themes: ${themes.slice(0, 5).map((t: any) => typeof t === "string" ? t : t.name || t.theme || "").filter(Boolean).join(", ")}`;
+    const parts: string[] = ["Active"];
+
+    // Primary archetypes
+    if (cp.primary_archetypes && Array.isArray(cp.primary_archetypes)) {
+      const archs = cp.primary_archetypes.slice(0, 5).map((a: any) => `${a.name} (${a.percentage}%)`).join(", ");
+      if (archs) parts.push(`Archetypes: ${archs}`);
     }
+
+    // Weekly themes
+    const themes = cp.themes || cp.weekly_themes || [];
+    if (Array.isArray(themes) && themes.length > 0) {
+      const themeNames = themes.slice(0, 5).map((t: any) => {
+        if (typeof t === "string") return t;
+        const name = t.name || t.theme || "";
+        const angles = t.angles?.slice(0, 2).join(", ") || "";
+        return angles ? `${name} (${angles})` : name;
+      }).filter(Boolean).join("; ");
+      if (themeNames) parts.push(`Themes: ${themeNames}`);
+    }
+
+    // Today's posts from daily_plan
+    const cpDayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const cpTodayName = cpDayNames[new Date().getDay()];
+    const todayDay = cp.daily_plan?.find((d: any) => d.day === cpTodayName);
+    if (todayDay?.posts && Array.isArray(todayDay.posts)) {
+      const postLines = todayDay.posts.slice(0, 5).map((p: any) =>
+        `${p.archetype || "General"} (${p.funnel_stage || "TOF"}): ${(p.hook_idea || p.topic || "").slice(0, 80)}`
+      ).join(" | ");
+      if (postLines) parts.push(`Today (${cpTodayName}): ${postLines}`);
+    }
+
+    contentPlanSummary = parts.join("\n");
+    // Cap at 500 chars
+    if (contentPlanSummary.length > 500) contentPlanSummary = contentPlanSummary.slice(0, 497) + "...";
   }
 
   let brandingSummary = "Not generated yet";
@@ -396,6 +428,33 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     `Branding: ${brandingSummary}`,
     `Funnel: ${funnelSummary}`,
   ].join("\n");
+
+  // === CONTENT QUEUE ===
+  const queuedPosts = scheduledPostsRes.data || [];
+  let queueSection = "";
+  if (queuedPosts.length > 0) {
+    const entries = queuedPosts.map((p: any) => {
+      const arch = p.content_category || "General";
+      const time = p.scheduled_for ? new Date(p.scheduled_for).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" }) : "unscheduled";
+      return `- ${arch} (${p.funnel_stage || "TOF"}) ${p.status} at ${time}`;
+    }).join("\n");
+    queueSection = `${queuedPosts.length} posts queued:\n${entries}`;
+  }
+
+  // === LATEST CMO INSIGHT ===
+  const cmoProfile = cmoProfileRes.data;
+  let cmoSection = "";
+  if (cmoProfile?.weekly_refresh_summary && cmoProfile?.last_weekly_refresh_at) {
+    const refreshAge = (Date.now() - new Date(cmoProfile.last_weekly_refresh_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (refreshAge <= 7) {
+      const summary = cmoProfile.weekly_refresh_summary as any;
+      const parts: string[] = [];
+      if (summary.headline) parts.push(summary.headline);
+      if (summary.recommendation) parts.push(`Recommendation: ${summary.recommendation}`);
+      if (summary.top_insight) parts.push(`Insight: ${summary.top_insight}`);
+      cmoSection = parts.join("\n");
+    }
+  }
 
   // === PROFILE ===
   let voiceProfileText = "Not set";
@@ -600,7 +659,9 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     weekPlanSection + "\n\n" +
     (restOfWeekSection ? "=== REST OF THIS WEEK'S PLAN (for additional posts) ===\nWhen asked to generate a single post or template, generate for TODAY'S POST first. When asked for multiple posts, generate them in order from the plan — today first, then tomorrow, etc.\n\n" + restOfWeekSection + "\n\n" : "") +
     "=== PLANS ===\n" +
-    plansSection;
+    plansSection +
+    (queueSection ? "\n\n=== CONTENT QUEUE ===\n" + queueSection : "") +
+    (cmoSection ? "\n\n=== LATEST CMO INSIGHT ===\n" + cmoSection : "");
 
   // === CONTEXT SIZE DEBUG: per-section breakdown ===
   const sectionSizes: Record<string, number> = {
@@ -627,6 +688,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     todayPost: weekPlanSection.length,
     restOfWeek: restOfWeekSection.length,
     plans: plansSection.length,
+    contentQueue: queueSection.length,
+    cmoInsight: cmoSection.length,
   };
 
   // Sort by size descending to surface biggest offenders

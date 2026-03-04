@@ -108,7 +108,7 @@ export function WeeklyRefreshCard() {
       .update({ weekly_refresh_summary: null, last_weekly_refresh_at: null })
       .eq("id", user.id);
     queryClient.invalidateQueries({ queryKey: ["weekly-refresh-summary"] });
-    toast({ title: "Strategy applied", description: "Your plan is up to date" });
+    toast({ title: "Dismissed", description: "Your plan was already updated with these changes" });
   };
 
   const handleDiscuss = () => {
@@ -196,11 +196,13 @@ export function WeeklyRefreshCard() {
           <div className="flex items-center gap-2 pt-1">
             <Button
               size="sm"
-              className="bg-purple-600 hover:bg-purple-700 text-white text-xs h-8 gap-1.5"
+              variant="outline"
+              className="text-xs h-8 gap-1.5"
               onClick={handleApply}
+              title="Your plan has already been updated with these changes"
             >
               <Check className="h-3.5 w-3.5" />
-              Apply to My Plan
+              Got It
             </Button>
             <Button
               variant="ghost"
