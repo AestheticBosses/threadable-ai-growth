@@ -356,7 +356,7 @@ async function callAnthropicForPlan(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: "claude-opus-4-6",
+        model: "claude-sonnet-4-5-20250929",
         max_tokens: maxTokens,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
@@ -522,38 +522,70 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     let planData: any;
     try {
       if (plan_type === "content_plan" && postsPerDay > 10) {
-        // Batch generation: split 7 days into 2 batches to avoid timeout
+        // Batch generation: split 7 days into batches and run in PARALLEL
         const todayIdx = dayNames.indexOf(todayName);
         const orderedDays = Array.from({ length: 7 }, (_, i) => dayNames[(todayIdx + i) % 7]);
-        const batch1Days = orderedDays.slice(0, 3);
-        const batch2Days = orderedDays.slice(3);
         const baseSystemPrompt = basePrompt + stageBlock;
+        const BATCH_MAX_TOKENS = 4096;
 
-        console.log("[generate-plans] BATCH MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
+        if (postsPerDay > 14) {
+          // 3-batch split for very high volume (15-20 posts/day)
+          const batch1Days = orderedDays.slice(0, 2);
+          const batch2Days = orderedDays.slice(2, 5);
+          const batch3Days = orderedDays.slice(5);
+          console.log("[generate-plans] 3-BATCH MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days, "batch3:", batch3Days);
 
-        // Batch 1: first 3 days + primary_archetypes
-        const batch1MaxTokens = Math.min(3000 + batch1Days.length * postsPerDay * 100, 10000);
-        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
-        const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, batch1MaxTokens);
-        console.log("[generate-plans] batch1 response length:", raw1.length);
-        const batch1Data = safeParseJSON(raw1);
-        if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
+          const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
+          const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Do NOT generate primary_archetypes or weekly_themes.\n`;
+          const batch3System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch3Days.length} days: ${batch3Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n`;
 
-        // Batch 2: remaining 4 days + weekly_themes
-        const batch2MaxTokens = Math.min(3000 + batch2Days.length * postsPerDay * 100, 10000);
-        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes.\n`;
-        const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, batch2MaxTokens);
-        console.log("[generate-plans] batch2 response length:", raw2.length);
-        const batch2Data = safeParseJSON(raw2);
-        if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
+          const [raw1, raw2, raw3] = await Promise.all([
+            callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS),
+            callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS),
+            callAnthropicForPlan(ANTHROPIC_API_KEY, batch3System, userMessage, BATCH_MAX_TOKENS),
+          ]);
+          console.log("[generate-plans] batch lengths:", raw1.length, raw2.length, raw3.length);
 
-        // Combine: batch 1 metadata + both daily_plans + batch 2 weekly_themes
-        planData = {
-          ...batch1Data,
-          daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || [])],
-          weekly_themes: batch2Data.weekly_themes || batch1Data.weekly_themes || [],
-        };
-        console.log("[generate-plans] BATCH COMBINE: batch1 days:", batch1Data.daily_plan?.length, "batch2 days:", batch2Data.daily_plan?.length, "total:", planData.daily_plan.length);
+          const batch1Data = safeParseJSON(raw1);
+          const batch2Data = safeParseJSON(raw2);
+          const batch3Data = safeParseJSON(raw3);
+          if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
+          if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
+          if (!batch3Data?.daily_plan) throw new Error("Batch 3 returned no daily_plan");
+
+          planData = {
+            ...batch1Data,
+            daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || []), ...(batch3Data.daily_plan || [])],
+            weekly_themes: batch3Data.weekly_themes || batch1Data.weekly_themes || [],
+          };
+          console.log("[generate-plans] 3-BATCH COMBINE: total days:", planData.daily_plan.length);
+        } else {
+          // 2-batch split for 11-14 posts/day, run in PARALLEL
+          const batch1Days = orderedDays.slice(0, 3);
+          const batch2Days = orderedDays.slice(3);
+          console.log("[generate-plans] 2-BATCH MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
+
+          const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
+          const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes.\n`;
+
+          const [raw1, raw2] = await Promise.all([
+            callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS),
+            callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS),
+          ]);
+          console.log("[generate-plans] batch lengths:", raw1.length, raw2.length);
+
+          const batch1Data = safeParseJSON(raw1);
+          const batch2Data = safeParseJSON(raw2);
+          if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
+          if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
+
+          planData = {
+            ...batch1Data,
+            daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || [])],
+            weekly_themes: batch2Data.weekly_themes || batch1Data.weekly_themes || [],
+          };
+          console.log("[generate-plans] 2-BATCH COMBINE: total days:", planData.daily_plan.length);
+        }
       } else {
         // Single call for <= 10 posts/day or non-content-plan types
         const maxTokens = Math.min(3000 + (postsPerDay * 600), 10000);
