@@ -59,6 +59,7 @@ const NEW_PIPELINE: PipelineStepDef[] = [
   { id: "fetch", label: "Checking your Threads account…", status: "waiting" },
   { id: "archetypes", label: "Identifying winning content patterns…", status: "waiting" },
   { id: "identity", label: "Building your starter identity…", status: "waiting" },
+  { id: "vault", label: "Mining stories, numbers & knowledge…", status: "waiting" },
   { id: "voice", label: "Analyzing your writing voice…", status: "waiting" },
   { id: "playbook", label: "Generating your playbook…", status: "waiting" },
   { id: "buckets", label: "Building your audience segments…", status: "waiting" },
