@@ -165,63 +165,46 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
 
     console.log(`[extract-vault] Parsed: ${stories.length} stories, ${numbers.length} numbers, ${knowledgeEntries.length} KB, ${untappedAngles.length} angles`);
 
-    // 6. Upsert results
+    // 6. Clear old extracted data for clean slate
+    console.log(`[extract-vault] Clearing old extracted data...`);
+    await Promise.all([
+      supabase.from("knowledge_base").delete().eq("user_id", userId),
+      supabase.from("user_story_vault").delete().eq("user_id", userId),
+      supabase.from("content_strategies").delete().eq("user_id", userId).eq("strategy_type", "untapped_angles"),
+    ]);
 
-    // Stories → user_story_vault (merge with existing)
+    // 7. Insert fresh results
+
+    // Stories → user_story_vault
     let storiesAdded = 0;
     if (stories.length > 0) {
-      const existingStories: any[] = (storiesRes.data as any)?.data || [];
-      const existingTitleSet = new Set(existingStories.map((s: any) => (s.title || "").toLowerCase()));
-      const newStories = stories
-        .filter((s: any) => s.title && !existingTitleSet.has(s.title.toLowerCase()))
-        .map((s: any) => ({
-          title: s.title,
-          story: s.data || s.story || "",
-          lesson: s.lesson || "",
-          tags: s.tags || [],
-        }));
-      storiesAdded = newStories.length;
-      if (newStories.length > 0) {
-        const merged = [...existingStories, ...newStories];
-        const existingRow = storiesRes.data;
-        if (existingRow) {
-          await supabase.from("user_story_vault").update({ data: merged }).eq("user_id", userId).eq("section", "stories");
-        } else {
-          await supabase.from("user_story_vault").insert({ user_id: userId, section: "stories", data: merged });
-        }
-      }
+      const storyData = stories.map((s: any) => ({
+        title: s.title,
+        story: s.data || s.story || "",
+        lesson: s.lesson || "",
+        tags: s.tags || [],
+      }));
+      storiesAdded = storyData.length;
+      await supabase.from("user_story_vault").insert({ user_id: userId, section: "stories", data: storyData });
     }
 
     // Numbers → user_story_vault section=numbers
     let numbersAdded = 0;
     if (numbers.length > 0) {
-      const existingNumbers: any[] = (numbersRes.data as any)?.data || [];
-      const existingLabelSet = new Set(existingNumbers.map((n: any) => (n.label || "").toLowerCase()));
-      const newNumbers = numbers
-        .filter((n: any) => n.label && !existingLabelSet.has(n.label.toLowerCase()))
-        .map((n: any) => ({
-          label: n.label,
-          value: n.value || "",
-          context: n.context || "",
-        }));
-      numbersAdded = newNumbers.length;
-      if (newNumbers.length > 0) {
-        const merged = [...existingNumbers, ...newNumbers];
-        const existingRow = numbersRes.data;
-        if (existingRow) {
-          await supabase.from("user_story_vault").update({ data: merged }).eq("user_id", userId).eq("section", "numbers");
-        } else {
-          await supabase.from("user_story_vault").insert({ user_id: userId, section: "numbers", data: merged });
-        }
-      }
+      const numberData = numbers.map((n: any) => ({
+        label: n.label,
+        value: n.value || "",
+        context: n.context || "",
+      }));
+      numbersAdded = numberData.length;
+      await supabase.from("user_story_vault").insert({ user_id: userId, section: "numbers", data: numberData });
     }
 
     // Knowledge base → knowledge_base table
     let kbAdded = 0;
     if (knowledgeEntries.length > 0) {
-      const existingTitleSet = new Set(existingKBTitles.map((t: string) => t.toLowerCase()));
       const newKB = knowledgeEntries
-        .filter((k: any) => k.title && !existingTitleSet.has(k.title.toLowerCase()))
+        .filter((k: any) => k.title)
         .map((k: any) => ({
           user_id: userId,
           title: k.title,
@@ -232,13 +215,10 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
           summary: k.summary || "",
         }));
       kbAdded = newKB.length;
-      if (newKB.length > 0) {
-        // Insert in batches of 25
-        for (let i = 0; i < newKB.length; i += 25) {
-          const batch = newKB.slice(i, i + 25);
-          const { error } = await supabase.from("knowledge_base").insert(batch);
-          if (error) console.error("[extract-vault] KB insert error:", error.message);
-        }
+      for (let i = 0; i < newKB.length; i += 25) {
+        const batch = newKB.slice(i, i + 25);
+        const { error } = await supabase.from("knowledge_base").insert(batch);
+        if (error) console.error("[extract-vault] KB insert error:", error.message);
       }
     }
 
@@ -246,12 +226,12 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
     let anglesAdded = 0;
     if (untappedAngles.length > 0) {
       anglesAdded = untappedAngles.length;
-      await supabase.from("content_strategies").upsert({
+      await supabase.from("content_strategies").insert({
         user_id: userId,
         strategy_type: "untapped_angles",
         strategy_data: { angles: untappedAngles },
         status: "active",
-      }, { onConflict: "user_id,strategy_type", ignoreDuplicates: false });
+      });
     }
 
     console.log(`[extract-vault] Done: ${storiesAdded} stories, ${numbersAdded} numbers, ${kbAdded} KB, ${anglesAdded} angles`);
