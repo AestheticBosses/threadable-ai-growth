@@ -227,7 +227,7 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
           title: k.title,
           type: "text",
           content: k.summary || "",
-          tags: JSON.stringify([k.type || "insight"]),
+          tags: [k.type || "insight"],
           processed: true,
           summary: k.summary || "",
         }));
