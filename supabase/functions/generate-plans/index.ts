@@ -235,6 +235,14 @@ Mix these formats across each day:
 - Confessionals: raw vulnerability, no lesson attached
 Do NOT make every post educational or lesson-based. Most viral posts are identity-first, lesson-second.
 
+FACT-CHECK ALL NUMBERS: Never fabricate dollar amounts, percentages, or cost comparisons. Rules:
+- Only use specific numbers that appear in the creator's knowledge base, regression data, story vault, identity profile, or top posts data provided in the context
+- For any cost comparison (e.g., 'this would cost $X in ads'), do basic math: social media CPMs range $5-$30, so divide the view count by 1000 and multiply by a CPM in that range. Never inflate costs to make organic look better — the real numbers are impressive enough.
+- For engagement stats: only cite numbers from the creator's actual data provided in context. If no specific number exists, use directional language ('fraction of the cost', 'a fraction of what agencies charge') instead of inventing a figure.
+- Never round up aggressively or exaggerate to make a point more dramatic. Credibility compounds — one bad number destroys trust.
+- When referencing the creator's revenue, follower count, or business metrics, pull exact numbers from their profile data. Do not approximate or round for dramatic effect.
+- If the creator's data doesn't support a specific claim, reframe the hook without the number. A strong opinion without a number beats a fabricated stat every time.
+
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
