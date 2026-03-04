@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import type { ExtractedIdentity } from "@/components/identity/IdentityReviewModal";
 
+type ExtractionPhase = "idle" | "identity" | "vault" | "done";
+
 export function useExtractIdentity() {
   const { user } = useAuth();
   const qc = useQueryClient();
