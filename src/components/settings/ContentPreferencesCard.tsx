@@ -73,14 +73,14 @@ export function ContentPreferencesCard({
             <Label>Max posts per day</Label>
             <span className="text-sm font-mono font-medium text-primary">{form.maxPostsPerDay}</span>
           </div>
-          <Slider
+           <Slider
             value={[form.maxPostsPerDay]}
             onValueChange={([v]) => setForm((f) => ({ ...f, maxPostsPerDay: v }))}
             min={1}
-            max={30}
+            max={15}
             step={1}
           />
-          <p className="text-xs text-muted-foreground">Between 1 and 30 posts per day</p>
+          <p className="text-xs text-muted-foreground">Between 1 and 15 posts per day</p>
         </div>
 
         {/* Toggles */}
