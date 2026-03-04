@@ -288,7 +288,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const viewsSection = topByViews.length > 0
     ? topByViews.map((p: any, i: number) => {
         const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const firstWords = text.split(/\s+/).slice(0, 20).join(" ");
         const hook = classifyHook(text);
         const emotion = classifyEmotion(text);
         return `${i + 1}. Hook: ${hook} | Trigger: ${emotion} | Archetype: ${p.archetype || "unknown"} | ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"} | Length: ${text.length} chars | Opens with: "${firstWords}…"`;
@@ -300,7 +300,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const engagementSection = topByEngagement.length > 0
     ? topByEngagement.map((p: any, i: number) => {
         const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const firstWords = text.split(/\s+/).slice(0, 20).join(" ");
         const hook = classifyHook(text);
         const emotion = classifyEmotion(text);
         return `${i + 1}. Hook: ${hook} | Trigger: ${emotion} | Archetype: ${p.archetype || "unknown"} | ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}, ${p.views || 0} views | Length: ${text.length} chars | Opens with: "${firstWords}…"`;
@@ -312,7 +312,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   const recentSection = recentPosts.length > 0
     ? recentPosts.map((p: any, i: number) => {
         const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 10).join(" ");
+        const firstWords = text.split(/\s+/).slice(0, 20).join(" ");
         const hook = classifyHook(text);
         return `${i + 1}. Hook: ${hook} | Archetype: ${p.archetype || "unknown"} | Opens with: "${firstWords}…"`;
       }).join("\n")
@@ -402,7 +402,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   if (profile?.voice_profile) {
     const vp = profile.voice_profile as any;
     if (typeof vp === "string") {
-      voiceProfileText = vp.substring(0, 150);
+      voiceProfileText = vp.substring(0, 500);
     } else {
       // Extract key voice traits from JSON object
       const traits = [vp.tone, vp.style, vp.energy, vp.personality].filter(Boolean);
