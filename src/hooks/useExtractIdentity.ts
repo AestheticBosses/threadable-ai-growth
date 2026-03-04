@@ -143,14 +143,34 @@ export function useExtractIdentity() {
       qc.invalidateQueries({ queryKey: ["user-audiences", user.id] });
       qc.invalidateQueries({ queryKey: ["user-personal-info", user.id] });
 
-      toast({ title: "Identity saved! ✅", description: "You can edit any section on the Identity page." });
       setShowReview(false);
       setExtractedData(null);
+
+      // Step 2: Run vault extraction (KB, numbers, untapped angles)
+      setPhase("vault");
+      try {
+        const { data: vaultData, error: vaultError } = await supabase.functions.invoke("extract-vault-entries");
+        if (vaultError) throw vaultError;
+        if (vaultData?.error) throw new Error(vaultData.error);
+        const { stories = 0, numbers = 0, knowledge_base = 0, untapped_angles = 0 } = vaultData;
+        qc.invalidateQueries({ queryKey: ["story-vault"] });
+        qc.invalidateQueries({ queryKey: ["knowledge-base"] });
+        qc.invalidateQueries({ queryKey: ["content-strategies"] });
+        toast({
+          title: "Full extraction complete! ✅",
+          description: `Identity saved + ${knowledge_base} knowledge entries, ${numbers} numbers, ${untapped_angles} angles extracted.`,
+        });
+      } catch (vaultErr: any) {
+        console.error("vault extraction error:", vaultErr);
+        toast({ title: "Identity saved, but vault extraction failed", description: "You can run 'Extract from Posts' on the Knowledge Base page.", variant: "destructive" });
+      }
+      setPhase("done");
     } catch (e: any) {
       console.error("save identity error:", e);
       toast({ title: "Save failed", description: e.message || "Please try again.", variant: "destructive" });
     } finally {
       setIsSaving(false);
+      setPhase("idle");
     }
   };
 
