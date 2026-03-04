@@ -398,6 +398,7 @@ const Onboarding = () => {
     }
 
     await invokeStep("identity", "extract-identity", {});
+    await invokeStep("vault", "extract-vault-entries", {});
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
     await invokeStep("playbook", "generate-playbook", { user_id: user.id });
 
