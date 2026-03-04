@@ -125,6 +125,8 @@ const Queue = () => {
   const [approvingAll, setApprovingAll] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [fixContextId, setFixContextId] = useState<string | null>(null);
   const [fixFeedback, setFixFeedback] = useState("");
   const [fixingId, setFixingId] = useState<string | null>(null);
@@ -237,6 +239,27 @@ const Queue = () => {
   const handleDelete = async (id: string) => {
     await supabase.from("scheduled_posts").delete().eq("id", id);
     setPosts((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  // Delete All (drafts, approved, scheduled — not published)
+  const handleDeleteAll = async () => {
+    if (!user) return;
+    setDeletingAll(true);
+    try {
+      const { error } = await supabase
+        .from("scheduled_posts")
+        .delete()
+        .eq("user_id", user.id)
+        .in("status", ["draft", "approved", "scheduled"]);
+      if (error) throw error;
+      setPosts([]);
+      toast({ title: "All posts deleted 🗑️" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setDeletingAll(false);
+      setDeleteAllOpen(false);
+    }
   };
 
   // Save edit & re-score
@@ -467,20 +490,34 @@ const Queue = () => {
             </p>
           </div>
 
-          {drafts.length > 0 && (
-            <Button
-              onClick={handleApproveAll}
-              disabled={approvingAll}
-              className="gap-2"
-            >
-              {approvingAll ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4" />
-              )}
-              Approve All Drafts ({drafts.length})
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {posts.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteAllOpen(true)}
+                className="gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete All
+              </Button>
+            )}
+
+            {drafts.length > 0 && (
+              <Button
+                onClick={handleApproveAll}
+                disabled={approvingAll}
+                className="gap-2"
+              >
+                {approvingAll ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                Approve All Drafts ({drafts.length})
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* All-approved confirmation state */}
@@ -625,6 +662,29 @@ const Queue = () => {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => confirmPublishId && handlePostNow(confirmPublishId)}>
               🚀 Post Now
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete All Confirmation */}
+      <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete all posts?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Delete all scheduled and draft posts? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingAll}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAll}
+              disabled={deletingAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingAll ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Delete All
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
