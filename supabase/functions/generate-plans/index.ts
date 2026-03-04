@@ -529,8 +529,8 @@ serve(async (req) => {
       }
     }
 
-    // postsPerDay comes from profiles.max_posts_per_day — never hardcode this
-    const postsPerDay = profile?.max_posts_per_day ?? 1;
+    // postsPerDay comes from profiles.max_posts_per_day — capped at 15
+    const postsPerDay = Math.min(profile?.max_posts_per_day || 7, 15);
     console.log("[generate-plans] postsPerDay:", postsPerDay, "plan_type:", plan_type);
 
     // Hardcode the actual posts_per_day value into the JSON schema so the AI can't ignore it
@@ -605,8 +605,8 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
     let planData: any;
     try {
-      if (plan_type === "content_plan" && postsPerDay > 10) {
-        // Batch generation: split 7 days into batches and run in PARALLEL
+      if (plan_type === "content_plan" && postsPerDay > 7) {
+        // 2-batch sequential generation for 8-15 posts/day with cross-batch hook dedup
         const todayIdx = dayNames.indexOf(todayName);
         const orderedDays = Array.from({ length: 7 }, (_, i) => dayNames[(todayIdx + i) % 7]);
         const baseSystemPrompt = basePrompt + stageBlock;
@@ -633,74 +633,33 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           return `\n\nALREADY USED HOOKS — do NOT repeat, rephrase, or closely paraphrase any of these:\n${usedHooks.map((h, i) => `${i + 1}. ${h}`).join("\n")}\n\nEvery hook you generate must be meaningfully different from the above. Same insight reworded is still a duplicate.\n`;
         }
 
-        if (postsPerDay > 14) {
-          // 3-batch split for very high volume (15-20 posts/day) — SEQUENTIAL for dedup
-          const batch1Days = orderedDays.slice(0, 2);
-          const batch2Days = orderedDays.slice(2, 5);
-          const batch3Days = orderedDays.slice(5);
-          console.log("[generate-plans] 3-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days, "batch3:", batch3Days);
+        // 2-batch split: days 1-4 then days 5-7
+        const batch1Days = orderedDays.slice(0, 4);
+        const batch2Days = orderedDays.slice(4);
+        console.log("[generate-plans] 2-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
 
-          // Batch 1
-          const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
-          const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
-          console.log("[generate-plans] batch1 length:", raw1.length);
-          const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
-          if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
-          const batch1Hooks = extractHooks(batch1Data);
-          console.log("[generate-plans] batch1 hooks extracted:", batch1Hooks.length);
+        // Batch 1
+        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
+        const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
+        console.log("[generate-plans] batch1 length:", raw1.length);
+        const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
+        if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
+        const batch1Hooks = extractHooks(batch1Data);
+        console.log("[generate-plans] batch1 hooks extracted:", batch1Hooks.length);
 
-          // Batch 2 — inject batch 1 hooks
-          const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Do NOT generate primary_archetypes or weekly_themes.\n` + buildDedupBlock(batch1Hooks);
-          const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
-          console.log("[generate-plans] batch2 length:", raw2.length);
-          const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
-          if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
-          const batch2Hooks = extractHooks(batch2Data);
-          console.log("[generate-plans] batch2 hooks extracted:", batch2Hooks.length);
+        // Batch 2 — inject batch 1 hooks for dedup
+        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + buildDedupBlock(batch1Hooks);
+        const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
+        console.log("[generate-plans] batch2 length:", raw2.length);
+        const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
+        if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
 
-          // Batch 3 — inject batch 1 + batch 2 hooks
-          const allPriorHooks = [...batch1Hooks, ...batch2Hooks];
-          const batch3System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch3Days.length} days: ${batch3Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + buildDedupBlock(allPriorHooks);
-          const raw3 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch3System, userMessage, BATCH_MAX_TOKENS);
-          console.log("[generate-plans] batch3 length:", raw3.length);
-          const batch3Data = recoverTruncatedJSON(raw3, batch3Days.length * postsPerDay, "Batch3");
-          if (!batch3Data?.daily_plan) throw new Error("Batch 3 returned no daily_plan");
-
-          planData = {
-            ...batch1Data,
-            daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || []), ...(batch3Data.daily_plan || [])],
-            weekly_themes: batch3Data.weekly_themes || batch1Data.weekly_themes || [],
-          };
-          console.log("[generate-plans] 3-BATCH COMBINE: total days:", planData.daily_plan.length, "total hooks:", allPriorHooks.length + extractHooks(batch3Data).length);
-        } else {
-          // 2-batch split for 11-14 posts/day — SEQUENTIAL for dedup
-          const batch1Days = orderedDays.slice(0, 3);
-          const batch2Days = orderedDays.slice(3);
-          console.log("[generate-plans] 2-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
-
-          // Batch 1
-          const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
-          const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
-          console.log("[generate-plans] batch1 length:", raw1.length);
-          const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
-          if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
-          const batch1Hooks = extractHooks(batch1Data);
-          console.log("[generate-plans] batch1 hooks extracted:", batch1Hooks.length);
-
-          // Batch 2 — inject batch 1 hooks
-          const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes.\n` + buildDedupBlock(batch1Hooks);
-          const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
-          console.log("[generate-plans] batch2 length:", raw2.length);
-          const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
-          if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
-
-          planData = {
-            ...batch1Data,
-            daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || [])],
-            weekly_themes: batch2Data.weekly_themes || batch1Data.weekly_themes || [],
-          };
-          console.log("[generate-plans] 2-BATCH COMBINE: total days:", planData.daily_plan.length, "total hooks:", batch1Hooks.length + extractHooks(batch2Data).length);
-        }
+        planData = {
+          ...batch1Data,
+          daily_plan: [...(batch1Data.daily_plan || []), ...(batch2Data.daily_plan || [])],
+          weekly_themes: batch2Data.weekly_themes || batch1Data.weekly_themes || [],
+        };
+        console.log("[generate-plans] 2-BATCH COMBINE: total days:", planData.daily_plan.length, "total hooks:", batch1Hooks.length + extractHooks(batch2Data).length);
       } else {
         // Single call for <= 10 posts/day or non-content-plan types
         const maxTokens = Math.min(3000 + (postsPerDay * 600), 10000);

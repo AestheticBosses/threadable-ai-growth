@@ -42,7 +42,7 @@ const Landing = () => {
     { q: "How is this different from other AI writing tools?", a: "Most AI tools generate generic content from a prompt. Threadable analyzes YOUR existing posts with regression analysis, discovers YOUR unique content archetypes, and writes in YOUR voice using YOUR real stories and data. It's not a writing tool — it's a growth engine built on your data." },
     { q: "Do I need existing Threads posts?", a: "Having posts helps — Threadable can analyze 100+ posts to build your personalized playbook. But if you're starting fresh, we'll suggest niche-based archetypes and help you fill your Story Vault so the AI has real material to work with from day one." },
     { q: "Will posts sound like me or like AI?", a: "Like you. Threadable uses your Story Vault (real numbers, real stories, real offers) and Voice Training to match your tone. Every post goes through a context check to make sure it never makes up facts or misattributes your experience." },
-    { q: "Can it actually post to Threads automatically?", a: "Yes. Threadable connects to the official Threads API and can auto-publish up to 30 posts per day at your optimal posting times. You can also review and approve posts before they go live." },
+    { q: "Can it actually post to Threads automatically?", a: "Yes. Threadable connects to the official Threads API and can auto-publish up to 15 posts per day at your optimal posting times. You can also review and approve posts before they go live." },
     { q: 'What does "regression analysis" mean?', a: "Statistical analysis that identifies which variables — post length, hook style, time of day, topic — actually correlate with your key metrics. Instead of guessing what works, you get data-backed answers specific to your audience." },
     { q: "How much does Threadable cost?", a: "We're launching with early access pricing soon. Join the waitlist to lock in founder pricing before we go live." },
   ];
@@ -934,7 +934,7 @@ const Landing = () => {
                 { num: '01', icon: '🔗', title: 'Connect Threads', desc: 'Link your account and Threadable fetches your entire post history — every metric, every engagement signal.' },
                 { num: '02', icon: '🧬', title: 'Run Analysis', desc: 'AI runs regression analysis, discovers your content archetypes, and builds a custom playbook from your real data.' },
                 { num: '03', icon: '✍️', title: 'Generate Content', desc: 'Posts written in your voice, using your stories, scored against your playbook. Edit, approve, or regenerate.' },
-                { num: '04', icon: '📡', title: 'Auto-Publish', desc: 'Schedule up to 30 posts per day. Threadable publishes at optimal times while you build what actually pays you.' },
+                { num: '04', icon: '📡', title: 'Auto-Publish', desc: 'Schedule up to 15 posts per day. Threadable publishes at optimal times while you build what actually pays you.' },
               ].map(step => (
                 <div className="step-card" key={step.num}>
                   <div className="step-number">{step.num}</div>
