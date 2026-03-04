@@ -250,6 +250,12 @@ GOOD remix: Take the PATTERN that made a post work (the emotional trigger, the s
 The pattern is the skeleton. The words are the skin. Keep the skeleton, change everything else.
 Rule: No generated hook should share more than 5 consecutive words with any existing post from the creator's history provided in context.
 
+STORY ROTATION: You have access to the creator's full story vault. Do NOT keep returning to the same 3-4 stories. Rules:
+- Each story from the vault should be used AT MOST twice across the entire 7-day plan
+- Track which stories you've referenced. If you've already used a story twice, find a different emotional anchor.
+- At least 30% of posts each day should NOT reference any specific story from the vault — instead use opinions, hot takes, data insights, or untapped angles.
+- Prioritize UNTAPPED ANGLES for at least 2-3 posts per day. These are fresh topics that will surprise the audience.
+
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
@@ -561,13 +567,56 @@ serve(async (req) => {
     const todayName = (client_day && dayNames.includes(client_day)) ? client_day : dayNames[new Date().getDay()];
     const todayAnchor = `\nToday is ${todayName}. The 7-day plan must start from ${todayName} and go forward from there. Do not start from Monday unless today is Monday.\n`;
 
+    // Fetch story vault titles for per-day story assignment hints
+    let storyDayHints = "";
+    if (plan_type === "content_plan") {
+      try {
+        const { data: storyRows } = await admin
+          .from("user_story_vault")
+          .select("section, data")
+          .eq("user_id", user.id)
+          .limit(20);
+
+        if (storyRows && storyRows.length > 0) {
+          const titles: string[] = [];
+          for (const s of storyRows) {
+            const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
+            for (const item of items as any[]) {
+              const title = item.title || item.name;
+              if (title) titles.push(title);
+            }
+          }
+
+          if (titles.length > 0) {
+            // Split titles into 7 groups (one per day)
+            const perDay = Math.max(1, Math.ceil(titles.length / 7));
+            const dayGroups: string[][] = [];
+            for (let i = 0; i < 7; i++) {
+              dayGroups.push(titles.slice(i * perDay, (i + 1) * perDay));
+            }
+            const todayIdx = dayNames.indexOf(todayName);
+            const lines = dayGroups.map((group, i) => {
+              const dayName = dayNames[(todayIdx + i) % 7];
+              return group.length > 0 ? `${dayName} story focus: [${group.join(", ")}]` : null;
+            }).filter(Boolean);
+            if (lines.length > 0) {
+              storyDayHints = "\n\nFor variety, here is a suggested story focus per day (not mandatory, but guides distribution):\n" + lines.join("\n") + "\n";
+            }
+            console.log("[generate-plans] story vault titles:", titles.length, "per-day groups built");
+          }
+        }
+      } catch (storyErr) {
+        console.warn("[generate-plans] Story vault query failed (non-fatal):", storyErr);
+      }
+    }
+
     const basePrompt =
       plan_type === "content_plan"
         ? contentPlanPrompt
         : plan_type === "branding_plan"
         ? BRANDING_PLAN_PROMPT
         : FUNNEL_STRATEGY_PROMPT;
-    const systemPrompt = basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor : "");
+    const systemPrompt = basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
 
     // Build goal-based CTA rules block
     const goalType = profile?.goal_type ?? "not set";
@@ -654,7 +703,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         console.log("[generate-plans] 2-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
 
         // Batch 1
-        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n`;
+        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n` + storyDayHints;
         const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch1 length:", raw1.length);
         const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
@@ -663,7 +712,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         console.log("[generate-plans] batch1 hooks extracted:", batch1Hooks.length);
 
         // Batch 2 — inject batch 1 hooks for dedup
-        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + buildDedupBlock(batch1Hooks);
+        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + storyDayHints + buildDedupBlock(batch1Hooks);
         const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch2 length:", raw2.length);
         const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");

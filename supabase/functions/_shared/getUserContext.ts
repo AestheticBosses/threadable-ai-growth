@@ -122,6 +122,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     pillarsRes,
     topicsRes,
     planItemsRes,
+    untappedAnglesRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -153,6 +154,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_pillars").select("id, name, description, purpose, percentage, bucket_id").eq("user_id", userId).eq("is_active", true),
     supabase.from("connected_topics").select("id, pillar_id, name").eq("user_id", userId).eq("is_active", true),
     supabase.from("content_plan_items").select("scheduled_date, archetype, funnel_stage, pillar_id, topic_id, is_test_slot, status").eq("user_id", userId).gte("scheduled_date", new Date().toISOString().split("T")[0]).order("scheduled_date").limit(14),
+    supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "untapped_angles").limit(1).maybeSingle(),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -198,6 +200,25 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }
     }
     storiesSection = storyLines.join("\n");
+  }
+
+  // === UNTAPPED ANGLES ===
+  const untappedData = untappedAnglesRes.data?.strategy_data as any;
+  let untappedSection = "";
+  if (untappedData) {
+    const angles = Array.isArray(untappedData) ? untappedData : (untappedData.angles || untappedData.items || []);
+    if (angles.length > 0) {
+      const lines = angles.map((a: any) => {
+        const title = a.title || a.name || a.angle || "";
+        const why = a.why || a.reason || a.description || "";
+        return title ? `- ${title}${why ? `: ${why}` : ""}` : null;
+      }).filter(Boolean);
+      if (lines.length > 0) {
+        untappedSection = "=== UNTAPPED ANGLES (use these for fresh content) ===\n" +
+          "These are topics and angles the creator has hinted at but never fully explored. Use at least 2-3 of these per day to keep content fresh and prevent repeating the same stories.\n" +
+          lines.join("\n");
+      }
+    }
   }
 
   // === OFFERS ===
@@ -545,6 +566,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "- NEVER fabricate dollar amounts, timelines, or events\n" +
     "- It is BETTER to write a post with no specific story than to invent a fake one\n\n" +
     storiesSection + "\n\n" +
+    (untappedSection ? untappedSection + "\n\n" : "") +
     "=== OFFERS ===\n" +
     offersSection + "\n\n" +
     "=== TARGET AUDIENCES ===\n" +
@@ -586,6 +608,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     identity: identitySection.length,
     profile: profileSection.length,
     stories: storiesSection.length,
+    untappedAngles: untappedSection.length,
     offers: offersSection.length,
     audiences: audiencesSection.length,
     personal: personalSection.length,
