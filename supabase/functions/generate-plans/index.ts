@@ -337,6 +337,47 @@ Respond ONLY with valid JSON in this format:
 /**
  * Helper: call Anthropic API with timeout and return raw text response.
  */
+/**
+ * Attempt to recover a truncated JSON response.
+ * Finds the last complete object in an array and closes the structure.
+ */
+function recoverTruncatedJSON(raw: string, expectedPosts: number, batchLabel: string): any {
+  // First try normal parse
+  try {
+    const parsed = safeParseJSON(raw);
+    return parsed;
+  } catch (_) {
+    // Truncation recovery
+    console.warn(`[${batchLabel}] JSON parse failed, attempting truncation recovery...`);
+    // Try to find last complete object boundary
+    const lastCloseBrace = raw.lastIndexOf('}');
+    if (lastCloseBrace <= 0) {
+      throw new Error(`[${batchLabel}] Cannot recover truncated JSON — no closing brace found`);
+    }
+    // Check if we're inside an array (daily_plan or posts array)
+    // Strategy: trim to last '}', then close any open arrays/objects
+    let candidate = raw.substring(0, lastCloseBrace + 1);
+    // Count open vs close brackets to figure out what needs closing
+    const openBraces = (candidate.match(/{/g) || []).length;
+    const closeBraces = (candidate.match(/}/g) || []).length;
+    const openBrackets = (candidate.match(/\[/g) || []).length;
+    const closeBrackets = (candidate.match(/\]/g) || []).length;
+    // Close any unclosed structures
+    for (let i = 0; i < openBrackets - closeBrackets; i++) candidate += ']';
+    for (let i = 0; i < openBraces - closeBraces; i++) candidate += '}';
+    try {
+      const recovered = safeParseJSON(candidate);
+      const recoveredDays = recovered?.daily_plan?.length ?? 0;
+      const recoveredPosts = recovered?.daily_plan?.reduce((sum: number, d: any) => sum + (d.posts?.length ?? 0), 0) ?? 0;
+      console.warn(`[${batchLabel}] TRUNCATION RECOVERY: recovered ${recoveredDays} days, ${recoveredPosts} posts (expected ~${expectedPosts} total posts)`);
+      return recovered;
+    } catch (e2) {
+      console.error(`[${batchLabel}] Truncation recovery failed:`, e2);
+      throw new Error(`[${batchLabel}] JSON parse and recovery both failed`);
+    }
+  }
+}
+
 async function callAnthropicForPlan(
   apiKey: string,
   systemPrompt: string,
@@ -369,6 +410,10 @@ async function callAnthropicForPlan(
       throw new Error("AI generation failed");
     }
     const data = await res.json();
+    const stopReason = data.stop_reason;
+    if (stopReason === "max_tokens") {
+      console.warn("[callAnthropicForPlan] Response hit max_tokens — output may be truncated");
+    }
     return data.content?.[0]?.text || "";
   } catch (e) {
     clearTimeout(timeoutId);
@@ -526,7 +571,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         const todayIdx = dayNames.indexOf(todayName);
         const orderedDays = Array.from({ length: 7 }, (_, i) => dayNames[(todayIdx + i) % 7]);
         const baseSystemPrompt = basePrompt + stageBlock;
-        const BATCH_MAX_TOKENS = 4096;
+        const BATCH_MAX_TOKENS = 8192;
 
         if (postsPerDay > 14) {
           // 3-batch split for very high volume (15-20 posts/day)
@@ -546,9 +591,9 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           ]);
           console.log("[generate-plans] batch lengths:", raw1.length, raw2.length, raw3.length);
 
-          const batch1Data = safeParseJSON(raw1);
-          const batch2Data = safeParseJSON(raw2);
-          const batch3Data = safeParseJSON(raw3);
+          const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
+          const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
+          const batch3Data = recoverTruncatedJSON(raw3, batch3Days.length * postsPerDay, "Batch3");
           if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
           if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
           if (!batch3Data?.daily_plan) throw new Error("Batch 3 returned no daily_plan");
@@ -574,8 +619,8 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           ]);
           console.log("[generate-plans] batch lengths:", raw1.length, raw2.length);
 
-          const batch1Data = safeParseJSON(raw1);
-          const batch2Data = safeParseJSON(raw2);
+          const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
+          const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
           if (!batch1Data?.daily_plan) throw new Error("Batch 1 returned no daily_plan");
           if (!batch2Data?.daily_plan) throw new Error("Batch 2 returned no daily_plan");
 
@@ -593,6 +638,19 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         console.log("Raw AI response length:", rawText.length);
         planData = safeParseJSON(rawText);
         if (!planData || typeof planData !== "object") throw new Error("Parsed result is not an object");
+      }
+
+      // Log warnings for incomplete days after batch or single generation
+      if (plan_type === "content_plan" && planData?.daily_plan) {
+        for (const day of planData.daily_plan) {
+          const postCount = day.posts?.length ?? 0;
+          if (postCount < postsPerDay) {
+            console.warn(`[generate-plans] WARNING: ${day.day} has ${postCount}/${postsPerDay} posts (incomplete)`);
+          }
+        }
+        if (planData.daily_plan.length < 7) {
+          console.warn(`[generate-plans] WARNING: Only ${planData.daily_plan.length}/7 days generated`);
+        }
       }
     } catch (e: any) {
       console.error("AI generation error:", e);
