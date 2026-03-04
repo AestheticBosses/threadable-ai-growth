@@ -243,6 +243,13 @@ FACT-CHECK ALL NUMBERS: Never fabricate dollar amounts, percentages, or cost com
 - When referencing the creator's revenue, follower count, or business metrics, pull exact numbers from their profile data. Do not approximate or round for dramatic effect.
 - If the creator's data doesn't support a specific claim, reframe the hook without the number. A strong opinion without a number beats a fabricated stat every time.
 
+REMIX RULES — REMIXING IS ENCOURAGED BUT LAZY COPIES ARE NOT:
+Remixing the creator's top-performing posts is a core strategy. But there are levels:
+BAD remix: Take an existing post and swap a few words or rearrange sentences. If 70%+ of the words are the same, it's a copy, not a remix.
+GOOD remix: Take the PATTERN that made a post work (the emotional trigger, the structure, the format) and apply it to a completely different story, angle, or moment from the creator's life. Same emotional trigger, fresh content.
+The pattern is the skeleton. The words are the skin. Keep the skeleton, change everything else.
+Rule: No generated hook should share more than 5 consecutive words with any existing post from the creator's history provided in context.
+
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
@@ -699,6 +706,62 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Post-generation dedup check: flag hooks too similar to existing posts
+    if (plan_type === "content_plan" && planData?.daily_plan) {
+      try {
+        const { data: existingPosts } = await admin
+          .from("posts_analyzed")
+          .select("text_content")
+          .eq("user_id", user.id)
+          .not("text_content", "is", null)
+          .order("posted_at", { ascending: false })
+          .limit(100);
+
+        if (existingPosts && existingPosts.length > 0) {
+          // Build set of 8-word sequences from existing posts
+          function getFirstNWords(text: string, n: number): string {
+            return text.trim().split(/\s+/).slice(0, n).join(" ").toLowerCase();
+          }
+          const existingFirst8 = existingPosts
+            .map((p: any) => p.text_content)
+            .filter(Boolean)
+            .map((t: string) => getFirstNWords(t, 8));
+
+          let flaggedCount = 0;
+          for (const day of planData.daily_plan) {
+            if (!day.posts || !Array.isArray(day.posts)) continue;
+            for (const post of day.posts) {
+              if (!post.hook_idea) continue;
+              const hookFirst8 = getFirstNWords(post.hook_idea, 8);
+              const hookWords = post.hook_idea.toLowerCase();
+              let matched = false;
+              for (let i = 0; i < existingPosts.length; i++) {
+                const existingText = (existingPosts[i] as any).text_content?.toLowerCase() || "";
+                // Check if existing post contains hook's first 8 words
+                if (hookFirst8.split(/\s+/).length >= 8 && existingText.includes(hookFirst8)) {
+                  matched = true;
+                  break;
+                }
+                // Check if hook contains existing post's first 8 words
+                if (existingFirst8[i] && existingFirst8[i].split(/\s+/).length >= 8 && hookWords.includes(existingFirst8[i])) {
+                  matched = true;
+                  break;
+                }
+              }
+              if (matched) {
+                post.needs_remix = true;
+                flaggedCount++;
+                console.warn(`[dedup] Hook too similar to existing post: ${post.hook_idea.substring(0, 60)}...`);
+              }
+            }
+          }
+          console.log(`[dedup] Checked ${planData.daily_plan.reduce((s: number, d: any) => s + (d.posts?.length || 0), 0)} hooks against ${existingPosts.length} existing posts. Flagged: ${flaggedCount}`);
+        }
+      } catch (dedupErr) {
+        console.warn("[dedup] Dedup check failed (non-fatal):", dedupErr);
+      }
     }
 
     // Force posts_per_day to match profile and derive best times from regression data
