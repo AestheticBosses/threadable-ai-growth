@@ -87,3 +87,7 @@ wall_clock_timeout = 300  # 5 minutes — pipeline runs 7 sequential steps
 [functions.generate-cmo-summary]
 verify_jwt = false
 wall_clock_timeout = 150
+
+[functions.extract-vault-entries]
+verify_jwt = false
+wall_clock_timeout = 150
