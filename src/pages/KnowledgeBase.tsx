@@ -15,11 +15,12 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Loader2, Plus, Search, FileText, Trash2, Globe, Video, File, RefreshCw, CheckCircle2, AlertTriangle, ChevronDown, ExternalLink } from "lucide-react";
+import { Loader2, Plus, Search, FileText, Trash2, Globe, Video, File, RefreshCw, CheckCircle2, AlertTriangle, ChevronDown, ExternalLink, Wand2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useKnowledgeBase, type KnowledgeItem } from "@/hooks/useKnowledgeBase";
 import { AddKnowledgeModal } from "@/components/knowledge/AddKnowledgeModal";
 import { cn } from "@/lib/utils";
+import { useExtractVaultEntries } from "@/hooks/useExtractVaultEntries";
 
 const typeBadgeStyles: Record<string, string> = {
   text: "bg-purple-500/15 text-purple-400 border-purple-500/30",
@@ -133,6 +134,7 @@ function ExpandedContent({ item, onRetry }: { item: KnowledgeItem; onRetry: () =
 const KnowledgeBase = () => {
   usePageTitle("Knowledge Base", "Upload content for the AI to learn from");
   const { data, isLoading, remove, isDeleting, processItem, refetch } = useKnowledgeBase();
+  const { extract: extractVault, isExtracting: isExtractingVault } = useExtractVaultEntries();
   const [modalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -193,9 +195,25 @@ const KnowledgeBase = () => {
               Upload content for the AI to learn from and reference when creating your posts.
             </p>
           </div>
-          <Button onClick={() => setModalOpen(true)} className="gap-1 shrink-0">
-            <Plus className="h-4 w-4" />Add knowledge
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              onClick={extractVault}
+              disabled={isExtractingVault}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+            >
+              {isExtractingVault ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              {isExtractingVault ? "Analyzing posts..." : "Extract from Posts"}
+            </Button>
+            <Button onClick={() => setModalOpen(true)} className="gap-1 shrink-0">
+              <Plus className="h-4 w-4" />Add knowledge
+            </Button>
+          </div>
         </div>
 
         {/* Search + Filters */}
