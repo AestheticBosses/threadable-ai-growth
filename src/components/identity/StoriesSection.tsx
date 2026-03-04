@@ -11,11 +11,19 @@ import { useStories, type StoryEntry } from "@/hooks/useStoryVault";
 export function StoriesSection() {
   const { data, isLoading, save, isSaving } = useStories();
   const [items, setItems] = useState<StoryEntry[]>([]);
-  const [initialized, setInitialized] = useState(false);
+  const [lastDataLength, setLastDataLength] = useState<number | null>(null);
   const [tagInput, setTagInput] = useState<Record<number, string>>({});
 
-  if (!initialized && data) { setItems(data); setInitialized(true); }
-  if (!initialized && !isLoading && !data) { setItems([{ title: "", story: "", lesson: "", tags: [] }]); setInitialized(true); }
+  // Sync local state when remote data changes (e.g. after extraction)
+  const dataLength = data?.length ?? null;
+  if (data && dataLength !== lastDataLength) {
+    setItems(data);
+    setLastDataLength(dataLength);
+  }
+  if (!data && !isLoading && lastDataLength === null) {
+    setItems([{ title: "", story: "", lesson: "", tags: [] }]);
+    setLastDataLength(0);
+  }
 
   const handleSave = async () => {
     const valid = items.filter((i) => i.title.trim() || i.story.trim());
