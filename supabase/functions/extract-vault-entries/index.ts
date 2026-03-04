@@ -138,7 +138,7 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 4096,
+        max_tokens: 8192,
         system: systemPrompt,
         messages: [{ role: "user", content: userMessage }],
       }),
