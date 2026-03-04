@@ -331,6 +331,7 @@ const Onboarding = () => {
     }
 
     await invokeStep("identity", "extract-identity", { user_id: user.id });
+    await invokeStep("vault", "extract-vault-entries", {});
     await invokeStep("voice", "analyze-voice", { user_id: user.id });
 
     if (archetypesOk) {
