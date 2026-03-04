@@ -165,9 +165,17 @@ Respond in JSON only, no markdown: { "stories": [...], "numbers": [...], "knowle
 
     console.log(`[extract-vault] Parsed: ${stories.length} stories, ${numbers.length} numbers, ${knowledgeEntries.length} KB, ${untappedAngles.length} angles`);
 
-    // 6. Upsert results
+    // 6. Clear old extracted data for clean slate
+    console.log(`[extract-vault] Clearing old extracted data...`);
+    await Promise.all([
+      supabase.from("knowledge_base").delete().eq("user_id", userId),
+      supabase.from("user_story_vault").delete().eq("user_id", userId),
+      supabase.from("content_strategies").delete().eq("user_id", userId).eq("strategy_type", "untapped_angles"),
+    ]);
 
-    // Stories → user_story_vault (merge with existing)
+    // 7. Insert fresh results
+
+    // Stories → user_story_vault
     let storiesAdded = 0;
     if (stories.length > 0) {
       const existingStories: any[] = (storiesRes.data as any)?.data || [];
