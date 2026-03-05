@@ -68,23 +68,43 @@ serve(async (req) => {
       chunks.push(posts.slice(i, i + 3));
     }
 
-    const lengthGuide: Record<string, string> = {
-      "Brutal Truth": "Keep under 150 characters. One punchy observation. No explanation needed.",
-      "Hot Take": "Keep under 200 characters. Bold claim, no softening.",
-      "One-Liner Philosophy": "Keep under 100 characters. Single quotable sentence.",
-      "Millennial Operator": "150-300 characters max. Relatable, punchy.",
-      "Authority Flex": "200-400 characters. Lead with credential, end with insight.",
-      "Data Drop": "200-400 characters. Stat first, implication second.",
-      "Vulnerable Founder": "300-500 characters. Story arc: struggle → lesson.",
-      "Builder Updates": "200-400 characters. Progress + what it means.",
+    // Signal-based length targets: MICRO / SHORT / STANDARD
+    const signalTargets: Record<string, { label: string; charMax: number; instruction: string }> = {
+      MICRO: {
+        label: "MICRO",
+        charMax: 100,
+        instruction: "This is a MICRO post. Write ONE punchy line under 100 characters. No explanation, no paragraph, no expansion. The hook IS the entire post.",
+      },
+      SHORT: {
+        label: "SHORT",
+        charMax: 250,
+        instruction: "This is a SHORT post. Keep it to 2-4 lines, under 250 characters. One observation + one supporting beat, then stop.",
+      },
+      STANDARD: {
+        label: "STANDARD",
+        charMax: 450,
+        instruction: "This is a STANDARD post. Write 250-450 characters. Full thought with hook, body, and close. Still concise — no essays.",
+      },
     };
 
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
         chunk.map(async (post: any) => {
           const archetype = post.archetype || "General";
-          const archetypeLengthInstruction = lengthGuide[archetype] ||
-            `Keep under 400 characters. Your regression data shows optimal post length is 3-91 words.`;
+
+          // Resolve length signal: explicit signal > hook word count fallback
+          let resolvedSignal = "STANDARD";
+          if (post.draft_length_signal && signalTargets[post.draft_length_signal]) {
+            resolvedSignal = post.draft_length_signal;
+          } else {
+            // Fallback: infer from hook_idea word count
+            const hookWords = (post.hook_idea || "").trim().split(/\s+/).filter(Boolean).length;
+            if (hookWords > 0 && hookWords < 10) resolvedSignal = "MICRO";
+            else if (hookWords >= 10 && hookWords < 20) resolvedSignal = "SHORT";
+            else resolvedSignal = "STANDARD";
+          }
+          const target = signalTargets[resolvedSignal];
+          const lengthInstruction = target.instruction;
 
           const systemPrompt = `${CONTENT_GENERATION_RULES}
 
@@ -108,10 +128,12 @@ Study the user's top-performing posts in the context below. Understand their nat
 
 The post should read like a raw thought, not a content plan item. No labels. No structure. No 📌 headers. Just the post.
 
-=== FLEXIBILITY ===
-If the most authentic version of this post is 50 characters, write 50 characters. If it needs 400, write 400. Don't pad to hit a length target. Don't cut to hit a limit. Write until it's done and true.
+=== CRITICAL LENGTH RULE ===
+${lengthInstruction}
+Hard character limit for this post: ${target.charMax} characters. Count every character including spaces and line breaks. Do NOT exceed this limit.
 
-General guidance: ${archetypeLengthInstruction} Your regression data shows the optimal word count is 3-91 words. But authenticity beats length targets — if the truest version breaks the guide, write the truest version.
+=== FLEXIBILITY ===
+Write until the thought is complete and true — but respect the length signal above. A ${target.label} post that exceeds its limit is a failure. Trim ruthlessly.
 
 === HOW YOU WRITE HIGH-PERFORMING POSTS ===
 
@@ -157,7 +179,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                 max_tokens: 1000,
                 system: systemPrompt,
                 messages: [
-                  { role: "user", content: `Write a ${post.funnel_stage || "TOF"} ${post.archetype || ""} post about: ${post.topic || "content relevant to my brand"}. Hook idea: ${post.hook_idea || "use a strong opening"}` },
+                  { role: "user", content: `Write a ${post.funnel_stage || "TOF"} ${post.archetype || ""} post about: ${post.topic || "content relevant to my brand"}. Hook idea: ${post.hook_idea || "use a strong opening"}. [LENGTH SIGNAL: ${target.label} — max ${target.charMax} chars]` },
                 ],
               }),
             });

@@ -274,6 +274,12 @@ Be extremely concise. Each topic must be under 80 characters. Each hook_idea mus
 
 This keeps hook ideas as short planning seeds. Full post text gets generated later by generate-draft-posts.
 
+DRAFT LENGTH SIGNAL: For EVERY post, you MUST include a "draft_length_signal" field. Choose one:
+- "MICRO" — One-liner, punchy, under 100 characters. Use for hot takes, brutal truths, quotable one-liners.
+- "SHORT" — 2-4 lines, 100-250 characters. Use for quick observations, relatable moments, data drops.
+- "STANDARD" — Full post, 250-450 characters. Use for stories, vulnerable founder moments, detailed builder updates.
+Aim for at least 30% MICRO or SHORT across the week. Not every post needs to be an essay.
+
 FUNNEL MIX RULES for daily schedule:
 - BOF posts should be 1-2 per day maximum regardless of posts_per_day setting. Never over-index on BOF — it kills organic reach on Threads.
 - Maintain roughly TOF 45-55%, MOF 30-35%, BOF 10-20% across the weekly plan.
@@ -290,7 +296,8 @@ Respond ONLY with valid JSON in this format:
           "archetype": "archetype name",
           "funnel_stage": "TOF" | "MOF" | "BOF",
           "topic": "brief description of the post angle",
-          "hook_idea": "suggested opening line"
+          "hook_idea": "suggested opening line",
+          "draft_length_signal": "MICRO" | "SHORT" | "STANDARD"
         }
       ]
     }
@@ -985,6 +992,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
               scheduled_date: scheduledDate,
               archetype: post.archetype || null,
               funnel_stage: post.funnel_stage || "TOF",
+              draft_length_signal: post.draft_length_signal || "STANDARD",
               is_test_slot: post.is_test_slot || false,
               status: "planned",
             });
