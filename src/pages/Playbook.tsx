@@ -161,11 +161,19 @@ const Playbook = () => {
       queryClient.invalidateQueries({ queryKey: ["content-pillars"] });
       queryClient.invalidateQueries({ queryKey: ["connected-topics"] });
 
+      // Build timezone-aware plan body
+      const now = new Date();
+      const planBodyBase = {
+        client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+        client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+
       // Step 4: Branding Plan
       console.log("[Playbook] step: branding_plan");
       setStrategyProgress(p => ({ ...p, branding: "generating" }));
       const brandingPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan" },
+        body: { ...planBodyBase, plan_type: "branding_plan" },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       console.log("[Playbook] branding_plan result:", { data: brandingPlanRes.data, error: brandingPlanRes.error });
