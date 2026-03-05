@@ -133,7 +133,7 @@ Return this exact JSON structure:
     const analysisText = claudeData.content[0].text;
     let playbook: any;
     try {
-      playbook = safeParseJSON(analysisText);
+      playbook = recoverTruncatedJSON(analysisText);
     } catch (e: any) {
       console.error("JSON parse error:", e.message);
       return new Response(
