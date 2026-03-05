@@ -89,7 +89,7 @@ async function pollForCompletion(userId: string, planType: PlanType): Promise<an
       return plan;
     }
     if (data?.plan_generation_status === "error") {
-      await supabase.from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
+      await (supabase as any).from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
       throw new Error("Plan generation failed. Try again.");
     }
   }
