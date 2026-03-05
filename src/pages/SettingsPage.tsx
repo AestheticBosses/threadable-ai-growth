@@ -52,7 +52,7 @@ const SettingsPage = () => {
     if (!user) return;
     const { data } = await supabase
       .from("profiles")
-      .select("threads_username, threads_token_expires_at, niche, dream_client, end_goal, max_posts_per_day, include_credibility_markers, auto_approve_ai_posts, generate_weekend_posts")
+      .select("threads_username, threads_token_expires_at, niche, dream_client, end_goal, max_posts_per_day, include_credibility_markers, auto_approve_ai_posts, generate_weekend_posts, timezone")
       .eq("id", user.id)
       .single();
 
