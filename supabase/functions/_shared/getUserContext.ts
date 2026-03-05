@@ -127,6 +127,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     cmoProfileRes,
     recentHooksRes,
     guardrailsRes,
+    playbookRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -165,6 +166,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("scheduled_posts").select("text_content").eq("user_id", userId).in("status", ["published", "scheduled"]).order("created_at", { ascending: false }).limit(20),
     // Content guardrails
     supabase.from("user_content_guardrails").select("guardrail_type, content").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
+    // Playbook generation guidelines
+    supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").maybeSingle(),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -259,6 +262,25 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     if (grouped.offer_guardrail.length) parts.push(`OFFER & POSITIONING RULES:\n${grouped.offer_guardrail.map((s: string) => `- ${s}`).join('\n')}`);
 
     guardrailsSection = `=== CONTENT GUARDRAILS — THESE ARE HARD RULES, NOT SUGGESTIONS ===\n${parts.join('\n')}\nViolating any of these guardrails is a generation failure.`;
+  }
+
+  // === PLAYBOOK GENERATION GUIDELINES ===
+  const playbookStrategy = playbookRes?.data?.strategy_data as any;
+  let playbookGuidelinesSection = "";
+  if (playbookStrategy?.generation_guidelines) {
+    const g = playbookStrategy.generation_guidelines;
+    const gParts: string[] = [];
+    if (g.tone) gParts.push(`TONE: ${g.tone}`);
+    if (g.avg_length) gParts.push(`OPTIMAL LENGTH: ${g.avg_length}`);
+    if (g.vocabulary?.length) gParts.push(`VOCABULARY THAT WORKS FOR THIS CREATOR:\n${g.vocabulary.map((v: string) => `- ${v}`).join('\n')}`);
+    if (g.hooks_that_work?.length) gParts.push(`HOOK PATTERNS THAT DRIVE VIEWS:\n${g.hooks_that_work.map((h: string) => `- ${h}`).join('\n')}`);
+    if (g.avoid?.length) gParts.push(`NEVER DO THESE (data-validated):\n${g.avoid.map((a: string) => `- ${a}`).join('\n')}`);
+    if (gParts.length > 0) {
+      playbookGuidelinesSection =
+        `=== CONTENT GENERATION GUIDELINES (from regression analysis of this creator's actual posts) ===\n` +
+        gParts.join('\n\n') +
+        `\nThese are not generic writing tips — they are validated patterns from this creator's own performance data.`;
+    }
   }
 
   // === UNTAPPED ANGLES ===
@@ -672,6 +694,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
     (guardrailsSection ? guardrailsSection + "\n\n" : "") +
+    (playbookGuidelinesSection ? playbookGuidelinesSection + "\n\n" : "") +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +
     "=== STORY VAULT (REAL facts only — NEVER invent stories or numbers not listed here) ===\n" +
@@ -749,6 +772,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     contentQueue: queueSection.length,
     cmoInsight: cmoSection.length,
     guardrails: guardrailsSection.length,
+    playbookGuidelines: playbookGuidelinesSection.length,
   };
 
   // Sort by size descending to surface biggest offenders
