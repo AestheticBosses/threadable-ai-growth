@@ -717,7 +717,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
         if (recentPosts && recentPosts.length > 0) {
           const postPreviews = recentPosts
-            .map((p: any) => (p.text_content || "").slice(0, 60))
+            .map((p: any) => (p.text_content || "").slice(0, 100))
             .filter(Boolean)
             .map((t: string) => `- ${t}`);
 
