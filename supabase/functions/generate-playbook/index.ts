@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
-import { safeParseJSON } from "../_shared/safeParseJSON.ts";
+import { recoverTruncatedJSON } from "../_shared/safeParseJSON.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
