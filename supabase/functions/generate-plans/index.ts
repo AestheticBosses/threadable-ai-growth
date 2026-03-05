@@ -706,11 +706,11 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           .select("text_content")
           .eq("user_id", user.id)
           .order("posted_at", { ascending: false })
-          .limit(50);
+          .limit(25);
 
         if (recentPosts && recentPosts.length > 0) {
           const postPreviews = recentPosts
-            .map((p: any) => (p.text_content || "").slice(0, 100))
+            .map((p: any) => (p.text_content || "").slice(0, 60))
             .filter(Boolean)
             .map((t: string) => `- ${t}`);
 
