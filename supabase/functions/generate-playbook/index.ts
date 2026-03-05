@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
-import { safeParseJSON } from "../_shared/safeParseJSON.ts";
+import { recoverTruncatedJSON } from "../_shared/safeParseJSON.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,7 +113,7 @@ Return this exact JSON structure:
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 2000,
+        max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
@@ -133,7 +133,7 @@ Return this exact JSON structure:
     const analysisText = claudeData.content[0].text;
     let playbook: any;
     try {
-      playbook = safeParseJSON(analysisText);
+      playbook = recoverTruncatedJSON(analysisText);
     } catch (e: any) {
       console.error("JSON parse error:", e.message);
       return new Response(
