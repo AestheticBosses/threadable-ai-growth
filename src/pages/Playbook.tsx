@@ -886,51 +886,72 @@ const Playbook = () => {
               {/* Generation Guidelines */}
               {playbook?.generation_guidelines && (
                 <section className="space-y-4">
-                  <h2 className="text-lg font-semibold text-foreground">Content Generation Guidelines</h2>
-                  <Card>
-                    <CardContent className="p-5 space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Tone</p>
-                          <p className="text-sm text-foreground">{playbook.generation_guidelines.tone || "—"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Avg Length</p>
-                          <p className="text-sm text-foreground">{playbook.generation_guidelines.avg_length || "—"}</p>
-                        </div>
-                      </div>
-                      {playbook.generation_guidelines.vocabulary?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Vocabulary</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {playbook.generation_guidelines.vocabulary.map((v) => (
-                              <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
-                            ))}
+                  {/* Info banner */}
+                  <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3">
+                    <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <p className="text-sm text-muted-foreground">
+                      These guidelines are auto-generated from your actual post performance data. To add your own rules, use Brand Guardrails.{" "}
+                      <button
+                        type="button"
+                        className="inline text-primary hover:underline font-medium"
+                        onClick={() => setActiveTab("guardrails")}
+                      >
+                        Go to Brand Guardrails →
+                      </button>
+                    </p>
+                  </div>
+
+                  {/* Read-only container */}
+                  <div className="rounded-lg bg-muted/20 p-4 opacity-80 space-y-4">
+                    <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
+                      Content Generation Guidelines
+                    </h2>
+                    <Card>
+                      <CardContent className="p-5 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Tone</p>
+                            <p className="text-sm text-foreground">{playbook.generation_guidelines.tone || "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Avg Length</p>
+                            <p className="text-sm text-foreground">{playbook.generation_guidelines.avg_length || "—"}</p>
                           </div>
                         </div>
-                      )}
-                      {playbook.generation_guidelines.hooks_that_work && playbook.generation_guidelines.hooks_that_work.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Hooks That Work</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {playbook.generation_guidelines.hooks_that_work.map((h) => (
-                              <Badge key={h} variant="outline" className="text-xs text-primary border-primary/30">{h}</Badge>
-                            ))}
+                        {playbook.generation_guidelines.vocabulary?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Vocabulary</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {playbook.generation_guidelines.vocabulary.map((v) => (
+                                <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {playbook.generation_guidelines.avoid?.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Avoid</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {playbook.generation_guidelines.avoid.map((a) => (
-                              <Badge key={a} variant="outline" className="text-xs text-destructive border-destructive/30">{a}</Badge>
-                            ))}
+                        )}
+                        {playbook.generation_guidelines.hooks_that_work && playbook.generation_guidelines.hooks_that_work.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Hooks That Work</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {playbook.generation_guidelines.hooks_that_work.map((h) => (
+                                <Badge key={h} variant="outline" className="text-xs text-primary border-primary/30">{h}</Badge>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                        )}
+                        {playbook.generation_guidelines.avoid?.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Avoid</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {playbook.generation_guidelines.avoid.map((a) => (
+                                <Badge key={a} variant="outline" className="text-xs text-destructive border-destructive/30">{a}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
                 </section>
               )}
             </div>
