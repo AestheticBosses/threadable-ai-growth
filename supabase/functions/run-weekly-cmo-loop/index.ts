@@ -58,14 +58,19 @@ Deno.serve(async (req) => {
     }
 
     // --- Mark refresh timestamp FIRST so frontend knows pipeline is running ---
-    const { error: updateError } = await adminClient
+    const { data: profileData, error: updateError } = await adminClient
       .from("profiles")
       .update({ last_weekly_refresh_at: new Date().toISOString() })
-      .eq("id", user.id);
+      .eq("id", user.id)
+      .select("timezone")
+      .single();
 
     if (updateError) {
       console.error("[cmo-loop] Profile update error:", updateError);
     }
+
+    const userTimezone = (profileData as any)?.timezone || null;
+    console.log(`[cmo-loop] User timezone: ${userTimezone}`);
 
     console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — running in background via waitUntil`);
 
