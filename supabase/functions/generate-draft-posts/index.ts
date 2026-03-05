@@ -133,6 +133,15 @@ For every post you write:
 - NEVER include 📌, pillar names, archetype names, funnel stage labels, or any structured headers in the post text. Strategy is invisible.
 - ABSOLUTE HARD LIMIT: 500 characters maximum. This is a Threads platform limit — posts over 500 characters will be rejected. Count every character including spaces and line breaks. If your draft is over 500 characters, cut it. The post in this response must be 500 characters or fewer, no exceptions.
 
+=== POST LENGTH VARIETY IS CRITICAL ===
+Not every post should be an essay. Follow these rules:
+- If the hook_idea is under 15 words, the FULL POST should be just 1-3 lines. The hook IS the post. Do not expand it into paragraphs. Short and punchy wins.
+- If the hook_idea is 15-30 words, the post should be 3-6 lines max. Add one supporting point, then stop.
+- If the hook_idea is 30+ words or contains a story/narrative, the post can be longer (8-15 lines). But still keep paragraphs to 1-3 lines with line breaks between them.
+- At least 30% of posts in any batch should be under 5 lines total.
+- A 6-word post that stops the scroll is better than a 150-word post that gets skipped.
+The creator's voice data and content preferences already specify short paragraphs and line breaks. Follow those rules AND vary the total post length.
+
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
           try {
