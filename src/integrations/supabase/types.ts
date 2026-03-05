@@ -254,6 +254,7 @@ export type Database = {
         Row: {
           archetype: string | null
           created_at: string | null
+          draft_length_signal: string | null
           funnel_stage: string | null
           id: string
           is_test_slot: boolean | null
@@ -270,6 +271,7 @@ export type Database = {
         Insert: {
           archetype?: string | null
           created_at?: string | null
+          draft_length_signal?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
@@ -286,6 +288,7 @@ export type Database = {
         Update: {
           archetype?: string | null
           created_at?: string | null
+          draft_length_signal?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
