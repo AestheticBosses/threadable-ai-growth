@@ -14,6 +14,8 @@ import { toast } from "@/hooks/use-toast";
 import { useSearchParams } from "react-router-dom";
 
 
+import { TimezoneCard } from "@/components/settings/TimezoneCard";
+
 interface ProfileData {
   threads_username: string | null;
   threads_token_expires_at: string | null;
@@ -24,6 +26,7 @@ interface ProfileData {
   include_credibility_markers: boolean;
   auto_approve_ai_posts: boolean;
   generate_weekend_posts: boolean;
+  timezone: string | null;
 }
 
 const SettingsPage = () => {
