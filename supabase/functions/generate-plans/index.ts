@@ -499,12 +499,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch getUserContext, profile settings, journey stage, and regression data in parallel
+    // Fetch getUserContext, profile settings (including timezone), journey stage, and regression data in parallel
     const [userContext, { data: profile }, journeyStage, { data: regressionRow }] = await Promise.all([
       getUserContext(admin, user.id),
       admin
         .from("profiles")
-        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target")
+        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, timezone")
         .eq("id", user.id)
         .maybeSingle(),
       fetchJourneyStage(admin, user.id),
@@ -517,6 +517,10 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle(),
     ]);
+
+    // Resolve timezone: client_timezone > profile.timezone > fallback to UTC
+    const userTimezone = client_timezone || (profile as any)?.timezone || null;
+    console.log("[generate-plans] resolved timezone:", userTimezone);
 
     const stageConfig = getStageConfig(journeyStage);
     const stageBlock = `\n\n=== JOURNEY STAGE OPTIMIZATION ===\n${stageConfig.promptBlock}`;
