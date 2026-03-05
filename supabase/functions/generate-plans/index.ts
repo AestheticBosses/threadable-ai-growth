@@ -697,8 +697,37 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       }
     }
 
+    // Fetch recent posts to prevent generating duplicate content
+    let recentPostsBlock = "";
+    if (plan_type === "content_plan") {
+      try {
+        const { data: recentPosts } = await admin
+          .from("posts_analyzed")
+          .select("text_content")
+          .eq("user_id", user.id)
+          .order("posted_at", { ascending: false })
+          .limit(50);
+
+        if (recentPosts && recentPosts.length > 0) {
+          const postPreviews = recentPosts
+            .map((p: any) => (p.text_content || "").slice(0, 100))
+            .filter(Boolean)
+            .map((t: string) => `- ${t}`);
+
+          if (postPreviews.length > 0) {
+            recentPostsBlock = "\n\n=== RECENTLY PUBLISHED POSTS (DO NOT RECREATE THESE) ===\n" +
+              "The creator has already published these posts. Do NOT generate hooks that cover the same topic, use the same angle, or closely mirror these. Every hook must explore a DIFFERENT angle.\n" +
+              postPreviews.join("\n") + "\n";
+          }
+        }
+        console.log("[generate-plans] Loaded", recentPosts?.length || 0, "recent posts for dedup");
+      } catch (e) {
+        console.warn("[generate-plans] Failed to load recent posts for dedup (non-fatal):", e);
+      }
+    }
+
     // Build user message once (shared by single and batch paths)
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + "\n" + userContext;
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + "\n" + userContext;
 
     let planData: any;
     try {
