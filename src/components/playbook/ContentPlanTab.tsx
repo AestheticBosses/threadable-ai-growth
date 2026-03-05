@@ -17,7 +17,11 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send, ChevronDown, ChevronRight, CheckSquare } from "lucide-react";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Loader2, Sparkles, RefreshCw, ArrowRight, Check, MessageSquare, ListPlus, Zap, Send, ChevronDown, ChevronRight, CheckSquare, ThumbsDown } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -114,6 +118,81 @@ export function ContentPlanTab() {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
 
   const hasAnySelected = selectedPosts.size > 0;
+
+  // ── Inline feedback (guardrails) ──
+  const [feedbackSaved, setFeedbackSaved] = useState<Set<string>>(new Set());
+
+  const handleSaveFeedback = async (
+    guardrailType: "never_say" | "never_reference" | "voice_correction",
+    content: string,
+    postKey: string,
+  ) => {
+    if (!user?.id || !content.trim()) return;
+    const { error } = await (supabase as any)
+      .from("user_content_guardrails")
+      .insert({ user_id: user.id, guardrail_type: guardrailType, content: content.trim(), source: "inline_feedback" });
+    if (error) {
+      toast({ title: "Error saving feedback", description: error.message, variant: "destructive" });
+      return;
+    }
+    setFeedbackSaved((prev) => new Set(prev).add(postKey));
+    toast({ title: "Threadable will avoid this going forward" });
+  };
+
+  const DraftFeedback = ({ hookText, postKey }: { hookText: string; postKey: string }) => {
+    const [feedbackType, setFeedbackType] = useState<string | null>(null);
+    const [feedbackText, setFeedbackText] = useState(hookText.slice(0, 80));
+
+    if (feedbackSaved.has(postKey)) {
+      return <p className="text-[10px] text-emerald-400 mt-1">Feedback saved</p>;
+    }
+
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className="text-muted-foreground/40 hover:text-muted-foreground transition-colors mt-1" title="Give feedback">
+            <ThumbsDown className="h-3 w-3" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-72 p-3 space-y-2" side="bottom" align="start">
+          <p className="text-xs font-medium text-foreground">What's wrong with this?</p>
+          {!feedbackType ? (
+            <div className="space-y-1">
+              <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors" onClick={() => { setFeedbackType("never_say"); setFeedbackText(hookText.slice(0, 80)); }}>
+                I'd never say this
+              </button>
+              <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors" onClick={() => { setFeedbackType("never_reference"); setFeedbackText(hookText.slice(0, 80)); }}>
+                Wrong topic/story
+              </button>
+              <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors" onClick={() => { setFeedbackType("voice_correction"); setFeedbackText(""); }}>
+                Tone is off
+              </button>
+              <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-muted transition-colors" onClick={() => { setFeedbackType("voice_correction"); setFeedbackText(""); }}>
+                Off-brand
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Input
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder={feedbackType === "voice_correction" ? "Describe the tone issue..." : "Edit the flagged text..."}
+                className="text-xs h-8"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" className="h-7 text-xs flex-1" onClick={() => handleSaveFeedback(feedbackType as any, feedbackText, postKey)}>
+                  Save feedback
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setFeedbackType(null)}>
+                  Back
+                </Button>
+              </div>
+            </div>
+          )}
+        </PopoverContent>
+      </Popover>
+    );
+  };
 
   // Query scheduled posts for this week to show drafted/scheduled status
   const { data: weekScheduledPosts } = useQuery({
@@ -661,6 +740,9 @@ export function ContentPlanTab() {
                                         </Button>
                                       </div>
                                     </div>
+                                  )}
+                                  {(post.hook_idea || inlineDrafts[postKey]) && (
+                                    <DraftFeedback hookText={inlineDrafts[postKey] || post.hook_idea || ""} postKey={postKey} />
                                   )}
                                 </div>
                               </div>

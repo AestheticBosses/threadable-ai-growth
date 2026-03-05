@@ -500,6 +500,7 @@ serve(async (req) => {
       });
     }
 
+    const doGeneration = async (): Promise<any> => {
     // Use service role for fetching full context
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -671,12 +672,7 @@ serve(async (req) => {
 Apply this to every BOF post idea, the conversion path section, and any CTA language generated.\n`;
 
     const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
 
     // Build dynamic regression word count insight for content plans
     let regressionLengthBlock = "";
@@ -817,13 +813,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     } catch (e: any) {
       console.error("AI generation error:", e);
       const isTimeout = e?.message?.includes("abort") || e?.message?.includes("timed out");
-      const errorMsg = isTimeout
-        ? "AI request timed out. Please try again."
-        : "Plan generation failed — please try again.";
-      return new Response(JSON.stringify({ error: errorMsg }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new Error(isTimeout ? "AI request timed out. Please try again." : "Plan generation failed — please try again.");
     }
 
     // Post-generation dedup check: flag hooks too similar to existing posts
@@ -950,10 +940,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
     if (upsertError) {
       console.error("Upsert error:", upsertError);
-      return new Response(JSON.stringify({ error: "Failed to save plan" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      throw new Error("Failed to save plan");
     }
 
     // Populate content_plan_items from plan_data so generate-week-posts and getUserContext have data
@@ -1017,6 +1004,35 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       }
     }
 
+    return planData;
+    };
+
+    // --- Background mode: return 200 immediately, generate in background ---
+    const background = body.background === true;
+
+    if (background) {
+      const adminBg = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await adminBg.from("profiles").update({ plan_generation_status: "generating" }).eq("id", user.id);
+
+      // deno-lint-ignore no-explicit-any
+      (globalThis as any).EdgeRuntime.waitUntil((async () => {
+        try {
+          await doGeneration();
+          await adminBg.from("profiles").update({ plan_generation_status: "complete" }).eq("id", user.id);
+        } catch (e) {
+          console.error("[generate-plans] Background generation failed:", e);
+          await adminBg.from("profiles").update({ plan_generation_status: "error" }).eq("id", user.id);
+        }
+      })());
+
+      return new Response(
+        JSON.stringify({ status: "generating", message: "Plan generation started" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Synchronous path (unchanged for Onboarding + Playbook sequential callers)
+    const planData = await doGeneration();
     return new Response(JSON.stringify({ plan_data: planData }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

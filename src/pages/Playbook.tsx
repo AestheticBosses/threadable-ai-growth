@@ -13,7 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb, FileText, Palette, GitBranch } from "lucide-react";
+import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb, FileText, Palette, GitBranch, Shield } from "lucide-react";
 import {
   usePlaybookData, useArchetypeDiscovery,
   useProfileStrategy, useContentBuckets, useContentPillars,
@@ -26,6 +26,7 @@ import { AlertTriangle } from "lucide-react";
 import { ContentPlanTab } from "@/components/playbook/ContentPlanTab";
 import { BrandingPlanTab } from "@/components/playbook/BrandingPlanTab";
 import { FunnelStrategyTab } from "@/components/playbook/FunnelStrategyTab";
+import { GuardrailsTab } from "@/components/playbook/GuardrailsTab";
 
 const ARCHETYPE_BORDER_COLORS = [
   "border-violet-500/40",
@@ -546,6 +547,9 @@ const Playbook = () => {
             <TabsTrigger value="content_plan" className="gap-1.5">
               <FileText className="h-3.5 w-3.5" /> Content Plan
             </TabsTrigger>
+            <TabsTrigger value="guardrails" className="gap-1.5">
+              <Shield className="h-3.5 w-3.5" /> Brand Guardrails
+            </TabsTrigger>
           </TabsList>
 
           {/* ═══ Tab: Strategy ═══ */}
@@ -945,6 +949,11 @@ const Playbook = () => {
           {/* ═══ Tab: Funnel Strategy ═══ */}
           <TabsContent value="funnel_strategy">
             <FunnelStrategyTab />
+          </TabsContent>
+
+          {/* ═══ Tab: Brand Guardrails ═══ */}
+          <TabsContent value="guardrails">
+            <GuardrailsTab />
           </TabsContent>
         </Tabs>
 

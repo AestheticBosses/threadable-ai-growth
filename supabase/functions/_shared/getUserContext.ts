@@ -126,6 +126,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     scheduledPostsRes,
     cmoProfileRes,
     recentHooksRes,
+    guardrailsRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -162,6 +163,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("profiles").select("weekly_refresh_summary, last_weekly_refresh_at").eq("id", userId).single(),
     // Recent published/scheduled post hooks for dedup
     supabase.from("scheduled_posts").select("text_content").eq("user_id", userId).in("status", ["published", "scheduled"]).order("created_at", { ascending: false }).limit(20),
+    // Content guardrails
+    supabase.from("user_content_guardrails").select("guardrail_type, content").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -234,6 +237,28 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
         hooks.map((h: string) => `- "${h}"`).join("\n") +
         "\nDo NOT open a new post with a hook that closely resembles any of the above. Find a fresh angle.\n";
     }
+  }
+
+  // === CONTENT GUARDRAILS ===
+  const guardrails = guardrailsRes.data || [];
+  let guardrailsSection = "";
+  if (guardrails.length > 0) {
+    const grouped = {
+      never_say: guardrails.filter((g: any) => g.guardrail_type === 'never_say').map((g: any) => g.content),
+      never_reference: guardrails.filter((g: any) => g.guardrail_type === 'never_reference').map((g: any) => g.content),
+      always_frame: guardrails.filter((g: any) => g.guardrail_type === 'always_frame').map((g: any) => g.content),
+      voice_correction: guardrails.filter((g: any) => g.guardrail_type === 'voice_correction').map((g: any) => g.content),
+      offer_guardrail: guardrails.filter((g: any) => g.guardrail_type === 'offer_guardrail').map((g: any) => g.content),
+    };
+
+    const parts: string[] = [];
+    if (grouped.never_say.length) parts.push(`NEVER USE THESE PHRASES OR SENTENCES:\n${grouped.never_say.map(s => `- "${s}"`).join('\n')}`);
+    if (grouped.never_reference.length) parts.push(`NEVER REFERENCE THESE TOPICS OR STORIES:\n${grouped.never_reference.map(s => `- ${s}`).join('\n')}`);
+    if (grouped.always_frame.length) parts.push(`ALWAYS FRAME CONTENT THIS WAY:\n${grouped.always_frame.map(s => `- ${s}`).join('\n')}`);
+    if (grouped.voice_correction.length) parts.push(`VOICE CORRECTIONS — ADJUST TONE ACCORDINGLY:\n${grouped.voice_correction.map(s => `- ${s}`).join('\n')}`);
+    if (grouped.offer_guardrail.length) parts.push(`OFFER & POSITIONING RULES:\n${grouped.offer_guardrail.map(s => `- ${s}`).join('\n')}`);
+
+    guardrailsSection = `=== CONTENT GUARDRAILS — THESE ARE HARD RULES, NOT SUGGESTIONS ===\n${parts.join('\n')}\nViolating any of these guardrails is a generation failure.`;
   }
 
   // === UNTAPPED ANGLES ===
@@ -646,6 +671,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     journeySection + "\n\n" +
     "=== USER IDENTITY ===\n" +
     identitySection + "\n\n" +
+    (guardrailsSection ? guardrailsSection + "\n\n" : "") +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +
     "=== STORY VAULT (REAL facts only — NEVER invent stories or numbers not listed here) ===\n" +
@@ -722,6 +748,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     plans: plansSection.length,
     contentQueue: queueSection.length,
     cmoInsight: cmoSection.length,
+    guardrails: guardrailsSection.length,
   };
 
   // Sort by size descending to surface biggest offenders

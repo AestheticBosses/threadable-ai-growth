@@ -65,6 +65,37 @@ export function useStrategyStale() {
   return { isStale, isLoading: contentPlan.isLoading || funnelStrategy.isLoading || profileQuery.isLoading };
 }
 
+async function pollForCompletion(userId: string, planType: PlanType): Promise<any> {
+  const maxWaitMs = 180_000;
+  const pollIntervalMs = 3_000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise(r => setTimeout(r, pollIntervalMs));
+    const { data } = await supabase
+      .from("profiles")
+      .select("plan_generation_status")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (data?.plan_generation_status === "complete") {
+      await supabase.from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
+      const { data: plan } = await (supabase as any)
+        .from("user_plans")
+        .select("plan_data")
+        .eq("user_id", userId)
+        .eq("plan_type", planType)
+        .maybeSingle();
+      return plan;
+    }
+    if (data?.plan_generation_status === "error") {
+      await supabase.from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
+      throw new Error("Plan generation failed. Try again.");
+    }
+  }
+  throw new Error("Plan generation timed out. Check back in a minute.");
+}
+
 function useGeneratePlan(planType: PlanType) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -89,6 +120,7 @@ function useGeneratePlan(planType: PlanType) {
       const res = await supabase.functions.invoke("generate-plans", {
         body: {
           plan_type: planType,
+          background: true,
           client_now_minutes: now.getHours() * 60 + now.getMinutes(),
           client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
           client_timezone: clientTimezone,
@@ -97,6 +129,11 @@ function useGeneratePlan(planType: PlanType) {
       });
 
       if (res.error) throw new Error(res.error.message || "Generation failed");
+
+      // Background mode: poll for completion
+      if (res.data?.status === "generating") {
+        return await pollForCompletion(user!.id, planType);
+      }
       return res.data;
     },
     onSuccess: (data) => {
