@@ -13,7 +13,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb, FileText, Palette, GitBranch, Shield } from "lucide-react";
+import { Loader2, Sparkles, RefreshCw, Check, ArrowRight, Target, Layers, Calendar, Brain, Users, Lightbulb, FileText, Palette, GitBranch, Shield, Info, Lock } from "lucide-react";
 import {
   usePlaybookData, useArchetypeDiscovery,
   useProfileStrategy, useContentBuckets, useContentPillars,
