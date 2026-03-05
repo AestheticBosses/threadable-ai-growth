@@ -72,14 +72,14 @@ async function pollForCompletion(userId: string, planType: PlanType): Promise<an
 
   while (Date.now() - startTime < maxWaitMs) {
     await new Promise(r => setTimeout(r, pollIntervalMs));
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("profiles")
       .select("plan_generation_status")
       .eq("id", userId)
       .maybeSingle();
 
     if (data?.plan_generation_status === "complete") {
-      await supabase.from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
+      await (supabase as any).from("profiles").update({ plan_generation_status: "idle" }).eq("id", userId);
       const { data: plan } = await (supabase as any)
         .from("user_plans")
         .select("plan_data")
