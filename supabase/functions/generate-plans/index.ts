@@ -484,8 +484,8 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { plan_type, include_plans, client_now_minutes, client_day } = body;
-    console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "raw body keys:", Object.keys(body));
+    const { plan_type, include_plans, client_now_minutes, client_day, client_timezone } = body;
+    console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "client_timezone:", client_timezone, "raw body keys:", Object.keys(body));
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
@@ -499,12 +499,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch getUserContext, profile settings, journey stage, and regression data in parallel
+    // Fetch getUserContext, profile settings (including timezone), journey stage, and regression data in parallel
     const [userContext, { data: profile }, journeyStage, { data: regressionRow }] = await Promise.all([
       getUserContext(admin, user.id),
       admin
         .from("profiles")
-        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target")
+        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, timezone")
         .eq("id", user.id)
         .maybeSingle(),
       fetchJourneyStage(admin, user.id),
@@ -517,6 +517,10 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle(),
     ]);
+
+    // Resolve timezone: client_timezone > profile.timezone > fallback to UTC
+    const userTimezone = client_timezone || (profile as any)?.timezone || null;
+    console.log("[generate-plans] resolved timezone:", userTimezone);
 
     const stageConfig = getStageConfig(journeyStage);
     const stageBlock = `\n\n=== JOURNEY STAGE OPTIMIZATION ===\n${stageConfig.promptBlock}`;
@@ -562,9 +566,38 @@ serve(async (req) => {
         `You MUST output "posts_per_day": ${postsPerDay}. Each day in daily_plan MUST have exactly ${postsPerDay} posts. This is non-negotiable.`
       );
 
-    // Determine today's day name — prefer client's local day over server UTC
+    // Determine today's day name — prefer client's local day, then timezone-derived, then server UTC
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const todayName = (client_day && dayNames.includes(client_day)) ? client_day : dayNames[new Date().getDay()];
+    let todayName: string;
+    let resolvedNowMinutes: number;
+
+    if (client_day && dayNames.includes(client_day)) {
+      todayName = client_day;
+    } else if (userTimezone) {
+      try {
+        const userNow = new Date(new Date().toLocaleString("en-US", { timeZone: userTimezone }));
+        todayName = dayNames[userNow.getDay()];
+      } catch {
+        todayName = dayNames[new Date().getDay()];
+      }
+    } else {
+      todayName = dayNames[new Date().getDay()];
+    }
+
+    if (typeof client_now_minutes === "number") {
+      resolvedNowMinutes = client_now_minutes;
+    } else if (userTimezone) {
+      try {
+        const userNow = new Date(new Date().toLocaleString("en-US", { timeZone: userTimezone }));
+        resolvedNowMinutes = userNow.getHours() * 60 + userNow.getMinutes();
+      } catch {
+        resolvedNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+      }
+    } else {
+      resolvedNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+    }
+
+    console.log("[generate-plans] todayName:", todayName, "resolvedNowMinutes:", resolvedNowMinutes);
     const todayAnchor = `\nToday is ${todayName}. The 7-day plan must start from ${todayName} and go forward from there. Do not start from Monday unless today is Monday.\n`;
 
     // Fetch story vault titles for per-day story assignment hints
@@ -823,7 +856,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
 
       // For TODAY specifically, generate time slots starting from NOW
-      const nowMins = typeof client_now_minutes === "number" ? client_now_minutes : (new Date().getUTCHours() * 60 + new Date().getUTCMinutes());
+      const nowMins = resolvedNowMinutes;
       const todayInPlan = planData.daily_plan?.find((d: any) => d.day === todayName);
       if (todayInPlan) {
         const todaySlots = generateTodaySlots(regressionBestTimes, postsPerDay, nowMins);

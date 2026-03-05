@@ -354,9 +354,15 @@ const Onboarding = () => {
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "content_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "branding_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "funnel_strategy" }, headers });
+      const now = new Date();
+      const planBody = {
+        client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+        client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "content_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "branding_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "funnel_strategy" }, headers });
       updateStep("plans", "done");
     } catch {
       updateStep("plans", "error");
@@ -416,9 +422,15 @@ const Onboarding = () => {
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "content_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "branding_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "funnel_strategy" }, headers });
+      const now = new Date();
+      const planBody = {
+        client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+        client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "content_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "branding_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "funnel_strategy" }, headers });
       updateStep("plans", "done");
     } catch {
       updateStep("plans", "error");
@@ -435,7 +447,8 @@ const Onboarding = () => {
     setPipelineHasErrors(false);
 
     try {
-      // 1. Save profile fields
+      // 1. Save profile fields (including auto-detected timezone)
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       await supabase.from("profiles").update({
         dream_client: dreamClient.trim(),
         mission: mission.trim() || null,
@@ -445,6 +458,7 @@ const Onboarding = () => {
         dm_keyword: dmKeyword.trim() || null,
         dm_offer: dmOffer.trim() || null,
         revenue_target: revenueTarget.trim() || null,
+        timezone: detectedTimezone,
       } as any).eq("id", user.id);
 
       await refreshProfile();

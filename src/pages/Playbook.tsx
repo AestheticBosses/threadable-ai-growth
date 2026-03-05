@@ -161,11 +161,19 @@ const Playbook = () => {
       queryClient.invalidateQueries({ queryKey: ["content-pillars"] });
       queryClient.invalidateQueries({ queryKey: ["connected-topics"] });
 
+      // Build timezone-aware plan body
+      const now = new Date();
+      const planBodyBase = {
+        client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+        client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+
       // Step 4: Branding Plan
       console.log("[Playbook] step: branding_plan");
       setStrategyProgress(p => ({ ...p, branding: "generating" }));
       const brandingPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "branding_plan" },
+        body: { ...planBodyBase, plan_type: "branding_plan" },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       console.log("[Playbook] branding_plan result:", { data: brandingPlanRes.data, error: brandingPlanRes.error });
@@ -176,7 +184,7 @@ const Playbook = () => {
       console.log("[Playbook] step: funnel_strategy");
       setStrategyProgress(p => ({ ...p, funnel: "generating" }));
       const funnelRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "funnel_strategy" },
+        body: { ...planBodyBase, plan_type: "funnel_strategy" },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       console.log("[Playbook] funnel_strategy result:", { data: funnelRes.data, error: funnelRes.error });
@@ -187,7 +195,7 @@ const Playbook = () => {
       console.log("[Playbook] step: content_plan (with branding + funnel context)");
       setStrategyProgress(p => ({ ...p, contentPlan: "generating" }));
       const contentPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
+        body: { ...planBodyBase, plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       console.log("[Playbook] content_plan result:", { data: contentPlanRes.data, error: contentPlanRes.error });

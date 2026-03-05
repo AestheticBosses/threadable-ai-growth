@@ -739,6 +739,7 @@ export type Database = {
           threads_token_expires_at: string | null
           threads_user_id: string | null
           threads_username: string | null
+          timezone: string | null
           traffic_url: string | null
           updated_at: string
           voice_profile: Json | null
@@ -781,6 +782,7 @@ export type Database = {
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
+          timezone?: string | null
           traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
@@ -823,6 +825,7 @@ export type Database = {
           threads_token_expires_at?: string | null
           threads_user_id?: string | null
           threads_username?: string | null
+          timezone?: string | null
           traffic_url?: string | null
           updated_at?: string
           voice_profile?: Json | null
