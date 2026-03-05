@@ -61,6 +61,14 @@ serve(async (req) => {
       });
     }
 
+    // Extract vault story titles from context for cross-call story assignment
+    const vaultTitleMatches = userContext.match(/^- ([^\n]+)\n  /gm) || [];
+    const vaultTitles = vaultTitleMatches
+      .map((m: string) => m.replace(/^- /, "").split("\n")[0].trim())
+      .filter((t: string) => t.length > 2 && t.length < 120 && !t.startsWith("Number:"));
+    // Shuffle for variety, then assign round-robin
+    const shuffledVaultTitles = [...vaultTitles].sort(() => Math.random() - 0.5);
+
     // Generate posts with concurrency limit of 3
     const results: any[] = [];
     const chunks: any[][] = [];
@@ -87,9 +95,32 @@ serve(async (req) => {
       },
     };
 
+    // Build user message with story constraint for cross-call dedup
+    function buildUserMessage(
+      post: any,
+      target: { label: string; charMax: number },
+      postIndex: number,
+      titles: string[],
+    ): string {
+      let msg = `Write a ${post.funnel_stage || "TOF"} ${post.archetype || ""} post about: ${post.topic || "content relevant to my brand"}. Hook idea: ${post.hook_idea || "use a strong opening"}. [LENGTH SIGNAL: ${target.label} — max ${target.charMax} chars]`;
+
+      if (titles.length > 0) {
+        // Round-robin assign one story; exclude others used in this batch
+        const assigned = titles[postIndex % titles.length];
+        const excluded = titles
+          .filter((_, i) => i !== postIndex % titles.length)
+          .slice(0, 5) // Cap exclusion list to keep prompt concise
+          .join(", ");
+        msg += `\n[STORY CONSTRAINT: If this post needs a vault story, draw from "${assigned}". Do NOT use these stories: ${excluded}]`;
+      }
+      return msg;
+    }
+
+    let globalPostIndex = 0;
     for (const chunk of chunks) {
       const chunkResults = await Promise.all(
-        chunk.map(async (post: any) => {
+        chunk.map(async (post: any, chunkIdx: number) => {
+          const postIndex = globalPostIndex + chunkIdx;
           const archetype = post.archetype || "General";
 
           // Resolve length signal: explicit signal > hook word count fallback
@@ -179,7 +210,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                 max_tokens: 1000,
                 system: systemPrompt,
                 messages: [
-                  { role: "user", content: `Write a ${post.funnel_stage || "TOF"} ${post.archetype || ""} post about: ${post.topic || "content relevant to my brand"}. Hook idea: ${post.hook_idea || "use a strong opening"}. [LENGTH SIGNAL: ${target.label} — max ${target.charMax} chars]` },
+                  { role: "user", content: buildUserMessage(post, target, postIndex, shuffledVaultTitles) },
                 ],
               }),
             });
@@ -273,6 +304,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
         })
       );
       results.push(...chunkResults);
+      globalPostIndex += chunk.length;
     }
 
     const successful = results.filter((r) => r.success);

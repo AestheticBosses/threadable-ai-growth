@@ -125,6 +125,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     untappedAnglesRes,
     scheduledPostsRes,
     cmoProfileRes,
+    recentHooksRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -159,6 +160,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "untapped_angles").limit(1).maybeSingle(),
     supabase.from("scheduled_posts").select("content_category, funnel_stage, scheduled_for, status").eq("user_id", userId).in("status", ["draft", "approved", "scheduled"]).order("scheduled_for", { ascending: true }).limit(10),
     supabase.from("profiles").select("weekly_refresh_summary, last_weekly_refresh_at").eq("id", userId).single(),
+    // Recent published/scheduled post hooks for dedup
+    supabase.from("scheduled_posts").select("text_content").eq("user_id", userId).in("status", ["published", "scheduled"]).order("created_at", { ascending: false }).limit(20),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -181,10 +184,15 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   // === STORIES (real facts for grounding — framed to prevent fabrication) ===
   const stories = storiesRes.data || [];
   let storiesSection = "No stories added yet.";
+  const vaultTitles: string[] = []; // Collect titles for cross-call exclusion in generate-draft-posts
   if (stories.length > 0) {
+    // Shuffle vault sections so AI doesn't always see the same stories first
+    const shuffledSections = [...stories].sort(() => Math.random() - 0.5);
     const storyLines: string[] = [];
-    for (const s of stories) {
-      const items = Array.isArray(s.data) ? s.data : (s.data?.items || []);
+    for (const s of shuffledSections) {
+      const rawItems = Array.isArray(s.data) ? s.data : (s.data?.items || []);
+      // Shuffle items within each section to break positional bias
+      const items = [...rawItems].sort(() => Math.random() - 0.5);
       for (const item of items as any[]) {
         const title = item.title || item.name || "Untitled";
         const lesson = item.lesson || item.key_lesson || "";
@@ -193,6 +201,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
         if (item.label && item.value) {
           storyLines.push(`- Number: ${item.label} = ${item.value}${item.context ? ` (${item.context})` : ""}`);
         } else {
+          vaultTitles.push(title);
           // Send first 150 chars of story text — gist + tone, not full narrative
           const factSnippet = storyText.length > 150 ? storyText.substring(0, 150) + "…" : storyText;
           const lessonSnippet = lesson.length > 80 ? lesson.substring(0, 80) + "…" : lesson;
@@ -204,6 +213,27 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }
     }
     storiesSection = storyLines.join("\n");
+  }
+
+  // === RECENTLY USED STORY HOOKS (dedup — avoid repeating openers) ===
+  const recentHookPosts = recentHooksRes.data || [];
+  let recentHooksSection = "";
+  if (recentHookPosts.length > 0) {
+    const hooks = recentHookPosts
+      .map((p: any) => {
+        const text = (p.text_content || "").trim();
+        if (!text) return null;
+        // Extract first sentence or first line as the hook
+        const firstLine = text.split("\n")[0].trim();
+        const firstSentence = firstLine.split(/(?<=[.!?])\s/)[0];
+        return firstSentence.length > 120 ? firstSentence.substring(0, 120) + "…" : firstSentence;
+      })
+      .filter(Boolean);
+    if (hooks.length > 0) {
+      recentHooksSection = "\n=== RECENTLY USED STORY HOOKS (avoid repeating these openings) ===\n" +
+        hooks.map((h: string) => `- "${h}"`).join("\n") +
+        "\nDo NOT open a new post with a hook that closely resembles any of the above. Find a fresh angle.\n";
+    }
   }
 
   // === UNTAPPED ANGLES ===
@@ -625,6 +655,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     "- NEVER fabricate dollar amounts, timelines, or events\n" +
     "- It is BETTER to write a post with no specific story than to invent a fake one\n\n" +
     storiesSection + "\n\n" +
+    (recentHooksSection ? recentHooksSection + "\n" : "") +
     (untappedSection ? untappedSection + "\n\n" : "") +
     "=== OFFERS ===\n" +
     offersSection + "\n\n" +
@@ -669,6 +700,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     identity: identitySection.length,
     profile: profileSection.length,
     stories: storiesSection.length,
+    recentHooks: recentHooksSection.length,
     untappedAngles: untappedSection.length,
     offers: offersSection.length,
     audiences: audiencesSection.length,
