@@ -484,8 +484,8 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { plan_type, include_plans, client_now_minutes, client_day } = body;
-    console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "raw body keys:", Object.keys(body));
+    const { plan_type, include_plans, client_now_minutes, client_day, client_timezone } = body;
+    console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "client_timezone:", client_timezone, "raw body keys:", Object.keys(body));
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
