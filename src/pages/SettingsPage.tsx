@@ -92,10 +92,14 @@ const SettingsPage = () => {
               </div>
             ) : profile ? (
               <>
-                <ThreadsConnectionCard
+                 <ThreadsConnectionCard
                   threadsUsername={profile.threads_username}
                   tokenExpiresAt={profile.threads_token_expires_at}
                   onDisconnect={fetchProfile}
+                />
+                <TimezoneCard
+                  currentTimezone={profile.timezone}
+                  onSaved={fetchProfile}
                 />
                 <ContentPreferencesCard
                   maxPostsPerDay={profile.max_posts_per_day}
