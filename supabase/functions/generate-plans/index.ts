@@ -566,9 +566,38 @@ serve(async (req) => {
         `You MUST output "posts_per_day": ${postsPerDay}. Each day in daily_plan MUST have exactly ${postsPerDay} posts. This is non-negotiable.`
       );
 
-    // Determine today's day name — prefer client's local day over server UTC
+    // Determine today's day name — prefer client's local day, then timezone-derived, then server UTC
     const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const todayName = (client_day && dayNames.includes(client_day)) ? client_day : dayNames[new Date().getDay()];
+    let todayName: string;
+    let resolvedNowMinutes: number;
+
+    if (client_day && dayNames.includes(client_day)) {
+      todayName = client_day;
+    } else if (userTimezone) {
+      try {
+        const userNow = new Date(new Date().toLocaleString("en-US", { timeZone: userTimezone }));
+        todayName = dayNames[userNow.getDay()];
+      } catch {
+        todayName = dayNames[new Date().getDay()];
+      }
+    } else {
+      todayName = dayNames[new Date().getDay()];
+    }
+
+    if (typeof client_now_minutes === "number") {
+      resolvedNowMinutes = client_now_minutes;
+    } else if (userTimezone) {
+      try {
+        const userNow = new Date(new Date().toLocaleString("en-US", { timeZone: userTimezone }));
+        resolvedNowMinutes = userNow.getHours() * 60 + userNow.getMinutes();
+      } catch {
+        resolvedNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+      }
+    } else {
+      resolvedNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+    }
+
+    console.log("[generate-plans] todayName:", todayName, "resolvedNowMinutes:", resolvedNowMinutes);
     const todayAnchor = `\nToday is ${todayName}. The 7-day plan must start from ${todayName} and go forward from there. Do not start from Monday unless today is Monday.\n`;
 
     // Fetch story vault titles for per-day story assignment hints
