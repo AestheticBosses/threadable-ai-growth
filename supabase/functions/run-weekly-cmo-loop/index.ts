@@ -74,14 +74,32 @@ Deno.serve(async (req) => {
 
     console.log(`[cmo-loop] Pipeline triggered for user ${user.id} — running in background via waitUntil`);
 
+    // --- Build timezone-aware time info for generate-plans ---
+    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    let clientDay: string;
+    let clientNowMinutes: number;
+    if (userTimezone) {
+      try {
+        const userNow = new Date(new Date().toLocaleString("en-US", { timeZone: userTimezone }));
+        clientDay = dayNames[userNow.getDay()];
+        clientNowMinutes = userNow.getHours() * 60 + userNow.getMinutes();
+      } catch {
+        clientDay = dayNames[new Date().getDay()];
+        clientNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+      }
+    } else {
+      clientDay = dayNames[new Date().getDay()];
+      clientNowMinutes = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+    }
+
     // --- Run all steps sequentially in the background ---
     const steps: PipelineStep[] = [
       { name: "run-analysis", endpoint: "run-analysis" },
       { name: "run-regression", endpoint: "run-regression" },
       { name: "discover-archetypes", endpoint: "discover-archetypes" },
-      { name: "branding-plan", endpoint: "generate-plans", body: { plan_type: "branding_plan" } },
-      { name: "funnel-strategy", endpoint: "generate-plans", body: { plan_type: "funnel_strategy" } },
-      { name: "content-plan", endpoint: "generate-plans", body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] } },
+      { name: "branding-plan", endpoint: "generate-plans", body: { plan_type: "branding_plan", client_day: clientDay, client_now_minutes: clientNowMinutes, client_timezone: userTimezone } },
+      { name: "funnel-strategy", endpoint: "generate-plans", body: { plan_type: "funnel_strategy", client_day: clientDay, client_now_minutes: clientNowMinutes, client_timezone: userTimezone } },
+      { name: "content-plan", endpoint: "generate-plans", body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"], client_day: clientDay, client_now_minutes: clientNowMinutes, client_timezone: userTimezone } },
       { name: "generate-cmo-summary", endpoint: "generate-cmo-summary" },
     ];
 

@@ -856,7 +856,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       console.log("[generate-plans] forcing posts_per_day to:", postsPerDay);
 
       // For TODAY specifically, generate time slots starting from NOW
-      const nowMins = typeof client_now_minutes === "number" ? client_now_minutes : (new Date().getUTCHours() * 60 + new Date().getUTCMinutes());
+      const nowMins = resolvedNowMinutes;
       const todayInPlan = planData.daily_plan?.find((d: any) => d.day === todayName);
       if (todayInPlan) {
         const todaySlots = generateTodaySlots(regressionBestTimes, postsPerDay, nowMins);
