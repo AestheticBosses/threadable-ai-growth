@@ -435,7 +435,8 @@ const Onboarding = () => {
     setPipelineHasErrors(false);
 
     try {
-      // 1. Save profile fields
+      // 1. Save profile fields (including auto-detected timezone)
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       await supabase.from("profiles").update({
         dream_client: dreamClient.trim(),
         mission: mission.trim() || null,
@@ -445,6 +446,7 @@ const Onboarding = () => {
         dm_keyword: dmKeyword.trim() || null,
         dm_offer: dmOffer.trim() || null,
         revenue_target: revenueTarget.trim() || null,
+        timezone: detectedTimezone,
       } as any).eq("id", user.id);
 
       await refreshProfile();
