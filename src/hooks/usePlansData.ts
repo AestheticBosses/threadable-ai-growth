@@ -74,12 +74,24 @@ function useGeneratePlan(planType: PlanType) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not logged in");
 
+      // Get timezone from profile, fall back to browser detection
+      let clientTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("timezone")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (prof?.timezone) clientTimezone = prof.timezone;
+      }
+
       const now = new Date();
       const res = await supabase.functions.invoke("generate-plans", {
         body: {
           plan_type: planType,
           client_now_minutes: now.getHours() * 60 + now.getMinutes(),
           client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+          client_timezone: clientTimezone,
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });

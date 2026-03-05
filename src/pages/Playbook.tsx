@@ -195,7 +195,7 @@ const Playbook = () => {
       console.log("[Playbook] step: content_plan (with branding + funnel context)");
       setStrategyProgress(p => ({ ...p, contentPlan: "generating" }));
       const contentPlanRes = await supabase.functions.invoke("generate-plans", {
-        body: { plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
+        body: { ...planBodyBase, plan_type: "content_plan", include_plans: ["branding_plan", "funnel_strategy"] },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       console.log("[Playbook] content_plan result:", { data: contentPlanRes.data, error: contentPlanRes.error });

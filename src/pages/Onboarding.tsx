@@ -422,9 +422,15 @@ const Onboarding = () => {
     updateStep("plans", "active");
     try {
       const headers = await getAuthHeaders();
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "content_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "branding_plan" }, headers });
-      await supabase.functions.invoke("generate-plans", { body: { plan_type: "funnel_strategy" }, headers });
+      const now = new Date();
+      const planBody = {
+        client_now_minutes: now.getHours() * 60 + now.getMinutes(),
+        client_day: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()],
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "content_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "branding_plan" }, headers });
+      await supabase.functions.invoke("generate-plans", { body: { ...planBody, plan_type: "funnel_strategy" }, headers });
       updateStep("plans", "done");
     } catch {
       updateStep("plans", "error");
