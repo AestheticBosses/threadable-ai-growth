@@ -252,11 +252,11 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     };
 
     const parts: string[] = [];
-    if (grouped.never_say.length) parts.push(`NEVER USE THESE PHRASES OR SENTENCES:\n${grouped.never_say.map(s => `- "${s}"`).join('\n')}`);
-    if (grouped.never_reference.length) parts.push(`NEVER REFERENCE THESE TOPICS OR STORIES:\n${grouped.never_reference.map(s => `- ${s}`).join('\n')}`);
-    if (grouped.always_frame.length) parts.push(`ALWAYS FRAME CONTENT THIS WAY:\n${grouped.always_frame.map(s => `- ${s}`).join('\n')}`);
-    if (grouped.voice_correction.length) parts.push(`VOICE CORRECTIONS — ADJUST TONE ACCORDINGLY:\n${grouped.voice_correction.map(s => `- ${s}`).join('\n')}`);
-    if (grouped.offer_guardrail.length) parts.push(`OFFER & POSITIONING RULES:\n${grouped.offer_guardrail.map(s => `- ${s}`).join('\n')}`);
+    if (grouped.never_say.length) parts.push(`NEVER USE THESE PHRASES OR SENTENCES:\n${grouped.never_say.map((s: string) => `- "${s}"`).join('\n')}`);
+    if (grouped.never_reference.length) parts.push(`NEVER REFERENCE THESE TOPICS OR STORIES:\n${grouped.never_reference.map((s: string) => `- ${s}`).join('\n')}`);
+    if (grouped.always_frame.length) parts.push(`ALWAYS FRAME CONTENT THIS WAY:\n${grouped.always_frame.map((s: string) => `- ${s}`).join('\n')}`);
+    if (grouped.voice_correction.length) parts.push(`VOICE CORRECTIONS — ADJUST TONE ACCORDINGLY:\n${grouped.voice_correction.map((s: string) => `- ${s}`).join('\n')}`);
+    if (grouped.offer_guardrail.length) parts.push(`OFFER & POSITIONING RULES:\n${grouped.offer_guardrail.map((s: string) => `- ${s}`).join('\n')}`);
 
     guardrailsSection = `=== CONTENT GUARDRAILS — THESE ARE HARD RULES, NOT SUGGESTIONS ===\n${parts.join('\n')}\nViolating any of these guardrails is a generation failure.`;
   }

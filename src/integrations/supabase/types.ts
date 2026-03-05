@@ -734,6 +734,7 @@ export type Database = {
           mission: string | null
           niche: string | null
           onboarding_complete: boolean | null
+          plan_generation_status: string | null
           posting_cadence: string | null
           revenue_target: string | null
           success_metric: string | null
@@ -777,6 +778,7 @@ export type Database = {
           mission?: string | null
           niche?: string | null
           onboarding_complete?: boolean | null
+          plan_generation_status?: string | null
           posting_cadence?: string | null
           revenue_target?: string | null
           success_metric?: string | null
@@ -820,6 +822,7 @@ export type Database = {
           mission?: string | null
           niche?: string | null
           onboarding_complete?: boolean | null
+          plan_generation_status?: string | null
           posting_cadence?: string | null
           revenue_target?: string | null
           success_metric?: string | null
@@ -979,6 +982,33 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_content_guardrails: {
+        Row: {
+          content: string
+          created_at: string | null
+          guardrail_type: string
+          id: string
+          source: string | null
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          guardrail_type: string
+          id?: string
+          source?: string | null
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          guardrail_type?: string
+          id?: string
+          source?: string | null
           user_id?: string
         }
         Relationships: []
