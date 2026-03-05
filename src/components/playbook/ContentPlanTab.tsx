@@ -74,7 +74,8 @@ export function ContentPlanTab() {
   const todayDayFromPlan: string = plan?.today_day_name || "";
   // Helper: get the right time array for a given day
   const getPostTime = (dayName: string, postIndex: number): string => {
-    const useToday = dayName === todayDayName && dayName === todayDayFromPlan;
+    // Always compare against the browser's current day, not the plan's stored today_day_name
+    const useToday = dayName === todayDayName;
     const time = useToday
       ? (todayBestTimes[postIndex] || "09:00")
       : (bestTimesRaw[postIndex] || "09:00");
