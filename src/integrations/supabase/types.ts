@@ -263,6 +263,7 @@ export type Database = {
           plan_day: number
           plan_week: number
           post_id: string | null
+          pov: string | null
           scheduled_date: string | null
           status: string | null
           topic_id: string | null
@@ -281,6 +282,7 @@ export type Database = {
           plan_day: number
           plan_week: number
           post_id?: string | null
+          pov?: string | null
           scheduled_date?: string | null
           status?: string | null
           topic_id?: string | null
@@ -299,6 +301,7 @@ export type Database = {
           plan_day?: number
           plan_week?: number
           post_id?: string | null
+          pov?: string | null
           scheduled_date?: string | null
           status?: string | null
           topic_id?: string | null
