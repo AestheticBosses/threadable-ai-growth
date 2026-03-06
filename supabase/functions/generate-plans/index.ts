@@ -610,6 +610,7 @@ serve(async (req) => {
 
     // Fetch story vault titles for per-day story assignment hints
     let storyDayHints = "";
+    let vaultThemes: { theme: string; keywords: string[] }[] = [];
     if (plan_type === "content_plan") {
       try {
         const { data: storyRows } = await admin
@@ -646,6 +647,31 @@ serve(async (req) => {
             console.log("[generate-plans] story vault titles:", titles.length, "per-day groups built");
           }
         }
+
+        // Build vault themes for cross-week rotation
+        const stopWords = new Set(["never","always","every","about","their","there","would","could","should","through","because","people","things","when","that","this","with","from","have","been","were","they","what","being","after","before","still","really","first","being","other","these","those","while","which","where","doing","going","started","wanted"]);
+        vaultThemes = (storyRows || [])
+          .flatMap((section: any) => {
+            const items = Array.isArray(section.data) ? section.data : (section.data?.items || []);
+            return items
+              .filter((item: any) => item.title || item.name)
+              .map((item: any) => {
+                const title = (item.title || item.name || "").toLowerCase();
+                const storyText = (item.story || item.description || item.content || "").toLowerCase();
+                const combined = `${title} ${storyText.slice(0, 100)}`;
+                const words = combined
+                  .split(/\s+/)
+                  .filter((w: string) => w.length > 4)
+                  .filter((w: string) => !stopWords.has(w))
+                  .slice(0, 5);
+                return {
+                  theme: item.title || item.name,
+                  keywords: [title.split(" ")[0], ...words].filter(Boolean).slice(0, 5),
+                };
+              });
+          })
+          .filter((t: any) => t.keywords.length > 0);
+        console.log("[generate-plans] vault themes:", vaultThemes.map(t => t.theme));
       } catch (storyErr) {
         console.warn("[generate-plans] Story vault query failed (non-fatal):", storyErr);
       }
@@ -729,8 +755,55 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       }
     }
 
+    // Cross-week story theme rotation
+    let storyRotationBlock = "";
+    if (plan_type === "content_plan" && vaultThemes.length > 0) {
+      try {
+        const { data: themeCheckPosts } = await admin
+          .from("posts_analyzed")
+          .select("text_content")
+          .eq("user_id", user.id)
+          .not("text_content", "is", null)
+          .order("posted_at", { ascending: false })
+          .limit(50);
+
+        if (themeCheckPosts && themeCheckPosts.length > 0) {
+          const postTexts = themeCheckPosts.map((p: any) => (p.text_content || "").toLowerCase().slice(0, 200));
+          const themeFrequency: Record<string, number> = {};
+
+          for (const vt of vaultThemes) {
+            let count = 0;
+            for (const text of postTexts) {
+              if (vt.keywords.some((kw: string) => text.includes(kw))) {
+                count++;
+              }
+            }
+            themeFrequency[vt.theme] = count;
+          }
+
+          const overused = vaultThemes
+            .filter(t => (themeFrequency[t.theme] || 0) >= 2)
+            .sort((a, b) => (themeFrequency[b.theme] || 0) - (themeFrequency[a.theme] || 0));
+
+          const fresh = vaultThemes
+            .filter(t => (themeFrequency[t.theme] || 0) === 0);
+
+          if (overused.length > 0 || fresh.length > 0) {
+            const parts: string[] = [];
+            if (overused.length > 0) parts.push(`OVERUSED — avoid as primary hook opener this week:\n${overused.map(t => `- "${t.theme}" (used in ${themeFrequency[t.theme]} recent posts)`).join('\n')}`);
+            if (fresh.length > 0) parts.push(`FRESH — prioritize these as hook openers this week:\n${fresh.map(t => `- "${t.theme}"`).join('\n')}`);
+            storyRotationBlock = `\n\n=== STORY THEME ROTATION (based on your last 50 published posts) ===\n${parts.join('\n')}\nAny story used 2+ times recently should NOT open a post this week.\nIt can appear as a supporting detail in 1 post maximum.\n`;
+          }
+
+          console.log("[generate-plans] theme frequency:", JSON.stringify(themeFrequency));
+        }
+      } catch (rotErr) {
+        console.warn("[generate-plans] Story rotation analysis failed (non-fatal):", rotErr);
+      }
+    }
+
     // Build user message once (shared by single and batch paths)
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + "\n" + userContext;
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + storyRotationBlock + "\n" + userContext;
 
     let planData: any;
     try {
