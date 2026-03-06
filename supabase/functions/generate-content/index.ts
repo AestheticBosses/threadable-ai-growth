@@ -293,17 +293,15 @@ Deno.serve(async (req) => {
 
     // Full user context for AI prompt (replaces manual profile/strategy/posts queries)
     // Plus structured data needed for vault parsing, funnel mix, playbook schedule, and strategy ID
-    const [userContext, profileRes, strategyRes, playbookRes, vaultRes, salesFunnelRes] = await Promise.all([
+    const [userContext, profileRes, playbookRes, vaultRes, salesFunnelRes] = await Promise.all([
       getUserContext(adminClient, userId),
       adminClient.from("profiles").select("funnel_tof_pct, funnel_mof_pct, funnel_bof_pct, niche, dream_client, end_goal").eq("id", userId).maybeSingle(),
-      adminClient.from("content_strategies").select("id, strategy_json, regression_insights").eq("user_id", userId).eq("strategy_type", "weekly").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      adminClient.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").limit(1).maybeSingle(),
+      adminClient.from("content_strategies").select("id, strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").order("created_at", { ascending: false }).limit(1).maybeSingle(),
       adminClient.from("user_story_vault").select("section, data").eq("user_id", userId),
       adminClient.from("user_sales_funnel").select("step_number, step_name, what, url, price, goal").eq("user_id", userId).order("step_number"),
     ]);
 
     const profile = profileRes.data as any;
-    const strategy = strategyRes.data;
     const playbookData = (playbookRes.data?.strategy_data as any) || null;
 
     // Parse vault data
@@ -391,8 +389,7 @@ RULES FOR FUNNEL STAGES:
 3. For BOF posts, always include a specific CTA from the offers.
 4. Each post MUST include a funnel_stage field: "TOF", "MOF", or "BOF".`;
 
-    const strategyId = strategy?.id || null;
-    const strategyJson = strategy?.strategy_json as any;
+    const strategyId = playbookRes.data?.id || null;
 
     let playbookContext = "";
     let checklistContext = "";
@@ -467,9 +464,6 @@ Here is everything you know about this creator:
 
 ${userContext}
 ${vaultContext}
-
-CONTENT STRATEGY:
-${strategyJson ? JSON.stringify(strategyJson, null, 2) : "No weekly strategy available."}
 ${playbookContext}
 ${funnelContext}
 

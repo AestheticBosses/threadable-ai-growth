@@ -770,6 +770,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     identitySection + "\n\n" +
     (guardrailsSection ? guardrailsSection + "\n\n" : "") +
     (playbookGuidelinesSection ? playbookGuidelinesSection + "\n\n" : "") +
+    (cmoSection ? "=== LATEST CMO INSIGHT ===\n" + cmoSection + "\n\n" : "") +
     "=== CREATOR PROFILE ===\n" +
     profileSection + "\n\n" +
     "=== STORY VAULT (REAL facts only — NEVER invent stories or numbers not listed here) ===\n" +
@@ -817,8 +818,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     (restOfWeekSection ? "=== REST OF THIS WEEK'S PLAN (for additional posts) ===\nWhen asked to generate a single post or template, generate for TODAY'S POST first. When asked for multiple posts, generate them in order from the plan — today first, then tomorrow, etc.\n\n" + restOfWeekSection + "\n\n" : "") +
     "=== PLANS ===\n" +
     plansSection +
-    (queueSection ? "\n\n=== CONTENT QUEUE ===\n" + queueSection : "") +
-    (cmoSection ? "\n\n=== LATEST CMO INSIGHT ===\n" + cmoSection : "");
+    (queueSection ? "\n\n=== CONTENT QUEUE ===\n" + queueSection : "");
 
   // === CONTEXT SIZE DEBUG: per-section breakdown ===
   const sectionSizes: Record<string, number> = {

@@ -558,7 +558,7 @@ serve(async (req) => {
     );
 
     // Fetch getUserContext, profile settings (including timezone), journey stage, regression data, and archetype posts in parallel
-    const [userContext, { data: profile }, journeyStage, { data: regressionRow }, { data: archetypePostsRaw }] = await Promise.all([
+    const [userContext, { data: profile }, journeyStage, { data: regressionRow }, { data: archetypePostsRaw }, { data: archetypeDiscoveryRow }] = await Promise.all([
       getUserContext(admin, user.id),
       admin
         .from("profiles")
@@ -580,6 +580,13 @@ serve(async (req) => {
         .eq("user_id", user.id)
         .eq("source", "own")
         .not("archetype", "is", null),
+      admin
+        .from("content_strategies")
+        .select("strategy_data")
+        .eq("user_id", user.id)
+        .eq("strategy_type", "archetype_discovery")
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     // Resolve timezone: client_timezone > profile.timezone > fallback to UTC
@@ -872,6 +879,35 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
 
     // Build archetype performance distribution block for content plans
+    // Map system archetype names to readable labels + discovered analysis names
+    const SYSTEM_ARCHETYPE_LABELS: Record<string, string> = {
+      truth: "Truth / Raw Take",
+      vault_drop: "Vault Drop / Framework",
+      hot_take: "Hot Take / Contrarian",
+      window: "Window / Vulnerable Moment",
+    };
+    // Build mapping from system archetypes to discovered analysis archetype names
+    const discoveredArchetypes = (archetypeDiscoveryRow?.strategy_data as any)?.archetypes || [];
+    const systemToAnalysisName: Record<string, string> = {};
+    if (discoveredArchetypes.length > 0) {
+      // Match discovered archetypes to system archetypes by keyword patterns
+      const patterns: Record<string, RegExp> = {
+        truth: /truth|raw|real|honest|confess|authentic/i,
+        vault_drop: /vault|framework|step|breakdown|data|proof|number|stat/i,
+        hot_take: /hot.?take|contrar|provocat|opinion|debate|unpopular/i,
+        window: /window|vulnerab|moment|personal|behind|scene|struggle/i,
+      };
+      for (const da of discoveredArchetypes) {
+        const name = da.name || "";
+        const desc = `${name} ${da.description || da.pattern || ""}`;
+        for (const [sysArch, regex] of Object.entries(patterns)) {
+          if (!systemToAnalysisName[sysArch] && regex.test(desc)) {
+            systemToAnalysisName[sysArch] = name;
+          }
+        }
+      }
+    }
+
     let archetypeDistBlock = "";
     if (plan_type === "content_plan" && archetypePostsRaw && archetypePostsRaw.length > 0) {
       const archStats: Record<string, { count: number; totalViews: number }> = {};
@@ -908,7 +944,10 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           const pct = pcts[r.name] || 10;
           const delta = globalAvg > 0 ? Math.round(((r.avgViews - globalAvg) / globalAvg) * 100) : 0;
           const perf = delta >= 0 ? `+${delta}% above avg` : `${delta}% below avg`;
-          return `${r.name}: ~${pct}% of posts (avg ${r.avgViews.toLocaleString()} views — ${perf})`;
+          const label = SYSTEM_ARCHETYPE_LABELS[r.name] || r.name;
+          const analysisName = systemToAnalysisName[r.name];
+          const displayName = analysisName ? `${analysisName} (${label})` : label;
+          return `${displayName}: ~${pct}% of posts (avg ${r.avgViews.toLocaleString()} views — ${perf})`;
         }).join("\n");
 
         archetypeDistBlock = `\n=== ARCHETYPE PERFORMANCE DATA (from this user's actual posts) ===\nBased on this user's post performance, use this distribution for the week:\n${lines}\nFavor the highest-performing archetype. Limit the lowest-performer to brief appearances.\n`;

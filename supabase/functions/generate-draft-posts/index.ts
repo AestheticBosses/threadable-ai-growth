@@ -318,10 +318,13 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
             if (!text) return { error: "Empty response", post };
 
             // === Quality Gate: Score + Retry ===
+            let finalScore: number | null = null;
+            let finalScoreBreakdown: Record<string, any> | null = null;
             try {
               let needsRetry = false;
               let retryInstruction = "";
               let firstScore: number | null = null;
+              let firstScoreBreakdown: Record<string, any> | null = null;
 
               if (text.length > 500) {
                 // Over character limit — force retry without scoring
@@ -338,10 +341,15 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                 );
                 if (scoreResult) {
                   firstScore = scoreResult.total;
+                  firstScoreBreakdown = scoreResult;
                   console.log(`[draft-score] post ${postKey}: ${text.length} chars, score ${scoreResult.total}/10 (weakest: ${scoreResult.weakest_criterion})`);
                   if (scoreResult.total < 7) {
                     needsRetry = true;
                     retryInstruction = `RETRY ATTEMPT — The previous draft scored ${scoreResult.total}/10 and was ${text.length} characters.\nWeakest area: ${scoreResult.weakest_criterion}.\nSpecific feedback: ${scoreResult.improvement_note}\nRewrite the post to fix this specific weakness. Keep what worked.\nRemember: shorter is usually stronger — don't pad to fill space.\nDo not start with the same opening word as the previous draft.`;
+                  } else {
+                    // Original passes quality gate — use its score
+                    finalScore = firstScore;
+                    finalScoreBreakdown = firstScoreBreakdown;
                   }
                 }
               }
@@ -381,8 +389,12 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                     // Return whichever scored higher; ties go to retry
                     if (retryScoreVal >= (firstScore ?? 0)) {
                       text = retryText;
+                      finalScore = retryScoreVal;
+                      finalScoreBreakdown = retryScoreResult;
                       console.log(`[draft-score] returning retry draft`);
                     } else {
+                      finalScore = firstScore;
+                      finalScoreBreakdown = firstScoreBreakdown;
                       console.log(`[draft-score] returning original draft`);
                     }
                   }
@@ -435,6 +447,8 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
               status: "draft",
               ai_generated: true,
               source: "content_plan",
+              ...(finalScore != null && { pre_post_score: finalScore }),
+              ...(finalScoreBreakdown && { score_breakdown: finalScoreBreakdown }),
             };
 
             if (post.scheduled_time) {
