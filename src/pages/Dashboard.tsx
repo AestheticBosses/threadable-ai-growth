@@ -9,6 +9,7 @@ import { WeeklyPerformance } from "@/components/dashboard/WeeklyPerformance";
 import { WeeklyRefreshCard } from "@/components/dashboard/WeeklyRefreshCard";
 import { MilestoneCard } from "@/components/dashboard/MilestoneCard";
 import { WeeklyApprovalGate } from "@/components/dashboard/WeeklyApprovalGate";
+import { YourWins } from "@/components/dashboard/YourWins";
 import { usePostsAnalyzed } from "@/hooks/usePostsAnalyzed";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { BarChart3, RefreshCw, Loader2, User } from "lucide-react";
@@ -213,6 +214,9 @@ const Dashboard = () => {
 
             {/* 3. Weekly Performance (moved from bottom) */}
             <WeeklyPerformance />
+
+            {/* 3.5 Your Wins — milestone share system */}
+            <YourWins />
 
             {/* 4. Plan Health Hero */}
             <PlanHealthHero />
