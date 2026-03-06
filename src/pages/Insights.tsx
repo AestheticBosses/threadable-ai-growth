@@ -89,7 +89,7 @@ const Insights = () => {
           .eq("user_id", user.id)
           .eq("source", "own")
           .order("posted_at", { ascending: false, nullsFirst: false })
-          .limit(100),
+          .limit(2000),
         supabase
           .from("profiles")
           .select("follower_count")
@@ -136,7 +136,7 @@ const Insights = () => {
         }))
         .reverse();
 
-      return { posts, totalViews, totalLikes, totalReplies, totalReposts, avgER, followerCount, bestPost, chartData };
+      return { posts, totalViews, totalLikes, totalReplies, totalReposts, avgER, followerCount, bestPost, chartData, postCount: posts.length };
     },
     enabled: !!user?.id,
   });
@@ -330,6 +330,9 @@ const Insights = () => {
                     </div>
                   ))}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Based on {perfData.postCount.toLocaleString()} posts in the last {rangeDays[range]} days
+                </p>
 
                 {/* Chart */}
                 {perfData.chartData.length > 1 && (

@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
 
     // Paginate through ALL posts
     let allPosts: any[] = []
-    let nextUrl: string | null = `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads?fields=id,text,timestamp,media_type&access_token=${profile.threads_access_token}&limit=100`
+    let nextUrl: string | null = `https://graph.threads.net/v1.0/${profile.threads_user_id}/threads?fields=id,text,timestamp,media_type,is_reply,reply_to_id&access_token=${profile.threads_access_token}&limit=100`
 
     while (nextUrl) {
       const threadsRes: Response = await fetch(nextUrl)
@@ -162,7 +162,39 @@ Deno.serve(async (req) => {
       console.log("Fetched page, total posts so far:", allPosts.length)
     }
 
-    console.log("Total posts fetched:", allPosts.length)
+    console.log("Total root posts fetched:", allPosts.length)
+
+    // Also fetch replies — the /threads endpoint only returns root posts
+    let repliesUrl: string | null = `https://graph.threads.net/v1.0/${profile.threads_user_id}/replies?fields=id,text,timestamp,media_type,is_reply,reply_to_id&access_token=${profile.threads_access_token}&limit=100`
+    const existingIds = new Set(allPosts.map((p: any) => p.id))
+
+    while (repliesUrl) {
+      try {
+        const repliesRes: Response = await fetch(repliesUrl)
+        const repliesJson: any = await repliesRes.json()
+
+        if (repliesJson.error) {
+          console.error("Threads replies error:", JSON.stringify(repliesJson.error))
+          break
+        }
+
+        if (repliesJson.data) {
+          for (const reply of repliesJson.data) {
+            if (!existingIds.has(reply.id)) {
+              allPosts.push(reply)
+              existingIds.add(reply.id)
+            }
+          }
+        }
+        repliesUrl = repliesJson.paging?.next || null
+        console.log("Fetched replies page, total posts so far:", allPosts.length)
+      } catch (e) {
+        console.error("Replies fetch error (non-fatal):", (e as Error).message)
+        break
+      }
+    }
+
+    console.log("Total posts (including replies):", allPosts.length)
 
     // Cleanup mock posts
     const { error: cleanupErr } = await adminClient
