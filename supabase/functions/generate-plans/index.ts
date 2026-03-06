@@ -220,6 +220,108 @@ function expandTimeSlots(bestTimes: string[], totalPosts: number): string[] {
   return unique.slice(0, totalPosts).map(m => minutesToTimeStr(m, template));
 }
 
+// === POV ROTATION SYSTEM ===
+type PovType = "I" | "You" | "They" | "We" | "Pattern";
+
+const POV_LABELS: Record<PovType, string> = {
+  I: 'I — hook can open with "I" or first-person ("My", "I\'ve", "I was")',
+  You: 'YOU — hook must open with "You" or direct address ("Your", "You\'ve", "You don\'t")',
+  They: 'THEY — hook must open with third-party framing ("Most", "Nobody", "They", "The best", "Top creators")',
+  We: 'WE — hook must open with collective framing ("We\'ve", "We all", "Most of us")',
+  Pattern: 'PATTERN INTERRUPT — hook opens with unexpected subject: a number, a time ("11:42pm"), a place, a statement without a subject, or a single evocative word',
+};
+
+/**
+ * Build POV assignments for a 7-day content plan.
+ * Enforces minimum distribution, prevents >2 consecutive "I" slots,
+ * and weights POVs toward appropriate funnel stages / archetypes.
+ */
+function buildPovAssignments(
+  dayNames: string[],
+  postsPerDay: number,
+): { slots: { day: string; postIndex: number; pov: PovType }[]; block: string } {
+  const totalPosts = dayNames.length * postsPerDay;
+
+  // Minimum quotas scaled to total posts
+  const iMax = Math.max(2, Math.round(totalPosts * 0.27));
+  const youMin = Math.max(2, Math.round(totalPosts * 0.20));
+  const theyMin = Math.max(1, Math.round(totalPosts * 0.13));
+  const weMin = Math.max(1, Math.round(totalPosts * 0.13));
+  const patternMin = Math.max(1, Math.round(totalPosts * 0.13));
+
+  // Build the pool: fill quotas first, then fill remainder with AI's choice (spread)
+  const pool: PovType[] = [];
+  for (let i = 0; i < iMax; i++) pool.push("I");
+  for (let i = 0; i < youMin; i++) pool.push("You");
+  for (let i = 0; i < theyMin; i++) pool.push("They");
+  for (let i = 0; i < weMin; i++) pool.push("We");
+  for (let i = 0; i < patternMin; i++) pool.push("Pattern");
+
+  // Fill remaining slots with a spread of non-I POVs (favor variety)
+  const fillers: PovType[] = ["You", "They", "We", "Pattern", "I"];
+  let fillerIdx = 0;
+  while (pool.length < totalPosts) {
+    pool.push(fillers[fillerIdx % fillers.length]);
+    fillerIdx++;
+  }
+  // Trim if over
+  pool.length = totalPosts;
+
+  // Shuffle with constraint: no more than 2 consecutive "I"
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  // Fix consecutive "I" violations (max 2 in a row)
+  for (let i = 2; i < pool.length; i++) {
+    if (pool[i] === "I" && pool[i - 1] === "I" && pool[i - 2] === "I") {
+      // Find nearest non-I slot after this point to swap with
+      for (let j = i + 1; j < pool.length; j++) {
+        if (pool[j] !== "I") {
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+          break;
+        }
+      }
+      // If no forward swap found, look backward before the run
+      if (pool[i] === "I") {
+        for (let j = i - 3; j >= 0; j--) {
+          if (pool[j] !== "I") {
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Build slot assignments
+  const slots: { day: string; postIndex: number; pov: PovType }[] = [];
+  let idx = 0;
+  for (const day of dayNames) {
+    for (let p = 0; p < postsPerDay; p++) {
+      slots.push({ day, postIndex: p + 1, pov: pool[idx] || "You" });
+      idx++;
+    }
+  }
+
+  // Build constraint block
+  const lines = slots.map(s =>
+    `${s.day} post ${s.postIndex}: ${POV_LABELS[s.pov]}`
+  ).join("\n");
+
+  const block = `\n=== POV ROTATION (HARD CONSTRAINT) ===
+These POV openers are pre-assigned. You MUST start each post's hook with the assigned POV type. This is not a suggestion — it is a structural requirement.
+
+${lines}
+
+For each post, the "pov" field in your JSON output MUST match this assignment exactly.
+Use these values: "I", "You", "They", "We", or "Pattern".
+`;
+
+  return { slots, block };
+}
+
 const CONTENT_PLAN_PROMPT = `You are Threadable — a data-driven Threads content strategist. Based on the user's identity, archetypes, regression insights, and top-performing content, create a 7-day content plan.
 
 CRITICAL: Vary post lengths dramatically. Some posts should be under 30 words — raw, punchy, identity-driven. Some should be medium (30-80 words). Some can be longer deep-dives (80-150 words). The regression data below tells you what length performs best for this creator — follow it. Short viral posts often outperform long educational ones.
@@ -347,7 +449,8 @@ Respond ONLY with valid JSON in this format:
           "topic": "brief description of the post angle",
           "hook_idea": "suggested opening line",
           "draft_length_signal": "MICRO" | "SHORT" | "STANDARD",
-          "emotional_trigger": "one of the trigger values above, matched to funnel_stage"
+          "emotional_trigger": "one of the trigger values above, matched to funnel_stage",
+          "pov": "I" | "You" | "They" | "We" | "Pattern"
         }
       ]
     }
@@ -875,9 +978,6 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       ? `BEFORE GENERATING ANYTHING, READ THESE HARD CONSTRAINTS:\n\n${storyRotationBlock}\n\nViolating these constraints means the plan will be rejected and regenerated. Now proceed:\n\n`
       : "";
 
-    // Build system prompt with rotation constraints at the very top
-    const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
-
     // Build archetype performance distribution block for content plans
     // Map system archetype names to readable labels + discovered analysis names
     const SYSTEM_ARCHETYPE_LABELS: Record<string, string> = {
@@ -955,6 +1055,23 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       }
     }
 
+    // Build POV rotation assignments for content plans
+    let povBlock = "";
+    let povSlots: { day: string; postIndex: number; pov: PovType }[] = [];
+    if (plan_type === "content_plan") {
+      const todayIdx = dayNames.indexOf(todayName);
+      const orderedDaysForPov = Array.from({ length: 7 }, (_, i) => dayNames[(todayIdx + i) % 7]);
+      const povResult = buildPovAssignments(orderedDaysForPov, postsPerDay);
+      povSlots = povResult.slots;
+      povBlock = povResult.block;
+      console.log("[generate-plans] POV distribution:", JSON.stringify(
+        povSlots.reduce((acc, s) => { acc[s.pov] = (acc[s.pov] || 0) + 1; return acc; }, {} as Record<string, number>)
+      ));
+    }
+
+    // Build system prompt with rotation constraints at the very top + POV rotation
+    const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints + povBlock : "");
+
     // Build user message once (shared by single and batch paths) — storyRotationBlock moved to system prompt
     const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + archetypeDistBlock + recentPostsBlock + "\n" + userContext;
 
@@ -1016,8 +1133,19 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         const batch2Days = orderedDays.slice(4);
         console.log("[generate-plans] 2-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
 
+        // Build batch-specific POV blocks (filter slots for each batch's days)
+        const batch1DaySet = new Set(batch1Days);
+        const batch2DaySet = new Set(batch2Days);
+        const batch1PovSlots = povSlots.filter(s => batch1DaySet.has(s.day));
+        const batch2PovSlots = povSlots.filter(s => batch2DaySet.has(s.day));
+        function buildBatchPovBlock(slots: typeof povSlots): string {
+          if (slots.length === 0) return "";
+          const lines = slots.map(s => `${s.day} post ${s.postIndex}: ${POV_LABELS[s.pov]}`).join("\n");
+          return `\n=== POV ROTATION (HARD CONSTRAINT) ===\nThese POV openers are pre-assigned. You MUST start each post's hook with the assigned POV type.\n\n${lines}\n\nFor each post, the "pov" field in your JSON output MUST match this assignment exactly.\nUse these values: "I", "You", "They", "We", or "Pattern".\n`;
+        }
+
         // Batch 1
-        const batch1System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n` + storyDayHints;
+        const batch1System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n` + storyDayHints + buildBatchPovBlock(batch1PovSlots);
         const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch1 length:", raw1.length);
         const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
@@ -1030,7 +1158,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         const statsBlock = batch1Stats.length > 0
           ? `\n\nALREADY USED STATS THIS WEEK — do not repeat these as hook openers:\n${batch1Stats.map(s => `- ${s}`).join("\n")}\n`
           : "";
-        const batch2System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + storyDayHints + buildDedupBlock(batch1Hooks) + statsBlock;
+        const batch2System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + storyDayHints + buildDedupBlock(batch1Hooks) + statsBlock + buildBatchPovBlock(batch2PovSlots);
         const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch2 length:", raw2.length);
         const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
@@ -1345,6 +1473,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
               funnel_stage: post.funnel_stage || "TOF",
               draft_length_signal: post.draft_length_signal || "STANDARD",
               emotional_trigger: post.emotional_trigger || null,
+              pov: post.pov || null,
               is_test_slot: post.is_test_slot || false,
               status: "planned",
             });

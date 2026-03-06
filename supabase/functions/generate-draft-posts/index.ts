@@ -216,6 +216,18 @@ serve(async (req) => {
           const emotionalTriggerBlock = EMOTIONAL_TRIGGER_MAP[post.emotional_trigger || ""]
             || "EMOTIONAL TARGET: Curiosity. Open a question, deepen it, close with a partial insight.";
 
+          // POV constraint (if assigned by plan)
+          const POV_INSTRUCTIONS: Record<string, string> = {
+            I: 'POV CONSTRAINT: This post\'s hook MUST open from the "I" perspective. Start with "I", "My", "I\'ve", "I was", or similar first-person framing.',
+            You: 'POV CONSTRAINT: This post\'s hook MUST open from the "You" perspective. Start with "You", "Your", "You\'ve", "You don\'t", or similar direct address.',
+            They: 'POV CONSTRAINT: This post\'s hook MUST open from the "They" perspective. Start with "Most", "Nobody", "They", "The best", "Top creators", or similar third-party framing.',
+            We: 'POV CONSTRAINT: This post\'s hook MUST open from the "We" perspective. Start with "We", "Most of us", "We\'ve all", or similar collective framing.',
+            Pattern: 'POV CONSTRAINT: This post\'s hook MUST be a PATTERN INTERRUPT. Start with something unexpected — a number, time ("11:42pm"), place, subjectless statement, or a single evocative word. Do NOT start with I/You/They/We.',
+          };
+          const povConstraint = post.pov && POV_INSTRUCTIONS[post.pov]
+            ? `\n=== ${POV_INSTRUCTIONS[post.pov]} ===\n`
+            : "";
+
           // Structure skeleton based on length signal
           const structureBlock = STRUCTURE_SKELETONS[resolvedSignal] || STRUCTURE_SKELETONS.STANDARD;
 
@@ -237,7 +249,7 @@ Invisible inputs (DO NOT include any of these as labels, headers, or structure i
 - Hook idea: ${post.hook_idea || ""}
 
 === ${emotionalTriggerBlock} ===
-
+${povConstraint}
 === ${structureBlock} ===
 
 ONE THING RULE: This post makes exactly ONE point. Not two. Not a lesson with sub-lessons. One claim, proven one way, closed once. If you find yourself writing a second point, delete it.
