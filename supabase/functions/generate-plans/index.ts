@@ -557,8 +557,8 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Fetch getUserContext, profile settings (including timezone), journey stage, and regression data in parallel
-    const [userContext, { data: profile }, journeyStage, { data: regressionRow }] = await Promise.all([
+    // Fetch getUserContext, profile settings (including timezone), journey stage, regression data, and archetype posts in parallel
+    const [userContext, { data: profile }, journeyStage, { data: regressionRow }, { data: archetypePostsRaw }] = await Promise.all([
       getUserContext(admin, user.id),
       admin
         .from("profiles")
@@ -574,6 +574,12 @@ serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      admin
+        .from("posts_analyzed")
+        .select("archetype, views")
+        .eq("user_id", user.id)
+        .eq("source", "own")
+        .not("archetype", "is", null),
     ]);
 
     // Resolve timezone: client_timezone > profile.timezone > fallback to UTC
@@ -865,8 +871,53 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     // Build system prompt with rotation constraints at the very top
     const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
 
+    // Build archetype performance distribution block for content plans
+    let archetypeDistBlock = "";
+    if (plan_type === "content_plan" && archetypePostsRaw && archetypePostsRaw.length > 0) {
+      const archStats: Record<string, { count: number; totalViews: number }> = {};
+      let totalViews = 0;
+      let totalCount = 0;
+      for (const p of archetypePostsRaw) {
+        const arch = p.archetype || "unknown";
+        if (arch === "unknown") continue;
+        if (!archStats[arch]) archStats[arch] = { count: 0, totalViews: 0 };
+        archStats[arch].count++;
+        archStats[arch].totalViews += p.views || 0;
+        totalViews += p.views || 0;
+        totalCount++;
+      }
+      const globalAvg = totalCount > 0 ? totalViews / totalCount : 0;
+
+      const ranked = Object.entries(archStats)
+        .map(([name, s]) => ({ name, avgViews: Math.round(s.totalViews / s.count), count: s.count }))
+        .sort((a, b) => b.avgViews - a.avgViews);
+
+      if (ranked.length >= 2) {
+        // Assign percentages: best gets 40%, second 30%, rest share 30%
+        const pcts: Record<string, number> = {};
+        pcts[ranked[0].name] = 40;
+        pcts[ranked[1].name] = 30;
+        const remaining = 30;
+        const others = ranked.slice(2);
+        if (others.length > 0) {
+          const perOther = Math.round(remaining / others.length);
+          for (const o of others) pcts[o.name] = perOther;
+        }
+
+        const lines = ranked.map(r => {
+          const pct = pcts[r.name] || 10;
+          const delta = globalAvg > 0 ? Math.round(((r.avgViews - globalAvg) / globalAvg) * 100) : 0;
+          const perf = delta >= 0 ? `+${delta}% above avg` : `${delta}% below avg`;
+          return `${r.name}: ~${pct}% of posts (avg ${r.avgViews.toLocaleString()} views — ${perf})`;
+        }).join("\n");
+
+        archetypeDistBlock = `\n=== ARCHETYPE PERFORMANCE DATA (from this user's actual posts) ===\nBased on this user's post performance, use this distribution for the week:\n${lines}\nFavor the highest-performing archetype. Limit the lowest-performer to brief appearances.\n`;
+        console.log("[generate-plans] archetype distribution:", JSON.stringify(pcts));
+      }
+    }
+
     // Build user message once (shared by single and batch paths) — storyRotationBlock moved to system prompt
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + "\n" + userContext;
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + archetypeDistBlock + recentPostsBlock + "\n" + userContext;
 
     let planData: any;
     try {

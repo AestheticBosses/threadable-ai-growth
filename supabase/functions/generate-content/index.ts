@@ -61,6 +61,7 @@ function buildHookAssignments(
   mofCount: number,
   bofCount: number,
   playbookSchedule: any[] | null,
+  hooksFromPlaybook: string[] = [],
 ): string {
   const posts: string[] = [];
   const stages: string[] = [];
@@ -76,13 +77,23 @@ function buildHookAssignments(
     [stages[i], stages[j]] = [stages[j], stages[i]];
   }
 
-  const shuffledHooks = [...HOOK_STYLES].sort(() => Math.random() - 0.5);
+  // Build weighted hook pool: proven hooks get 3x weight
+  const hookPool: typeof HOOK_STYLES = [];
+  for (const hook of HOOK_STYLES) {
+    const isProven = hooksFromPlaybook.some(h =>
+      hook.name.toLowerCase().includes(h.toLowerCase()) ||
+      h.toLowerCase().includes(hook.name.toLowerCase())
+    );
+    const weight = isProven ? 3 : 1;
+    for (let i = 0; i < weight; i++) hookPool.push(hook);
+  }
+  const shuffledPool = [...hookPool].sort(() => Math.random() - 0.5);
   const usedRecently: string[] = [];
 
   for (let i = 0; i < count; i++) {
     const stage = stages[i];
-    let hook = shuffledHooks[i % shuffledHooks.length];
-    for (const candidate of shuffledHooks) {
+    let hook = shuffledPool[i % shuffledPool.length];
+    for (const candidate of shuffledPool) {
       if (!usedRecently.includes(candidate.name)) {
         hook = candidate;
         break;
@@ -434,8 +445,11 @@ Only include posts that would score 4+ out of 6. If a post scores below 4, rewri
     const actualCount = regeneratePostId ? 1 : postsCount;
     const categoryHint = regenerateCategory ? `\nContent category MUST be: ${regenerateCategory}` : "";
 
+    // Extract proven hooks from playbook for weighted assignment
+    const hooksFromPlaybook: string[] = playbookData?.generation_guidelines?.hooks_that_work || [];
+
     const hookAssignments = buildHookAssignments(
-      actualCount, tofCount, mofCount, bofCount, playbookSchedule,
+      actualCount, tofCount, mofCount, bofCount, playbookSchedule, hooksFromPlaybook,
     );
 
     const systemPrompt = `${CONTENT_GENERATION_RULES}

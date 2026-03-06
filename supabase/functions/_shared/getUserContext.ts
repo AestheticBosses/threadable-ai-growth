@@ -128,6 +128,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     recentHooksRes,
     guardrailsRes,
     playbookRes,
+    allPostsArchetypeRes,
   ] = await Promise.all([
     supabase.from("user_identity").select("about_you, desired_perception, main_goal").eq("user_id", userId).maybeSingle(),
     supabase.from("user_story_vault").select("section, data").eq("user_id", userId).limit(20),
@@ -168,6 +169,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("user_content_guardrails").select("guardrail_type, content").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
     // Playbook generation guidelines
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "playbook").maybeSingle(),
+    // All own posts for archetype performance aggregation
+    supabase.from("posts_analyzed").select("archetype, views, engagement_rate").eq("user_id", userId).eq("source", "own").not("archetype", "is", null),
   ]);
 
   // === JOURNEY STAGE (extracted from profiles query — no extra round-trip) ===
@@ -283,6 +286,48 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     }
   }
 
+  // === ARCHETYPE PERFORMANCE STATS ===
+  const allArchetypePosts = allPostsArchetypeRes.data || [];
+  let archetypePerformanceSection = "";
+  if (allArchetypePosts.length > 0) {
+    const archetypeStats: Record<string, { count: number; totalViews: number; totalER: number }> = {};
+    let globalTotalViews = 0;
+    let globalCount = 0;
+    for (const p of allArchetypePosts) {
+      const arch = p.archetype || "unknown";
+      if (!archetypeStats[arch]) archetypeStats[arch] = { count: 0, totalViews: 0, totalER: 0 };
+      archetypeStats[arch].count++;
+      archetypeStats[arch].totalViews += p.views || 0;
+      archetypeStats[arch].totalER += p.engagement_rate || 0;
+      globalTotalViews += p.views || 0;
+      globalCount++;
+    }
+    const globalAvgViews = globalCount > 0 ? globalTotalViews / globalCount : 0;
+
+    const archLines: string[] = [];
+    let bestArch = { name: "", avgViews: 0, pctAbove: 0 };
+    let worstArch = { name: "", avgViews: Infinity, pctBelow: 0 };
+    for (const [arch, stats] of Object.entries(archetypeStats)) {
+      if (arch === "unknown") continue;
+      const avgViews = stats.count > 0 ? Math.round(stats.totalViews / stats.count) : 0;
+      const avgER = stats.count > 0 ? (stats.totalER / stats.count * 100).toFixed(1) : "0.0";
+      archLines.push(`${arch}: ${stats.count} posts, avg ${avgViews.toLocaleString()} views, avg ${avgER}% ER`);
+      if (avgViews > bestArch.avgViews) {
+        bestArch = { name: arch, avgViews, pctAbove: globalAvgViews > 0 ? Math.round(((avgViews - globalAvgViews) / globalAvgViews) * 100) : 0 };
+      }
+      if (avgViews < worstArch.avgViews) {
+        worstArch = { name: arch, avgViews, pctBelow: globalAvgViews > 0 ? Math.round(((globalAvgViews - avgViews) / globalAvgViews) * 100) : 0 };
+      }
+    }
+    if (archLines.length > 0) {
+      archetypePerformanceSection = "=== ARCHETYPE PERFORMANCE (data-driven, this user only) ===\n" +
+        archLines.join("\n") + "\n" +
+        (bestArch.name ? `Best performing archetype: ${bestArch.name} (+${bestArch.pctAbove}% above average)\n` : "") +
+        (worstArch.name && worstArch.name !== bestArch.name ? `Underperforming archetype: ${worstArch.name} (-${worstArch.pctBelow}% below average)\n` : "") +
+        "Use this data to weight archetype distribution — favor what works, limit what doesn't.";
+    }
+  }
+
   // === UNTAPPED ANGLES ===
   const untappedData = untappedAnglesRes.data?.strategy_data as any;
   let untappedSection = "";
@@ -364,17 +409,19 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "No knowledge base items.";
 
-  // === TOP POSTS BY VIEWS (patterns only — not full text) ===
+  // === TOP POSTS BY VIEWS (full text for pattern replication) ===
   const topByViews = topPostsByViewsRes.data || [];
-  const viewsSection = topByViews.length > 0
-    ? topByViews.map((p: any, i: number) => {
-        const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 20).join(" ");
-        const hook = classifyHook(text);
-        const emotion = classifyEmotion(text);
-        return `${i + 1}. Hook: ${hook} | Trigger: ${emotion} | Archetype: ${p.archetype || "unknown"} | ${p.views || 0} views, ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"} | Length: ${text.length} chars | Opens with: "${firstWords}…"`;
-      }).join("\n")
-    : "No posts analyzed yet.";
+  let viewsSection = "No posts analyzed yet.";
+  if (topByViews.length > 0) {
+    viewsSection = topByViews.map((p: any, i: number) => {
+      const text = p.text_content || "";
+      const hook = classifyHook(text);
+      const emotion = classifyEmotion(text);
+      // Full text for top 5, truncated to 500 chars for 6-10
+      const displayText = i < 5 ? text : (text.length > 500 ? text.slice(0, 497) + "..." : text);
+      return `[${i + 1}] Views: ${(p.views || 0).toLocaleString()} | Archetype: ${p.archetype || "unknown"} | Hook: ${hook} | Trigger: ${emotion} | ER: ${p.engagement_rate ? (p.engagement_rate * 100).toFixed(1) + "%" : "N/A"}\nFull post: "${displayText}"`;
+    }).join("\n\n");
+  }
 
   // === TOP POSTS BY ENGAGEMENT RATE (patterns only) ===
   const topByEngagement = topPostsByEngagementRes.data || [];
@@ -421,6 +468,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
   // === AI ANALYSIS INSIGHTS (from run-analysis: strategy_type='regression_insights') ===
   const aiRegressionData = aiRegressionRes.data?.strategy_data as any;
   let aiInsights = "";
+  let regressionFindingsSection = "";
   if (aiRegressionData?.insights && Array.isArray(aiRegressionData.insights)) {
     aiInsights = aiRegressionData.insights.map((i: any) => {
       if (typeof i === "string") return `- ${i}`;
@@ -429,6 +477,33 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       const rec = i.recommendation ? `: ${i.recommendation}` : "";
       return `- ${cat}${insight}${rec}`;
     }).join("\n");
+
+    // Extract top findings prioritizing views, filtered by strength
+    const strongInsights = aiRegressionData.insights
+      .filter((i: any) => typeof i === "object" && i.insight)
+      .filter((i: any) => {
+        const s = (i.strength || "").toLowerCase();
+        return s === "strong" || s === "very strong" || s === "moderate";
+      })
+      .sort((a: any, b: any) => {
+        // Prioritize views over other metrics
+        const metricOrder = (m: string) => (m || "").toLowerCase().includes("views") ? 0 : 1;
+        const strengthOrder = (s: string) => {
+          const sl = (s || "").toLowerCase();
+          return sl === "very strong" ? 0 : sl === "strong" ? 1 : 2;
+        };
+        return metricOrder(a.metric_impacted) - metricOrder(b.metric_impacted)
+          || strengthOrder(a.strength) - strengthOrder(b.strength);
+      })
+      .slice(0, 5);
+
+    if (strongInsights.length > 0) {
+      regressionFindingsSection = "=== REGRESSION FINDINGS (what actually drives views for this creator) ===\n" +
+        strongInsights.map((i: any) =>
+          `[${i.category || "General"}]: ${i.insight} — ${i.metric_impacted || "views"} impact: ${i.strength || "moderate"}${i.recommendation ? `\n  → ${i.recommendation}` : ""}`
+        ).join("\n") +
+        "\nApply these findings when generating content — they are validated from this creator's actual data.";
+    }
   }
 
   const insightsSection = [
@@ -681,7 +756,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
 
   const weekPlanSection = todaySection;
 
-  let postsBlock = "=== TOP PERFORMING POST PATTERNS BY VIEWS (do NOT copy these posts — learn the patterns) ===\n" + viewsSection;
+  let postsBlock = "=== YOUR TOP PERFORMING POSTS (study these patterns — replicate structure and emotional triggers, NOT the exact words) ===\n" + viewsSection;
   if (engagementSection) {
     postsBlock += "\n\n=== TOP PERFORMING POST PATTERNS BY ENGAGEMENT RATE ===\n" + engagementSection;
   }
@@ -727,8 +802,10 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     knowledgeSection + "\n\n" +
     "=== KEY INSIGHTS FROM DATA ===\n" +
     insightsSection + "\n\n" +
+    (regressionFindingsSection ? regressionFindingsSection + "\n\n" : "") +
     buildRawRegressionSection(regressionData) +
     postsBlock + "\n\n" +
+    (archetypePerformanceSection ? archetypePerformanceSection + "\n\n" : "") +
     "=== COMPETITOR POST PATTERNS (learn the structure and triggers — do NOT copy their words) ===\n" +
     competitorSection + "\n\n" +
     "=== CONTENT BUCKETS (audience segments) ===\n" +
@@ -773,6 +850,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     cmoInsight: cmoSection.length,
     guardrails: guardrailsSection.length,
     playbookGuidelines: playbookGuidelinesSection.length,
+    archetypePerformance: archetypePerformanceSection.length,
+    regressionFindings: regressionFindingsSection.length,
   };
 
   // Sort by size descending to surface biggest offenders
