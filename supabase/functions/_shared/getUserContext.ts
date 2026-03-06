@@ -217,6 +217,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
           const parts = [`- ${title}`];
           if (factSnippet) parts.push(`  ${factSnippet}`);
           if (lessonSnippet) parts.push(`  Lesson: ${lessonSnippet}`);
+          parts.push(`  Entry angles: curiosity | identity | contrast | lesson | scene`);
           storyLines.push(parts.join("\n"));
         }
       }

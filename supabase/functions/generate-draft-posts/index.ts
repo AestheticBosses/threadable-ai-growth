@@ -259,6 +259,9 @@ Study the user's top-performing posts in the context below. Understand their nat
 
 The post should read like a raw thought, not a content plan item. No labels. No structure. No 📌 headers. Just the post.
 
+=== VAULT STORY ENTRY POINTS ===
+Every vault story can be entered from 5 angles: curiosity (tease the outcome), identity (who you were before), contrast (before/after without the middle), lesson (takeaway first, story as proof), scene (drop into the moment without context). Never enter the same story from the same angle twice in the same week. The AI should vary the entry point each time a story is referenced.
+
 === CRITICAL LENGTH RULE ===
 ${lengthInstruction}
 Hard character limit for this post: ${target.charMax} characters. Count every character including spaces and line breaks. Do NOT exceed this limit.

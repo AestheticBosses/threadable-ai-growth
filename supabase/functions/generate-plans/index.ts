@@ -426,6 +426,14 @@ To generate new angles, ask: "What would this creator notice THIS WEEK that they
 
 NEVER fill the week by recycling vault story openings with different words. If a vault story has been the hook opener in the last 2 weeks, it must enter through the MIDDLE of a post as supporting detail only.
 
+VAULT STORY ENTRY POINTS: Every vault story can be entered from 5 angles:
+- curiosity: tease the outcome, withhold the story. "[Result] and I almost walked away from it."
+- identity: lead with who you were, not what happened. "I was the [identity] who wasn't supposed to be here."
+- contrast: before/after without explaining the middle. "[Low point]. [Time later]: [high point]."
+- lesson: lead with the takeaway, story is the proof. "The best [category] decisions look like [opposite] first."
+- scene: drop into the moment without context. "[Time]. [Physical detail]. [Emotional state]."
+Never enter the same story from the same angle twice in the same week. Set entry_point in the JSON for each post that references a vault story (null for posts that don't use a vault story).
+
 === STAT & PHRASE UNIQUENESS ACROSS THE WEEK ===
 Track every specific number, dollar amount, percentage, and named concept you use as a hook opener across all 7 days:
 - No specific stat (percentage, dollar amount, time reference, multiplier) may appear as a hook opener in more than 1 post across the entire week
@@ -434,6 +442,8 @@ Track every specific number, dollar amount, percentage, and named concept you us
 - Keep a mental running list as you generate each day: what stats and key phrases have I already used?
 
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
+
+ARCHETYPE VARIETY HARD RULE: No single archetype may appear more than 2 times per day regardless of total post count. Spread archetypes across the day. If you find yourself assigning the same archetype 3+ times in one day, stop and reassign.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
 
@@ -461,6 +471,8 @@ FUNNEL MIX RULES for daily schedule:
 - BOF posts should be 1-2 per day maximum regardless of posts_per_day setting. Never over-index on BOF — it kills organic reach on Threads.
 - Maintain roughly TOF 45-55%, MOF 30-35%, BOF 10-20% across the weekly plan.
 
+BOF DISTRIBUTION HARD RULE: Every day with 3+ posts MUST include at least 1 BOF post. BOF posts should reference a specific offer, result, or CTA — not just general content. If a day has no BOF post, you are violating the funnel requirement.
+
 EMOTIONAL TRIGGER per post — REQUIRED:
 Every post MUST declare an emotional_trigger matched to its funnel_stage:
 - TOF triggers: "curiosity", "identity", "contrarian_shock", "tribal_belonging", "pattern_interrupt"
@@ -483,7 +495,8 @@ Respond ONLY with valid JSON in this format:
           "hook_idea": "suggested opening line",
           "draft_length_signal": "MICRO" | "SHORT" | "STANDARD",
           "emotional_trigger": "one of the trigger values above, matched to funnel_stage",
-          "pov": "I" | "You" | "They" | "We" | "Pattern"
+          "pov": "I" | "You" | "They" | "We" | "Pattern",
+          "entry_point": "curiosity" | "identity" | "contrast" | "lesson" | "scene" | null
         }
       ]
     }
@@ -698,7 +711,7 @@ serve(async (req) => {
       getUserContext(admin, user.id),
       admin
         .from("profiles")
-        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, timezone")
+        .select("max_posts_per_day, goal_type, traffic_url, dm_keyword, dm_offer, revenue_target, timezone, funnel_bof_pct")
         .eq("id", user.id)
         .maybeSingle(),
       fetchJourneyStage(admin, user.id),
@@ -844,6 +857,37 @@ serve(async (req) => {
               storyDayHints = "\n\nFor variety, here is a suggested story focus per day (not mandatory, but guides distribution):\n" + lines.join("\n") + "\n";
             }
             console.log("[generate-plans] story vault titles:", titles.length, "per-day groups built");
+
+            // Fetch previous entry_points to avoid repeating the same angle for a vault story
+            try {
+              const { data: prevItems } = await admin
+                .from("content_plan_items")
+                .select("hook_idea, entry_point")
+                .eq("user_id", user.id)
+                .not("entry_point", "is", null)
+                .order("created_at", { ascending: false })
+                .limit(50);
+
+              if (prevItems && prevItems.length > 0) {
+                // Match previous entry_points to vault titles by keyword overlap
+                const entryHints: string[] = [];
+                for (const title of titles) {
+                  const titleLower = title.toLowerCase();
+                  const match = prevItems.find((item: any) =>
+                    (item.hook_idea || "").toLowerCase().includes(titleLower.split(" ")[0])
+                  );
+                  if (match?.entry_point) {
+                    entryHints.push(`"${title}" was last used with '${match.entry_point}' entry — use a different angle this week.`);
+                  }
+                }
+                if (entryHints.length > 0) {
+                  storyDayHints += "\n=== PREVIOUS ENTRY ANGLES (avoid repeating) ===\n" + entryHints.join("\n") + "\n";
+                  console.log("[generate-plans] entry_point dedup hints:", entryHints.length);
+                }
+              }
+            } catch (epErr) {
+              console.warn("[generate-plans] Entry point history fetch failed (non-fatal):", epErr);
+            }
           }
         }
 
@@ -1395,6 +1439,74 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
             console.log(`[banned-gate] Flagged ${bannedFlagCount} posts referencing banned themes for remix`);
           }
         }
+
+        // Archetype variety gate: no single archetype > ceil(postsPerDay/3) per day
+        const maxArchPerDay = Math.ceil(postsPerDay / 3);
+        let archFlagCount = 0;
+        for (const day of planData.daily_plan) {
+          if (!day.posts || !Array.isArray(day.posts)) continue;
+          const archCounts: Record<string, { count: number; posts: any[] }> = {};
+          for (const post of day.posts) {
+            if (post.needs_remix) continue;
+            const arch = (post.archetype || "").toLowerCase();
+            if (!arch) continue;
+            if (!archCounts[arch]) archCounts[arch] = { count: 0, posts: [] };
+            archCounts[arch].count++;
+            archCounts[arch].posts.push(post);
+          }
+          for (const [arch, info] of Object.entries(archCounts)) {
+            if (info.count > maxArchPerDay) {
+              // Flag excess posts (keep the first maxArchPerDay, flag the rest)
+              const excess = info.posts.slice(maxArchPerDay);
+              for (const post of excess) {
+                post.needs_remix = true;
+                post.remix_reason = `archetype '${arch}' overrepresented on ${day.day} — ${info.count} of ${day.posts.length} posts`;
+                archFlagCount++;
+                console.log(`[archetype-gate] "${(post.hook_idea || "").slice(0, 60)}" — ${arch} overrepresented on ${day.day}`);
+              }
+            }
+          }
+        }
+        if (archFlagCount > 0) {
+          console.log(`[archetype-gate] Flagged ${archFlagCount} posts for archetype overrepresentation`);
+        }
+
+        // BOF enforcement gate: ensure minimum BOF representation across the week
+        const bofPct = (profile as any)?.funnel_bof_pct ?? 15;
+        const totalPlanPosts = planData.daily_plan.reduce((s: number, d: any) => s + (d.posts?.length || 0), 0);
+        const expectedBof = Math.round(totalPlanPosts * bofPct / 100);
+        let actualBof = 0;
+        for (const day of planData.daily_plan) {
+          if (!day.posts) continue;
+          for (const post of day.posts) {
+            if ((post.funnel_stage || "").toUpperCase() === "BOF") actualBof++;
+          }
+        }
+        if (actualBof < expectedBof * 0.5 && expectedBof > 0) {
+          // Find TOF posts from the end of the week to convert to BOF
+          const tofPosts: { day: string; post: any }[] = [];
+          for (let di = planData.daily_plan.length - 1; di >= 0; di--) {
+            const day = planData.daily_plan[di];
+            if (!day.posts) continue;
+            for (let pi = day.posts.length - 1; pi >= 0; pi--) {
+              const post = day.posts[pi];
+              if (!post.needs_remix && (post.funnel_stage || "").toUpperCase() === "TOF") {
+                tofPosts.push({ day: day.day, post });
+              }
+            }
+          }
+          const deficit = Math.max(1, expectedBof - actualBof);
+          const toConvert = tofPosts.slice(0, deficit);
+          let bofFlagCount = 0;
+          for (const { post } of toConvert) {
+            post.needs_remix = true;
+            post.remix_reason = "BOF underrepresented this week — convert to BOF post targeting offer from sales funnel";
+            bofFlagCount++;
+          }
+          if (bofFlagCount > 0) {
+            console.log(`[funnel-gate] Expected ${expectedBof} BOF posts, got ${actualBof} — flagging ${bofFlagCount} posts for BOF remix`);
+          }
+        }
       } catch (dedupErr) {
         console.warn("[dedup] Dedup check failed (non-fatal):", dedupErr);
       }
@@ -1522,6 +1634,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
               draft_length_signal: post.draft_length_signal || "STANDARD",
               emotional_trigger: post.emotional_trigger || null,
               pov: post.pov || null,
+              entry_point: post.entry_point || null,
               is_test_slot: post.is_test_slot || false,
               status: "planned",
             });
