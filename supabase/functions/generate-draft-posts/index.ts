@@ -298,7 +298,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                 "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
+                model: "claude-opus-4-6",
                 max_tokens: 1000,
                 system: systemPrompt,
                 messages: [
@@ -355,7 +355,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                     "anthropic-version": "2023-06-01",
                   },
                   body: JSON.stringify({
-                    model: "claude-sonnet-4-20250514",
+                    model: "claude-opus-4-6",
                     max_tokens: 1000,
                     system: systemPrompt + "\n\n" + retryInstruction,
                     messages: [
@@ -402,7 +402,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                   "anthropic-version": "2023-06-01",
                 },
                 body: JSON.stringify({
-                  model: "claude-sonnet-4-20250514",
+                  model: "claude-opus-4-6",
                   max_tokens: 300,
                   system: "You are a Threads post editor. Trim the post to under 500 characters while preserving the hook, core message, and voice. Never cut mid-sentence. Return ONLY the trimmed post text.\n\nCHARACTER RULE: 500 characters is the hard ceiling — never exceed it. But shorter is usually stronger. Your most viral posts were tweet-length. Write the minimum characters needed to land the emotional target. Never pad. If it's done in 80 characters, stop at 80.",
                   messages: [{ role: "user", content: `Trim this to under 500 characters:\n\n${text}` }],
