@@ -256,6 +256,7 @@ export type Database = {
           created_at: string | null
           draft_length_signal: string | null
           emotional_trigger: string | null
+          entry_point: string | null
           funnel_stage: string | null
           id: string
           is_test_slot: boolean | null
@@ -275,6 +276,7 @@ export type Database = {
           created_at?: string | null
           draft_length_signal?: string | null
           emotional_trigger?: string | null
+          entry_point?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
@@ -294,6 +296,7 @@ export type Database = {
           created_at?: string | null
           draft_length_signal?: string | null
           emotional_trigger?: string | null
+          entry_point?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
