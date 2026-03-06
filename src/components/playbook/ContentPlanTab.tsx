@@ -34,9 +34,18 @@ const FUNNEL_BADGE: Record<string, string> = {
 export function ContentPlanTab() {
   const navigate = useNavigate();
   const { session, user } = useAuth();
-  const { query, generate } = useContentPlan();
+  const { query, generate, generationElapsed } = useContentPlan();
   const { data: hasIdentity } = useHasIdentity();
   const isGenerating = generate.isPending;
+
+  const getProgressMessage = (elapsed: number): string => {
+    if (elapsed < 30) return "Analyzing your content data...";
+    if (elapsed < 60) return "Running regression on your top posts...";
+    if (elapsed < 90) return "Building hook competition for each slot...";
+    if (elapsed < 120) return "Applying story rotation and dedup...";
+    if (elapsed < 180) return "Finalizing your 7-day plan...";
+    return "Almost there \u2014 this one's comprehensive...";
+  };
 
   // Defensive parsing — plan_data may be a string or malformed
   // Always deep-clone so we can safely mutate (React Query may freeze cached data)
@@ -507,16 +516,22 @@ export function ContentPlanTab() {
 
   // Show query or generate errors inline
   if (query.isError || generate.isError) {
-    const errMsg = (query.error as any)?.message || (generate.error as any)?.message || "Something went wrong.";
+    const err = generate.error as any;
+    const isTimeout = err?.isTimeout;
+    const errMsg = isTimeout
+      ? "This takes 3-5 minutes for a full 7-day plan. Refresh the page in a moment \u2014 your plan will be ready."
+      : (query.error as any)?.message || err?.message || "Something went wrong.";
     return (
       <div className="space-y-6">
         <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
-          <Sparkles className="h-10 w-10 text-destructive" />
-          <p className="text-foreground font-medium">Something went wrong generating your plan</p>
+          <Sparkles className={cn("h-10 w-10", isTimeout ? "text-primary" : "text-destructive")} />
+          <p className="text-foreground font-medium">
+            {isTimeout ? "Your plan is still generating" : "Something went wrong generating your plan"}
+          </p>
           <p className="text-sm text-muted-foreground max-w-md">{errMsg}</p>
           <Button onClick={() => generate.mutate()} disabled={isGenerating} className="gap-2">
             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Try Again
+            {isTimeout ? "Check Again" : "Try Again"}
           </Button>
         </div>
       </div>
@@ -617,7 +632,7 @@ export function ContentPlanTab() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm font-medium text-foreground">Regenerating your week plan...</span>
+              <span className="text-sm font-medium text-foreground">{getProgressMessage(generationElapsed)}</span>
             </div>
           </CardContent>
         </Card>
@@ -627,7 +642,7 @@ export function ContentPlanTab() {
         <div className="space-y-4">
           <div className="flex items-center gap-3 text-primary">
             <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm font-medium">Generating your content plan...</span>
+            <span className="text-sm font-medium">{getProgressMessage(generationElapsed)}</span>
           </div>
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-32 w-full" />
