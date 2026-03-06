@@ -206,7 +206,7 @@ ${vaultContext}
 CHECK FOR:
 1. Do any posts start with the same or very similar opening pattern? (e.g., "If your marketing X tells you to Y, run the fuck away" appears multiple times)
 2. Do any posts use the same key phrase more than once across the batch?
-3. Do any posts reference the same statistic more than once? (e.g., $350K/mo or $3.5M/year used in 3+ posts)
+3. Do any posts reference the same statistic more than once? (e.g., the same revenue figure or metric appearing in 3+ posts)
 4. Are there fewer than 4 distinctly different hook styles across the batch?
 
 For EACH duplicate or near-duplicate post found, rewrite it completely using:
@@ -470,7 +470,7 @@ CRITICAL RULES FOR VARIETY:
 
 VARIETY CHECKLIST — before returning your posts, verify ALL of these:
 □ No two posts start with a similar opening pattern
-□ No single stat (like $350K/mo) appears in more than 2 posts
+□ No single stat or metric appears in more than 2 posts
 □ No phrase appears in more than 1 post
 □ At least 3 different stories from the vault are used (if available)
 □ At least 3 different post lengths are represented (one-liner, short, multi-paragraph)

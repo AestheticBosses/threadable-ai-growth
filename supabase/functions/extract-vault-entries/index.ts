@@ -101,7 +101,7 @@ A) STORIES — real experiences and anecdotes. For each:
 B) NUMBERS — specific metrics, dollar amounts, and data points the creator has cited. For each:
 - label: what the number represents (e.g., 'Monthly Revenue', 'Views in 24 Hours')
 - value: the exact figure as stated (e.g., '$350K/month', '45K+')
-- context: where this number comes from in 1 short phrase (e.g., 'Natura Med Spa', 'Threads organic experiment')
+- context: where this number comes from in 1 short phrase (e.g., 'client campaign', 'organic content experiment')
 
 C) KNOWLEDGE BASE — frameworks, insights, expertise, and opinions. For each:
 - title: short descriptive title

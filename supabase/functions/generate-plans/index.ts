@@ -227,7 +227,7 @@ CRITICAL: Vary post lengths dramatically. Some posts should be under 30 words â€
 Archetypes are starting points, not constraints. You may create hybrid posts that blend two archetypes, or freestyle posts that don't fit any archetype cleanly. Label hybrid posts with both archetypes (e.g., 'Dad-Founder Confessional Ã— Build-In-Public'). Label pure identity/vulnerability posts as 'Raw Operator'. The goal is authentic variety, not formula adherence. At least 3-4 posts per day should break the archetype mold.
 
 Mix these formats across each day:
-- Identity stacks: short posts that layer who you are in one breath (e.g., 'I'm 35 with ADHD, two kids, and building an AI app after bedtime.')
+- Identity stacks: short posts that layer who you are in one breath (e.g., 'I'm [age] with [quirk], [family detail], and building [product] after [constraint].')
 - Data drops: specific numbers from real results, no fluff
 - Hot takes: controversial or contrarian one-liners under 20 words
 - Story hooks: open a loop in the first line that demands the reader keep going
