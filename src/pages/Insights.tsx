@@ -33,11 +33,12 @@ const Insights = () => {
   const [analyzing, setAnalyzing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("posted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [syncing, setSyncing] = useState(false);
   const autoFetchRan = useRef(false);
 
   const rangeDays: Record<RangeType, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90, custom: 30 };
 
-  // ─── Silent auto-fetch on mount ───
+  // ─── Auto-sync Threads data on mount (30-min cooldown) ───
   useEffect(() => {
     if (!user?.id || autoFetchRan.current) return;
     autoFetchRan.current = true;
@@ -53,12 +54,14 @@ const Insights = () => {
         if (!profile?.threads_access_token) return;
 
         const lastFetched = profile?.last_fetched_at ? new Date(profile.last_fetched_at) : null;
-        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
 
-        if (lastFetched && lastFetched > sixHoursAgo) return;
+        if (lastFetched && lastFetched > thirtyMinAgo) return;
 
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
+
+        setSyncing(true);
 
         await supabase.functions.invoke("fetch-user-posts", {
           headers: { Authorization: `Bearer ${session.access_token}` },
@@ -70,9 +73,12 @@ const Insights = () => {
           .eq("id", user.id);
 
         queryClient.invalidateQueries({ queryKey: ["insights-performance"] });
-        toast.success("Posts synced", { duration: 2000 });
+        queryClient.invalidateQueries({ queryKey: ["insights-regression"] });
+        queryClient.invalidateQueries({ queryKey: ["insights-growth"] });
       } catch {
         // Silent fail — don't interrupt user
+      } finally {
+        setSyncing(false);
       }
     })();
   }, [user?.id, queryClient]);
@@ -272,7 +278,14 @@ const Insights = () => {
     <AppLayout>
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Insights</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Insights</h1>
+            {syncing && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Syncing...
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-muted-foreground text-sm">Your performance analytics dashboard.</p>
         </div>
 
