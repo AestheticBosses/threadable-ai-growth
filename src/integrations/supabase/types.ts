@@ -255,6 +255,7 @@ export type Database = {
           archetype: string | null
           created_at: string | null
           draft_length_signal: string | null
+          emotional_trigger: string | null
           funnel_stage: string | null
           id: string
           is_test_slot: boolean | null
@@ -272,6 +273,7 @@ export type Database = {
           archetype?: string | null
           created_at?: string | null
           draft_length_signal?: string | null
+          emotional_trigger?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
@@ -289,6 +291,7 @@ export type Database = {
           archetype?: string | null
           created_at?: string | null
           draft_length_signal?: string | null
+          emotional_trigger?: string | null
           funnel_stage?: string | null
           id?: string
           is_test_slot?: boolean | null
