@@ -9,6 +9,32 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const EMOTIONAL_TRIGGER_MAP: Record<string, string> = {
+  // TOF
+  curiosity: "EMOTIONAL TARGET: Curiosity. The reader should finish this post thinking 'I never thought about it that way.' Open a question in line 1, deepen it through the middle, and close with an insight that partially resolves it — leaving them wanting to follow for more. DO NOT explain everything. Leave one thread deliberately unresolved.",
+  identity: "EMOTIONAL TARGET: Identity. The reader should finish this post thinking 'This person gets me — or this person IS me.' Write TO a specific type of person, not about a topic. Use 'you' language or mirror their internal monologue. The close should make them feel seen, not taught.",
+  contrarian_shock: "EMOTIONAL TARGET: Contrarian Shock. The reader should finish this post thinking 'Wait — is that actually true?' State the unpopular position in line 1 with full confidence. No hedging. The body is the case for why the mainstream view is wrong. The close is the reframe that makes them question everything they thought before.",
+  tribal_belonging: "EMOTIONAL TARGET: Tribal Belonging. The reader should finish this post feeling like they found their people. Write about a shared experience that only THIS specific type of person would recognize. The close is a call-in, not a call-to-action — 'if you know, you know.'",
+  pattern_interrupt: "EMOTIONAL TARGET: Pattern Interrupt. This post should feel completely different from the posts around it. Use an unexpected structure — a single short line, a question with no answer, or a statement that breaks format. The close should be abrupt and memorable. Prioritize surprise over information.",
+  // MOF
+  trust: "EMOTIONAL TARGET: Trust. The reader should finish this post thinking 'I believe this person.' Lead with a specific proof point — a real number, a named client result, or a mechanism you can name. The body deepens the proof. The close positions you as the person who knows this better than anyone.",
+  fomo: "EMOTIONAL TARGET: FOMO. The reader should finish this post feeling like something is passing them by. Describe what's working for people who know this — without being explicit about what they're missing. Let the gap create urgency. Close with a soft invitation, not a hard sell.",
+  proof_of_mechanism: "EMOTIONAL TARGET: Proof of Mechanism. The reader should finish this post understanding WHY something works, not just THAT it works. Name the mechanism explicitly. Explain the cause-effect chain. The close should make the mechanism feel accessible — 'this is how it works and you can use it.'",
+  credibility: "EMOTIONAL TARGET: Credibility. The reader should finish this post upgrading their mental model of who you are. Stack two or three specific proof points — roles, results, decisions. Never brag. Let the facts do it. The close is quiet confidence.",
+  relatability: "EMOTIONAL TARGET: Relatability. The reader should finish this post thinking 'same.' Write about a real, specific moment of struggle, confusion, or imposter syndrome that the reader has felt but probably hasn't said out loud. The close normalizes the experience.",
+  // BOF
+  urgency: "EMOTIONAL TARGET: Urgency. The reader should finish this post feeling like waiting has a cost. Name what they're losing by not acting — time, money, competitive advantage, or clarity. The close is a direct invitation to act NOW, not someday.",
+  social_proof: "EMOTIONAL TARGET: Social Proof. The reader should finish this post thinking 'other people like me are already doing this.' Lead with a specific result someone got. Name the mechanism. Close with a low-friction next step that feels like joining something, not buying something.",
+  result_first: "EMOTIONAL TARGET: Result First. Open with the end state — what life looks like after. Make it specific and desirable. Work backward to show how you got there. The close presents the offer as the shortcut to that specific result.",
+  offer_clarity: "EMOTIONAL TARGET: Offer Clarity. The reader should finish this post with zero confusion about what you offer, who it's for, and what it costs. Name the offer explicitly. State the outcome in one sentence. Remove all vagueness. Close with one clear CTA.",
+  fear_of_staying_stuck: "EMOTIONAL TARGET: Fear of Staying Stuck. The reader should finish this post feeling the cost of staying where they are. Describe their current situation accurately and painfully. The middle shows what's possible. The close makes the gap between now and possible feel urgent and solvable.",
+};
+
+const STRUCTURE_SKELETONS: Record<string, string> = {
+  MICRO: "STRUCTURE: Hook only. 1-3 lines maximum. No explanation. No lesson. The hook IS the post. Make it so sharp it doesn't need more.",
+  SHORT: "STRUCTURE: Hook → One Beat → Close.\nHook: the opening line (already provided).\nOne Beat: one specific detail, fact, or moment that proves or deepens the hook. 2-4 lines max.\nClose: one line that lands the emotional target. No CTA unless BOF.",
+  STANDARD: "STRUCTURE: Hook → Tension → Proof → Insight → Close.\nHook: the opening line (already provided).\nTension: the problem, contradiction, or gap that makes the hook real.\nProof: one specific story beat, data point, or named moment.\nInsight: the one thing the reader should walk away knowing.\nClose: delivers the emotional target. For BOF: close with a direct CTA.",
+};
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -137,6 +163,13 @@ serve(async (req) => {
           const target = signalTargets[resolvedSignal];
           const lengthInstruction = target.instruction;
 
+          // Emotional trigger instruction
+          const emotionalTriggerBlock = EMOTIONAL_TRIGGER_MAP[post.emotional_trigger || ""]
+            || "EMOTIONAL TARGET: Curiosity. Open a question, deepen it, close with a partial insight.";
+
+          // Structure skeleton based on length signal
+          const structureBlock = STRUCTURE_SKELETONS[resolvedSignal] || STRUCTURE_SKELETONS.STANDARD;
+
           const systemPrompt = `${CONTENT_GENERATION_RULES}
 
 You are Threadable — a data-driven Threads content writer. You write posts that are backed by regression analysis of this user's actual performance data.
@@ -153,6 +186,12 @@ Invisible inputs (DO NOT include any of these as labels, headers, or structure i
 - Funnel Stage: ${post.funnel_stage || "TOF"}
 - Topic: ${post.topic || ""}
 - Hook idea: ${post.hook_idea || ""}
+
+=== ${emotionalTriggerBlock} ===
+
+=== ${structureBlock} ===
+
+ONE THING RULE: This post makes exactly ONE point. Not two. Not a lesson with sub-lessons. One claim, proven one way, closed once. If you find yourself writing a second point, delete it.
 
 === VOICE FIRST ===
 Study the user's top-performing posts in the context below. Understand their natural voice, tone, rhythm, and what resonates with their specific audience. Mirror THAT — not a generic "content creator" voice. The best post sounds like this specific user at their most honest. Polish kills authenticity. Strategy is the input, not the output.
