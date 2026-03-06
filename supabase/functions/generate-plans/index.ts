@@ -256,6 +256,30 @@ STORY ROTATION: You have access to the creator's full story vault. Do NOT keep r
 - At least 30% of posts each day should NOT reference any specific story from the vault — instead use opinions, hot takes, data insights, or untapped angles.
 - Prioritize UNTAPPED ANGLES for at least 2-3 posts per day. These are fresh topics that will surprise the audience.
 
+=== NEW ANGLE MANDATE — CRITICAL ===
+Each week's plan must contain at least 40% posts built from angles NOT previously used in recent content. "New angle" means:
+- A different ENTRY POINT into a familiar story (not just different words for the same opening)
+- A contrarian take on a topic you've covered before
+- An observation from this week's actual events or build progress
+- A "what I got wrong about X" reframe of previous advice
+- A second-order consequence nobody talks about
+- A comparison or contrast that hasn't been made before
+
+To generate new angles, ask: "What would this creator notice THIS WEEK that they haven't posted about yet?" Draw from:
+- Their untapped angles section (if available)
+- The gaps between what their audience asks and what they've answered
+- Current events in their industry filtered through their operator lens
+- The mundane operational details of running their actual businesses
+
+NEVER fill the week by recycling vault story openings with different words. If a vault story has been the hook opener in the last 2 weeks, it must enter through the MIDDLE of a post as supporting detail only.
+
+=== STAT & PHRASE UNIQUENESS ACROSS THE WEEK ===
+Track every specific number, dollar amount, percentage, and named concept you use as a hook opener across all 7 days:
+- No specific stat (percentage, dollar amount, time reference, multiplier) may appear as a hook opener in more than 1 post across the entire week
+- No named concept (person, place, product name, specific story) may be the primary hook in more than 2 posts across the week
+- If you've used a stat in one post's hook, use a DIFFERENT stat or no stat in the next
+- Keep a mental running list as you generate each day: what stats and key phrases have I already used?
+
 Use the regression insights to determine archetype distribution — weight archetypes higher that have proven to drive more views and engagement in the user's data. Do not distribute archetypes evenly unless the data supports it.
 
 Reference the user's sales funnel steps when creating BOF post ideas — use their real offer names, prices, and URLs.
@@ -683,7 +707,7 @@ serve(async (req) => {
         : plan_type === "branding_plan"
         ? BRANDING_PLAN_PROMPT
         : FUNNEL_STRATEGY_PROMPT;
-    const systemPrompt = basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
+    // systemPrompt built after storyRotationBlock so rotation constraints appear at top
 
     // Build goal-based CTA rules block
     const goalType = profile?.goal_type ?? "not set";
@@ -781,18 +805,23 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
             themeFrequency[vt.theme] = count;
           }
 
+          const banned = vaultThemes
+            .filter(t => (themeFrequency[t.theme] || 0) >= 10)
+            .sort((a, b) => (themeFrequency[b.theme] || 0) - (themeFrequency[a.theme] || 0));
+
           const overused = vaultThemes
-            .filter(t => (themeFrequency[t.theme] || 0) >= 2)
+            .filter(t => (themeFrequency[t.theme] || 0) >= 2 && (themeFrequency[t.theme] || 0) < 10)
             .sort((a, b) => (themeFrequency[b.theme] || 0) - (themeFrequency[a.theme] || 0));
 
           const fresh = vaultThemes
             .filter(t => (themeFrequency[t.theme] || 0) === 0);
 
-          if (overused.length > 0 || fresh.length > 0) {
+          if (banned.length > 0 || overused.length > 0 || fresh.length > 0) {
             const parts: string[] = [];
+            if (banned.length > 0) parts.push(`BANNED FROM HOOK OPENERS THIS WEEK:\n${banned.map(t => `- "${t.theme}" (${themeFrequency[t.theme]} recent posts) — do not open any post with this theme this week`).join('\n')}`);
             if (overused.length > 0) parts.push(`OVERUSED — avoid as primary hook opener this week:\n${overused.map(t => `- "${t.theme}" (used in ${themeFrequency[t.theme]} recent posts)`).join('\n')}`);
             if (fresh.length > 0) parts.push(`FRESH — prioritize these as hook openers this week:\n${fresh.map(t => `- "${t.theme}"`).join('\n')}`);
-            storyRotationBlock = `\n\n=== STORY THEME ROTATION (based on your last 50 published posts) ===\n${parts.join('\n')}\nAny story used 2+ times recently should NOT open a post this week.\nIt can appear as a supporting detail in 1 post maximum.\n`;
+            storyRotationBlock = `\n\n=== STORY THEME ROTATION (based on your last 50 published posts) ===\n${parts.join('\n')}\n\nHARD RULES — these are not suggestions:\n1. Any theme listed as OVERUSED must NOT appear as a hook opener this week. Zero exceptions.\n2. Any theme listed as BANNED must NOT open a post this week — it may only appear as a mid-post supporting detail if essential.\n3. At least 60% of hook openers must come from the FRESH list or be completely new angles not derived from any vault story.\n4. If you cannot generate a hook without referencing an overused or banned theme, generate a contrarian or observational hook instead — something the creator would notice this week that has nothing to do with their personal story vault.\n`;
           }
 
           console.log("[generate-plans] theme frequency:", JSON.stringify(themeFrequency));
@@ -802,8 +831,16 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
       }
     }
 
-    // Build user message once (shared by single and batch paths)
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + storyRotationBlock + "\n" + userContext;
+    // Build rotation header — prepended to system prompt so AI reads constraints first
+    const rotationHeader = storyRotationBlock
+      ? `BEFORE GENERATING ANYTHING, READ THESE HARD CONSTRAINTS:\n\n${storyRotationBlock}\n\nViolating these constraints means the plan will be rejected and regenerated. Now proceed:\n\n`
+      : "";
+
+    // Build system prompt with rotation constraints at the very top
+    const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints : "");
+
+    // Build user message once (shared by single and batch paths) — storyRotationBlock moved to system prompt
+    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + recentPostsBlock + "\n" + userContext;
 
     let planData: any;
     try {
@@ -829,6 +866,29 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           return hooks;
         }
 
+        // Helper: extract stats and key phrases from batch hooks for cross-batch uniqueness
+        function extractStatsAndPhrases(batchData: any): string[] {
+          const stats: Set<string> = new Set();
+          if (batchData?.daily_plan && Array.isArray(batchData.daily_plan)) {
+            for (const day of batchData.daily_plan) {
+              if (day.posts && Array.isArray(day.posts)) {
+                for (const post of day.posts) {
+                  const hook = post.hook_idea || "";
+                  const dollars = hook.match(/\$[\d,.]+[KkMmBb]?(?:\/\w+)?/g);
+                  if (dollars) dollars.forEach((d: string) => stats.add(d));
+                  const pcts = hook.match(/\d+\.?\d*%/g);
+                  if (pcts) pcts.forEach((p: string) => stats.add(p));
+                  const multipliers = hook.match(/\d+[xX]\b/g);
+                  if (multipliers) multipliers.forEach((m: string) => stats.add(m));
+                  const times = hook.match(/\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?/g);
+                  if (times) times.forEach((t: string) => stats.add(t));
+                }
+              }
+            }
+          }
+          return [...stats];
+        }
+
         // Helper: build dedup instruction block from previously used hooks
         function buildDedupBlock(usedHooks: string[]): string {
           if (usedHooks.length === 0) return "";
@@ -841,7 +901,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         console.log("[generate-plans] 2-BATCH SEQUENTIAL MODE: postsPerDay:", postsPerDay, "batch1:", batch1Days, "batch2:", batch2Days);
 
         // Batch 1
-        const batch1System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n` + storyDayHints;
+        const batch1System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch1Days.length} days: ${batch1Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate primary_archetypes. Do NOT generate weekly_themes.\n` + storyDayHints;
         const raw1 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch1System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch1 length:", raw1.length);
         const batch1Data = recoverTruncatedJSON(raw1, batch1Days.length * postsPerDay, "Batch1");
@@ -849,8 +909,12 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         const batch1Hooks = extractHooks(batch1Data);
         console.log("[generate-plans] batch1 hooks extracted:", batch1Hooks.length);
 
-        // Batch 2 — inject batch 1 hooks for dedup
-        const batch2System = baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + storyDayHints + buildDedupBlock(batch1Hooks);
+        // Batch 2 — inject batch 1 hooks + stats for dedup
+        const batch1Stats = extractStatsAndPhrases(batch1Data);
+        const statsBlock = batch1Stats.length > 0
+          ? `\n\nALREADY USED STATS THIS WEEK — do not repeat these as hook openers:\n${batch1Stats.map(s => `- ${s}`).join("\n")}\n`
+          : "";
+        const batch2System = rotationHeader + baseSystemPrompt + `\nToday is ${todayName}. Generate posts ONLY for these ${batch2Days.length} days: ${batch2Days.join(", ")}. Each day must have exactly ${postsPerDay} posts. Also generate weekly_themes. Do NOT generate primary_archetypes.\n` + storyDayHints + buildDedupBlock(batch1Hooks) + statsBlock;
         const raw2 = await callAnthropicForPlan(ANTHROPIC_API_KEY, batch2System, userMessage, BATCH_MAX_TOKENS);
         console.log("[generate-plans] batch2 length:", raw2.length);
         const batch2Data = recoverTruncatedJSON(raw2, batch2Days.length * postsPerDay, "Batch2");
@@ -927,6 +991,60 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
             }
           }
           console.log(`[dedup] Checked ${planData.daily_plan.reduce((s: number, d: any) => s + (d.posts?.length || 0), 0)} hooks against ${existingPosts.length} existing posts. Flagged: ${flaggedCount}`);
+        }
+
+        // Within-week concept dedup: catch same-concept hooks across the plan
+        const CONCEPT_STOP = new Set([
+          "i","my","the","you","your","is","are","was","a","an","of","in",
+          "for","to","and","that","it","this","with","have","been","me",
+          "we","our","just","not","but","on","no","so","do","if","at",
+          "be","or","as","by","up","all","out","can","get","got","has",
+          "had","one","now","how","new","from","they","them","will",
+          "most","what","when","who","why","don","didn","won","doesn",
+          "about","into","than","then","more","some","its","here","there",
+        ]);
+        const weekPosts: { day: string; post: any; fingerprints: Set<string> }[] = [];
+        for (const day of planData.daily_plan) {
+          if (!day.posts || !Array.isArray(day.posts)) continue;
+          for (const post of day.posts) {
+            if (!post.hook_idea) continue;
+            const snippet = post.hook_idea.slice(0, 60).toLowerCase().replace(/[^a-z0-9\s$%]/g, " ");
+            const words = snippet.split(/\s+/).filter((w: string) => w.length > 1 && !CONCEPT_STOP.has(w));
+            const fps = new Set<string>();
+            for (let wi = 0; wi < words.length - 1; wi++) {
+              fps.add(words[wi] + " " + words[wi + 1]);
+            }
+            // Single distinctive words (stats, long nouns)
+            for (const w of words) {
+              if (/\$|%|\d/.test(w) || w.length > 6) fps.add(w);
+            }
+            weekPosts.push({ day: day.day, post, fingerprints: fps });
+          }
+        }
+        console.log(`[concept-dedup] Built fingerprints for ${weekPosts.length} posts`);
+        const seenConcepts = new Map<string, string>();
+        let conceptFlagCount = 0;
+        for (const entry of weekPosts) {
+          if (entry.post.needs_remix) continue;
+          let matched = false;
+          for (const fp of entry.fingerprints) {
+            if (seenConcepts.has(fp)) {
+              entry.post.needs_remix = true;
+              entry.post.remix_reason = `concept duplicate of ${seenConcepts.get(fp)} post`;
+              conceptFlagCount++;
+              console.log(`[concept-dedup] "${entry.post.hook_idea.slice(0, 60)}" shares concept "${fp}" with ${seenConcepts.get(fp)}`);
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            for (const fp of entry.fingerprints) {
+              if (!seenConcepts.has(fp)) seenConcepts.set(fp, entry.day);
+            }
+          }
+        }
+        if (conceptFlagCount > 0) {
+          console.log(`[concept-dedup] Flagged ${conceptFlagCount} concept duplicates within the week`);
         }
       } catch (dedupErr) {
         console.warn("[dedup] Dedup check failed (non-fatal):", dedupErr);
