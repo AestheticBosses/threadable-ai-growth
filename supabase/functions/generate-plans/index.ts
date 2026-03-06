@@ -1034,15 +1034,20 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           if (!day.posts || !Array.isArray(day.posts)) continue;
           for (const post of day.posts) {
             if (!post.hook_idea) continue;
-            const snippet = post.hook_idea.slice(0, 60).toLowerCase().replace(/[^a-z0-9\s$%]/g, " ");
+            const snippet = post.hook_idea.slice(0, 100).toLowerCase().replace(/[^a-z0-9\s$%]/g, " ");
             const words = snippet.split(/\s+/).filter((w: string) => w.length > 1 && !CONCEPT_STOP.has(w));
             const fps = new Set<string>();
+            // Bigrams
             for (let wi = 0; wi < words.length - 1; wi++) {
               fps.add(words[wi] + " " + words[wi + 1]);
             }
-            // Single distinctive words (stats, long nouns)
+            // Trigrams
+            for (let wi = 0; wi < words.length - 2; wi++) {
+              fps.add(words[wi] + " " + words[wi + 1] + " " + words[wi + 2]);
+            }
+            // Single distinctive words (stats, long nouns — 7+ chars)
             for (const w of words) {
-              if (/\$|%|\d/.test(w) || w.length > 6) fps.add(w);
+              if (/\$|%|\d/.test(w) || w.length > 7) fps.add(w);
             }
             weekPosts.push({ day: day.day, post, fingerprints: fps });
           }
@@ -1071,6 +1076,58 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         }
         if (conceptFlagCount > 0) {
           console.log(`[concept-dedup] Flagged ${conceptFlagCount} concept duplicates within the week`);
+        }
+
+        // Vault story dedup: catch multiple posts referencing the same vault story
+        const SEMANTIC_EXPANSIONS: Record<string, string[]> = {
+          baby: ["newborn", "infant", "child", "kid", "daughter", "son", "parent", "birth"],
+          fired: ["layoff", "laid off", "let go", "terminated", "lost job", "unemployment"],
+          mastermind: ["group", "community", "cohort", "circle", "network", "tribe"],
+          agency: ["firm", "consultancy", "shop", "studio", "practice", "company"],
+          revenue: ["income", "earnings", "sales", "profit", "arr", "mrr", "cash"],
+          client: ["customer", "account", "brand", "partner"],
+          hire: ["recruit", "team", "employee", "contractor", "talent"],
+          launch: ["release", "ship", "debut", "rollout", "drop"],
+          fail: ["failure", "mistake", "flop", "disaster", "loss"],
+          grow: ["growth", "scale", "scaling", "expand", "expansion"],
+        };
+
+        if (vaultThemes.length > 0) {
+          // Expand vault keywords with semantic synonyms
+          const expandedVaultThemes = vaultThemes.map(vt => {
+            const expandedKw = new Set(vt.keywords);
+            for (const kw of vt.keywords) {
+              const expansions = SEMANTIC_EXPANSIONS[kw];
+              if (expansions) {
+                for (const syn of expansions) expandedKw.add(syn);
+              }
+            }
+            return { theme: vt.theme, keywords: Array.from(expandedKw) };
+          });
+
+          const seenVaultStories = new Map<string, string>(); // theme → first day
+          let vaultFlagCount = 0;
+          for (const entry of weekPosts) {
+            if (entry.post.needs_remix) continue;
+            const hookLower = (entry.post.hook_idea || "").toLowerCase();
+            for (const vt of expandedVaultThemes) {
+              const matchCount = vt.keywords.filter(kw => hookLower.includes(kw)).length;
+              if (matchCount >= 2) {
+                if (seenVaultStories.has(vt.theme)) {
+                  entry.post.needs_remix = true;
+                  entry.post.remix_reason = `same vault story "${vt.theme}" already used on ${seenVaultStories.get(vt.theme)}`;
+                  vaultFlagCount++;
+                  console.log(`[vault-dedup] "${entry.post.hook_idea.slice(0, 60)}" reuses vault story "${vt.theme}"`);
+                  break;
+                } else {
+                  seenVaultStories.set(vt.theme, entry.day);
+                }
+              }
+            }
+          }
+          if (vaultFlagCount > 0) {
+            console.log(`[vault-dedup] Flagged ${vaultFlagCount} vault story duplicates within the week`);
+          }
         }
       } catch (dedupErr) {
         console.warn("[dedup] Dedup check failed (non-fatal):", dedupErr);
