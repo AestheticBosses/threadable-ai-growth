@@ -36,6 +36,55 @@ const STRUCTURE_SKELETONS: Record<string, string> = {
   STANDARD: "STRUCTURE: Hook → Tension → Proof → Insight → Close.\nHook: the opening line (already provided).\nTension: the problem, contradiction, or gap that makes the hook real.\nProof: one specific story beat, data point, or named moment.\nInsight: the one thing the reader should walk away knowing.\nClose: delivers the emotional target. For BOF: close with a direct CTA.",
 };
 
+async function scoreDraft(
+  apiKey: string,
+  text: string,
+  emotionalTrigger: string,
+  funnelStage: string,
+): Promise<{ total: number; weakest_criterion: string; improvement_note: string } | null> {
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        system: `You are a content quality scorer. Score this Threads post on 5 criteria (0-2 each). Return ONLY valid JSON:
+{
+  "hook_strength": 0-2,
+  "emotional_delivery": 0-2,
+  "one_thing_rule": 0-2,
+  "specificity": 0-2,
+  "close_strength": 0-2,
+  "total": 0-10,
+  "weakest_criterion": "name of the lowest scoring criterion",
+  "improvement_note": "one sentence on what to fix"
+}`,
+        messages: [{
+          role: "user",
+          content: `Emotional target for this post: ${emotionalTrigger}
+Funnel stage: ${funnelStage}
+Character count: ${text.length} of 500 max
+
+Post to score:
+${text}`,
+        }],
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const raw = (data.content?.[0]?.text || "").trim();
+    const cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -225,6 +274,8 @@ For every post you write:
 - NEVER include 📌, pillar names, archetype names, funnel stage labels, or any structured headers in the post text. Strategy is invisible.
 - ABSOLUTE HARD LIMIT: 500 characters maximum. This is a Threads platform limit — posts over 500 characters will be rejected. Count every character including spaces and line breaks. If your draft is over 500 characters, cut it. The post in this response must be 500 characters or fewer, no exceptions.
 
+CHARACTER RULE: 500 characters is the hard ceiling — never exceed it. But shorter is usually stronger. Your most viral posts were tweet-length. Write the minimum characters needed to land the emotional target. Never pad. If it's done in 80 characters, stop at 80.
+
 === POST LENGTH VARIETY IS CRITICAL ===
 Not every post should be an essay. Follow these rules:
 - If the hook_idea is under 15 words, the FULL POST should be just 1-3 lines. The hook IS the post. Do not expand it into paragraphs. Short and punchy wins.
@@ -236,7 +287,9 @@ The creator's voice data and content preferences already specify short paragraph
 
 Respond with ONLY the post text. No explanations, no labels, no quotes around it.`;
 
+          const postKey = `${post.day || "?"}-${postIndex}`;
           try {
+            // Generate first draft
             const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: {
@@ -245,7 +298,7 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                 "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
-                model: "claude-opus-4-6",
+                model: "claude-sonnet-4-20250514",
                 max_tokens: 1000,
                 system: systemPrompt,
                 messages: [
@@ -264,7 +317,82 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
 
             if (!text) return { error: "Empty response", post };
 
-            // Hard enforce 500 character limit
+            // === Quality Gate: Score + Retry ===
+            try {
+              let needsRetry = false;
+              let retryInstruction = "";
+              let firstScore: number | null = null;
+
+              if (text.length > 500) {
+                // Over character limit — force retry without scoring
+                console.log(`[draft-score] post ${postKey}: ${text.length} chars — OVER LIMIT, forcing retry`);
+                needsRetry = true;
+                retryInstruction = `The previous draft was ${text.length} characters. 500 is the hard ceiling but shorter is stronger. Rewrite to under 500 characters — cut the middle first, never cut the hook or close.`;
+              } else {
+                // Score with haiku
+                const scoreResult = await scoreDraft(
+                  ANTHROPIC_API_KEY,
+                  text,
+                  post.emotional_trigger || "curiosity",
+                  post.funnel_stage || "TOF",
+                );
+                if (scoreResult) {
+                  firstScore = scoreResult.total;
+                  console.log(`[draft-score] post ${postKey}: ${text.length} chars, score ${scoreResult.total}/10 (weakest: ${scoreResult.weakest_criterion})`);
+                  if (scoreResult.total < 7) {
+                    needsRetry = true;
+                    retryInstruction = `RETRY ATTEMPT — The previous draft scored ${scoreResult.total}/10 and was ${text.length} characters.\nWeakest area: ${scoreResult.weakest_criterion}.\nSpecific feedback: ${scoreResult.improvement_note}\nRewrite the post to fix this specific weakness. Keep what worked.\nRemember: shorter is usually stronger — don't pad to fill space.\nDo not start with the same opening word as the previous draft.`;
+                  }
+                }
+              }
+
+              if (needsRetry) {
+                const retryResp = await fetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                  },
+                  body: JSON.stringify({
+                    model: "claude-sonnet-4-20250514",
+                    max_tokens: 1000,
+                    system: systemPrompt + "\n\n" + retryInstruction,
+                    messages: [
+                      { role: "user", content: buildUserMessage(post, target, postIndex, shuffledVaultTitles) },
+                    ],
+                  }),
+                });
+
+                if (retryResp.ok) {
+                  const retryData = await retryResp.json();
+                  const retryText = (retryData.content?.[0]?.text || "").trim();
+
+                  if (retryText) {
+                    const retryScoreResult = await scoreDraft(
+                      ANTHROPIC_API_KEY,
+                      retryText,
+                      post.emotional_trigger || "curiosity",
+                      post.funnel_stage || "TOF",
+                    );
+                    const retryScoreVal = retryScoreResult?.total ?? 0;
+                    console.log(`[draft-score] retry: ${retryText.length} chars, score ${retryScoreVal}/10`);
+
+                    // Return whichever scored higher; ties go to retry
+                    if (retryScoreVal >= (firstScore ?? 0)) {
+                      text = retryText;
+                      console.log(`[draft-score] returning retry draft`);
+                    } else {
+                      console.log(`[draft-score] returning original draft`);
+                    }
+                  }
+                }
+              }
+            } catch (scoreErr) {
+              console.warn("[draft-score] Scoring/retry failed (non-fatal):", scoreErr);
+            }
+
+            // Hard enforce 500 character limit (final safety net)
             if (text.length > 500) {
               const trimResp = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
@@ -274,9 +402,9 @@ Respond with ONLY the post text. No explanations, no labels, no quotes around it
                   "anthropic-version": "2023-06-01",
                 },
                 body: JSON.stringify({
-                  model: "claude-opus-4-6",
+                  model: "claude-sonnet-4-20250514",
                   max_tokens: 300,
-                  system: "You are a Threads post editor. Trim the post to under 500 characters while preserving the hook, core message, and voice. Never cut mid-sentence. Return ONLY the trimmed post text.",
+                  system: "You are a Threads post editor. Trim the post to under 500 characters while preserving the hook, core message, and voice. Never cut mid-sentence. Return ONLY the trimmed post text.\n\nCHARACTER RULE: 500 characters is the hard ceiling — never exceed it. But shorter is usually stronger. Your most viral posts were tweet-length. Write the minimum characters needed to land the emotional target. Never pad. If it's done in 80 characters, stop at 80.",
                   messages: [{ role: "user", content: `Trim this to under 500 characters:\n\n${text}` }],
                 }),
               });
