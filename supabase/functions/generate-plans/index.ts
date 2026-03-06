@@ -235,6 +235,24 @@ Mix these formats across each day:
 - Confessionals: raw vulnerability, no lesson attached
 Do NOT make every post educational or lesson-based. Most viral posts are identity-first, lesson-second.
 
+=== HOOK COMPETITION — REQUIRED FOR EVERY POST ===
+For each post slot, you MUST generate exactly 3 hook_idea options before selecting one. Never generate 1 and move on.
+
+Hook option A: SPECIFICITY LEAD — open with the most specific number or data point available. No setup. Just the fact + unexpected context that reframes it.
+
+Hook option B: IDENTITY/POV CHALLENGE — open with "You", "They", "Nobody", "Everyone", or "Most". Address the reader's belief or their enemy. Never start with "I".
+
+Hook option C: OPEN LOOP — open with something that cannot be understood without reading more. A scene mid-action, an unresolved confession, a statement that raises an immediate question. NO resolution in the hook itself.
+
+Score each option on 3 criteria (0-3 each, max 9):
+- Specificity: does it include a real number/mechanism or is it vague?
+- Open loop strength: does it NEED resolution or does it resolve itself?
+- Emotional trigger: does it hit fear, identity, curiosity, or proof appropriate to its funnel stage?
+
+Select the HIGHEST scoring hook as hook_idea. Do not include the scoring or alternatives in the output — only the winning hook_idea.
+
+If two hooks tie, prefer the one that uses a POV the creator hasn't used recently (check recent posts for "I"-heavy hooks and deprioritize "I" openers if overrepresented).
+
 FACT-CHECK ALL NUMBERS: Never fabricate dollar amounts, percentages, or cost comparisons. Rules:
 - Only use specific numbers that appear in the creator's knowledge base, regression data, story vault, identity profile, or top posts data provided in the context
 - For any cost comparison (e.g., 'this would cost $X in ads'), do basic math: social media CPMs range $5-$30, so divide the view count by 1000 and multiply by a CPM in that range. Never inflate costs to make organic look better — the real numbers are impressive enough.
@@ -308,6 +326,13 @@ FUNNEL MIX RULES for daily schedule:
 - BOF posts should be 1-2 per day maximum regardless of posts_per_day setting. Never over-index on BOF — it kills organic reach on Threads.
 - Maintain roughly TOF 45-55%, MOF 30-35%, BOF 10-20% across the weekly plan.
 
+EMOTIONAL TRIGGER per post — REQUIRED:
+Every post MUST declare an emotional_trigger matched to its funnel_stage:
+- TOF triggers: "curiosity", "identity", "contrarian_shock", "tribal_belonging", "pattern_interrupt"
+- MOF triggers: "trust", "fomo", "proof_of_mechanism", "credibility", "relatability"
+- BOF triggers: "urgency", "social_proof", "result_first", "offer_clarity", "fear_of_staying_stuck"
+Vary triggers across each day. Do not use the same trigger for more than 2 posts per day.
+
 Respond ONLY with valid JSON in this format:
 {
   "posts_per_day": number,
@@ -321,7 +346,8 @@ Respond ONLY with valid JSON in this format:
           "funnel_stage": "TOF" | "MOF" | "BOF",
           "topic": "brief description of the post angle",
           "hook_idea": "suggested opening line",
-          "draft_length_signal": "MICRO" | "SHORT" | "STANDARD"
+          "draft_length_signal": "MICRO" | "SHORT" | "STANDARD",
+          "emotional_trigger": "one of the trigger values above, matched to funnel_stage"
         }
       ]
     }
@@ -1171,6 +1197,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
               archetype: post.archetype || null,
               funnel_stage: post.funnel_stage || "TOF",
               draft_length_signal: post.draft_length_signal || "STANDARD",
+              emotional_trigger: post.emotional_trigger || null,
               is_test_slot: post.is_test_slot || false,
               status: "planned",
             });
