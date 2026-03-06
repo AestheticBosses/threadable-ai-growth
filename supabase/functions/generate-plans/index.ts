@@ -5,6 +5,39 @@ import { getUserContext } from "../_shared/getUserContext.ts";
 import { fetchJourneyStage, getStageConfig } from "../_shared/journeyStage.ts";
 import { safeParseJSON } from "../_shared/safeParseJSON.ts";
 
+// Generic semantic synonyms for vault theme matching (multi-tenant safe — no user-specific content)
+const SEMANTIC_EXPANSIONS: Record<string, string[]> = {
+  baby: ["newborn", "infant", "child", "kid", "daughter", "son", "parent", "birth"],
+  fired: ["layoff", "laid off", "let go", "terminated", "lost job", "unemployment"],
+  mastermind: ["group", "community", "cohort", "circle", "network", "tribe"],
+  agency: ["firm", "consultancy", "shop", "studio", "practice", "company"],
+  revenue: ["income", "earnings", "sales", "profit", "arr", "mrr", "cash"],
+  client: ["customer", "account", "brand", "partner"],
+  hire: ["recruit", "team", "employee", "contractor", "talent"],
+  launch: ["release", "ship", "debut", "rollout", "drop"],
+  fail: ["failure", "mistake", "flop", "disaster", "loss"],
+  grow: ["growth", "scale", "scaling", "expand", "expansion"],
+  money: ["cash", "income", "dollars", "revenue", "earnings", "profit"],
+  quit: ["resign", "walk away", "leave", "left", "walked out"],
+  start: ["startup", "founded", "launched", "built", "created", "began"],
+  broke: ["bankrupt", "zero", "nothing", "no money", "debt"],
+  garage: ["basement", "spare room", "apartment", "home office"],
+};
+
+/**
+ * Expand a set of keywords with semantic synonyms.
+ */
+function expandKeywords(keywords: string[]): string[] {
+  const expanded = new Set(keywords);
+  for (const kw of keywords) {
+    const expansions = SEMANTIC_EXPANSIONS[kw];
+    if (expansions) {
+      for (const syn of expansions) expanded.add(syn);
+    }
+  }
+  return Array.from(expanded);
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -923,6 +956,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
 
     // Cross-week story theme rotation
     let storyRotationBlock = "";
+    let bannedThemes: { theme: string; keywords: string[] }[] = [];
     if (plan_type === "content_plan" && vaultThemes.length > 0) {
       try {
         const { data: themeCheckPosts } = await admin
@@ -934,13 +968,17 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           .limit(50);
 
         if (themeCheckPosts && themeCheckPosts.length > 0) {
-          const postTexts = themeCheckPosts.map((p: any) => (p.text_content || "").toLowerCase().slice(0, 200));
+          const postTexts = themeCheckPosts.map((p: any) => (p.text_content || "").toLowerCase().slice(0, 300));
           const themeFrequency: Record<string, number> = {};
 
           for (const vt of vaultThemes) {
+            // Expand keywords with semantic synonyms for robust matching
+            const expanded = expandKeywords(vt.keywords);
             let count = 0;
             for (const text of postTexts) {
-              if (vt.keywords.some((kw: string) => text.includes(kw))) {
+              // Require 2+ keyword matches to avoid false positives from short common words
+              const matchCount = expanded.filter((kw: string) => text.includes(kw)).length;
+              if (matchCount >= 2) {
                 count++;
               }
             }
@@ -950,6 +988,12 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           const banned = vaultThemes
             .filter(t => (themeFrequency[t.theme] || 0) >= 10)
             .sort((a, b) => (themeFrequency[b.theme] || 0) - (themeFrequency[a.theme] || 0));
+
+          // Hoist banned themes with expanded keywords for post-generation validation
+          bannedThemes = banned.map(t => ({
+            theme: t.theme,
+            keywords: expandKeywords(t.keywords),
+          }));
 
           const overused = vaultThemes
             .filter(t => (themeFrequency[t.theme] || 0) >= 2 && (themeFrequency[t.theme] || 0) < 10)
@@ -963,7 +1007,7 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
             if (banned.length > 0) parts.push(`BANNED FROM HOOK OPENERS THIS WEEK:\n${banned.map(t => `- "${t.theme}" (${themeFrequency[t.theme]} recent posts) — do not open any post with this theme this week`).join('\n')}`);
             if (overused.length > 0) parts.push(`OVERUSED — avoid as primary hook opener this week:\n${overused.map(t => `- "${t.theme}" (used in ${themeFrequency[t.theme]} recent posts)`).join('\n')}`);
             if (fresh.length > 0) parts.push(`FRESH — prioritize these as hook openers this week:\n${fresh.map(t => `- "${t.theme}"`).join('\n')}`);
-            storyRotationBlock = `\n\n=== STORY THEME ROTATION (based on your last 50 published posts) ===\n${parts.join('\n')}\n\nHARD RULES — these are not suggestions:\n1. Any theme listed as OVERUSED must NOT appear as a hook opener this week. Zero exceptions.\n2. Any theme listed as BANNED must NOT open a post this week — it may only appear as a mid-post supporting detail if essential.\n3. At least 60% of hook openers must come from the FRESH list or be completely new angles not derived from any vault story.\n4. If you cannot generate a hook without referencing an overused or banned theme, generate a contrarian or observational hook instead — something the creator would notice this week that has nothing to do with their personal story vault.\n`;
+            storyRotationBlock = `\n\n=== STORY THEME ROTATION (based on your last 50 published posts) ===\n${parts.join('\n')}\n\nHARD RULES — these are not suggestions, they are absolute constraints:\n1. BANNED themes must NOT appear ANYWHERE in any hook_idea this week — not as the opener, not as a reference, not as a reframe, not as supporting detail. A banned theme is completely off-limits for hook_ideas. If your hook_idea contains any word or concept from a BANNED theme, delete it and write a new one.\n2. OVERUSED themes must NOT appear as the primary hook opener this week. They may appear once as a mid-post supporting detail only.\n3. At least 60% of hook openers must come from the FRESH list or be completely new angles not derived from any vault story.\n4. If you cannot generate a hook without referencing an overused or banned theme, generate a contrarian or observational hook instead — something the creator would notice this week that has nothing to do with their personal story vault.\n5. Before returning each hook_idea, mentally check it against the BANNED list above. If any banned theme's name or concept appears in the hook, REPLACE it.\n`;
           }
 
           console.log("[generate-plans] theme frequency:", JSON.stringify(themeFrequency));
@@ -1297,31 +1341,12 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
         }
 
         // Vault story dedup: catch multiple posts referencing the same vault story
-        const SEMANTIC_EXPANSIONS: Record<string, string[]> = {
-          baby: ["newborn", "infant", "child", "kid", "daughter", "son", "parent", "birth"],
-          fired: ["layoff", "laid off", "let go", "terminated", "lost job", "unemployment"],
-          mastermind: ["group", "community", "cohort", "circle", "network", "tribe"],
-          agency: ["firm", "consultancy", "shop", "studio", "practice", "company"],
-          revenue: ["income", "earnings", "sales", "profit", "arr", "mrr", "cash"],
-          client: ["customer", "account", "brand", "partner"],
-          hire: ["recruit", "team", "employee", "contractor", "talent"],
-          launch: ["release", "ship", "debut", "rollout", "drop"],
-          fail: ["failure", "mistake", "flop", "disaster", "loss"],
-          grow: ["growth", "scale", "scaling", "expand", "expansion"],
-        };
-
         if (vaultThemes.length > 0) {
-          // Expand vault keywords with semantic synonyms
-          const expandedVaultThemes = vaultThemes.map(vt => {
-            const expandedKw = new Set(vt.keywords);
-            for (const kw of vt.keywords) {
-              const expansions = SEMANTIC_EXPANSIONS[kw];
-              if (expansions) {
-                for (const syn of expansions) expandedKw.add(syn);
-              }
-            }
-            return { theme: vt.theme, keywords: Array.from(expandedKw) };
-          });
+          // Expand vault keywords with semantic synonyms (using top-level expandKeywords)
+          const expandedVaultThemes = vaultThemes.map(vt => ({
+            theme: vt.theme,
+            keywords: expandKeywords(vt.keywords),
+          }));
 
           const seenVaultStories = new Map<string, string>(); // theme → first day
           let vaultFlagCount = 0;
@@ -1345,6 +1370,29 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
           }
           if (vaultFlagCount > 0) {
             console.log(`[vault-dedup] Flagged ${vaultFlagCount} vault story duplicates within the week`);
+          }
+        }
+
+        // Post-generation banned theme validation gate
+        // Even if the prompt says "banned", the model may ignore it. This catches violations.
+        if (bannedThemes.length > 0) {
+          let bannedFlagCount = 0;
+          for (const entry of weekPosts) {
+            if (entry.post.needs_remix) continue;
+            const hookLower = (entry.post.hook_idea || "").toLowerCase();
+            for (const bt of bannedThemes) {
+              const matchCount = bt.keywords.filter(kw => hookLower.includes(kw)).length;
+              if (matchCount >= 2) {
+                entry.post.needs_remix = true;
+                entry.post.remix_reason = `hook references banned theme "${bt.theme}" (10+ recent uses)`;
+                bannedFlagCount++;
+                console.log(`[banned-gate] "${entry.post.hook_idea.slice(0, 60)}" references banned theme "${bt.theme}"`);
+                break;
+              }
+            }
+          }
+          if (bannedFlagCount > 0) {
+            console.log(`[banned-gate] Flagged ${bannedFlagCount} posts referencing banned themes for remix`);
           }
         }
       } catch (dedupErr) {
