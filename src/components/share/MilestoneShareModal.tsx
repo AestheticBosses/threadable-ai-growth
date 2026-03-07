@@ -47,7 +47,7 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
 
   const generatePng = useCallback(async () => {
     if (!cardRef.current) return null;
-    return toPng(cardRef.current, { pixelRatio: 2, cacheBust: true });
+    return toPng(cardRef.current, { pixelRatio: 2, cacheBust: true, backgroundColor: "#0E1320" });
   }, []);
 
   const handleShareToThreads = async () => {
