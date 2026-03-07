@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShareStatCard } from "./ShareStatCard";
 import { milestoneKey, type MilestoneHit } from "@/lib/milestones";
-import { Download, Copy, Image, ExternalLink, Check } from "lucide-react";
+import { Download, Copy, Image, ExternalLink, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface MilestoneShareModalProps {
@@ -36,7 +36,7 @@ function buildCaption(type: MilestoneHit["type"], value: number, meta?: { posts?
 export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShown }: MilestoneShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  const [shareState, setShareState] = useState<"idle" | "copying" | "done">("idle");
+  const [shareState, setShareState] = useState<"idle" | "loading" | "done">("idle");
   const caption = buildCaption(milestone.type, milestone.value, meta);
   const key = milestoneKey(milestone.type, milestone.value);
 
@@ -51,7 +51,7 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
   }, []);
 
   const handleShareToThreads = async () => {
-    setShareState("copying");
+    setShareState("loading");
     setBusy(true);
 
     const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(caption)}`;
@@ -60,31 +60,21 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
       const dataUrl = await generatePng();
       if (!dataUrl) throw new Error("No card rendered");
 
-      // Check if ClipboardItem API is available
-      if (typeof ClipboardItem !== "undefined") {
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        setShareState("done");
-        // Open Threads after short delay so user sees confirmation
-        setTimeout(() => {
-          window.open(threadsUrl, "_blank", "noopener,noreferrer");
-        }, 600);
-      } else {
-        // Fallback: download the PNG instead
-        const link = document.createElement("a");
-        link.download = `threadable-${milestone.type}-${milestone.value}.png`;
-        link.href = dataUrl;
-        link.click();
-        setShareState("done");
-        toast.success("Image downloaded — attach it in Threads");
-        setTimeout(() => {
-          window.open(threadsUrl, "_blank", "noopener,noreferrer");
-        }, 600);
-      }
+      // Download PNG automatically
+      const link = document.createElement("a");
+      link.download = `threadable-${milestone.type}-${milestone.value}.png`;
+      link.href = dataUrl;
+      link.click();
+
+      setShareState("done");
+
+      // Open Threads after short delay so user sees confirmation
+      setTimeout(() => {
+        window.open(threadsUrl, "_blank", "noopener,noreferrer");
+      }, 800);
     } catch {
       // If image generation fails, still open Threads with caption
-      toast.error("Could not copy image — opening Threads anyway");
+      toast.error("Couldn't generate card — caption is ready in Threads");
       setShareState("idle");
       window.open(threadsUrl, "_blank", "noopener,noreferrer");
     } finally {
@@ -179,12 +169,12 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
               {shareState === "done" ? (
                 <>
                   <Check className="h-4 w-4 mr-1.5" />
-                  Image copied — opening Threads...
+                  Card saved — opening Threads...
                 </>
-              ) : shareState === "copying" ? (
+              ) : shareState === "loading" ? (
                 <>
-                  <ExternalLink className="h-4 w-4 mr-1.5 animate-spin" />
-                  Copying image...
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Preparing your card...
                 </>
               ) : (
                 <>
@@ -194,7 +184,7 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
               )}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center">
-              Image will be copied to clipboard — paste it in Threads
+              Your card will download automatically — attach it in Threads
             </p>
           </div>
 
