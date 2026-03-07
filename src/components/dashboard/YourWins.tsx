@@ -68,7 +68,7 @@ export function YourWins() {
         // Profile for shown_milestones
         supabase
           .from("profiles")
-          .select("shown_milestones, threads_username, full_name, display_name, threads_profile_picture_url")
+          .select("threads_username, full_name, display_name, threads_profile_picture_url")
           .eq("id", user.id)
           .maybeSingle(),
         // Total published posts count
