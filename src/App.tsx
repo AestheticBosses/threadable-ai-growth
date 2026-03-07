@@ -1,4 +1,4 @@
-// Build trigger - frontend redeploy 2026-03-07c
+// Build trigger - frontend redeploy 2026-03-07d
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
