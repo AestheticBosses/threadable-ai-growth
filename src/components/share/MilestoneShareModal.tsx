@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShareStatCard } from "./ShareStatCard";
 import { milestoneKey, type MilestoneHit } from "@/lib/milestones";
-import { Download, Copy, Image, ExternalLink } from "lucide-react";
+import { Download, Copy, Image, ExternalLink, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface MilestoneShareModalProps {
@@ -36,6 +36,7 @@ function buildCaption(type: MilestoneHit["type"], value: number, meta?: { posts?
 export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShown }: MilestoneShareModalProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "copying" | "done">("idle");
   const caption = buildCaption(milestone.type, milestone.value, meta);
   const key = milestoneKey(milestone.type, milestone.value);
 
@@ -49,9 +50,46 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
     return toPng(cardRef.current, { pixelRatio: 2, cacheBust: true });
   }, []);
 
-  const handleShareToThreads = () => {
-    const url = `https://www.threads.net/intent/post?text=${encodeURIComponent(caption)}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+  const handleShareToThreads = async () => {
+    setShareState("copying");
+    setBusy(true);
+
+    const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(caption)}`;
+
+    try {
+      const dataUrl = await generatePng();
+      if (!dataUrl) throw new Error("No card rendered");
+
+      // Check if ClipboardItem API is available
+      if (typeof ClipboardItem !== "undefined") {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        setShareState("done");
+        // Open Threads after short delay so user sees confirmation
+        setTimeout(() => {
+          window.open(threadsUrl, "_blank", "noopener,noreferrer");
+        }, 600);
+      } else {
+        // Fallback: download the PNG instead
+        const link = document.createElement("a");
+        link.download = `threadable-${milestone.type}-${milestone.value}.png`;
+        link.href = dataUrl;
+        link.click();
+        setShareState("done");
+        toast.success("Image downloaded — attach it in Threads");
+        setTimeout(() => {
+          window.open(threadsUrl, "_blank", "noopener,noreferrer");
+        }, 600);
+      }
+    } catch {
+      // If image generation fails, still open Threads with caption
+      toast.error("Could not copy image — opening Threads anyway");
+      setShareState("idle");
+      window.open(threadsUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleDownload = async () => {
@@ -132,10 +170,33 @@ export function MilestoneShareModal({ milestone, user, meta, onClose, onMarkShow
           </div>
 
           {/* Actions */}
-          <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleShareToThreads}>
-            <ExternalLink className="h-4 w-4 mr-1.5" />
-            Share to Threads
-          </Button>
+          <div className="space-y-1.5">
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              onClick={handleShareToThreads}
+              disabled={busy}
+            >
+              {shareState === "done" ? (
+                <>
+                  <Check className="h-4 w-4 mr-1.5" />
+                  Image copied — opening Threads...
+                </>
+              ) : shareState === "copying" ? (
+                <>
+                  <ExternalLink className="h-4 w-4 mr-1.5 animate-spin" />
+                  Copying image...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="h-4 w-4 mr-1.5" />
+                  Share to Threads
+                </>
+              )}
+            </Button>
+            <p className="text-[10px] text-muted-foreground text-center">
+              Image will be copied to clipboard — paste it in Threads
+            </p>
+          </div>
 
           <div className="grid grid-cols-3 gap-2">
             <Button variant="outline" size="sm" className="text-xs" onClick={handleCopyImage} disabled={busy}>
