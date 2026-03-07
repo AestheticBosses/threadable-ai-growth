@@ -746,6 +746,7 @@ export type Database = {
           plan_generation_status: string | null
           posting_cadence: string | null
           revenue_target: string | null
+          shown_milestones: Json | null
           success_metric: string | null
           threads_access_token: string | null
           threads_profile_picture_url: string | null
@@ -790,6 +791,7 @@ export type Database = {
           plan_generation_status?: string | null
           posting_cadence?: string | null
           revenue_target?: string | null
+          shown_milestones?: Json | null
           success_metric?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null
@@ -834,6 +836,7 @@ export type Database = {
           plan_generation_status?: string | null
           posting_cadence?: string | null
           revenue_target?: string | null
+          shown_milestones?: Json | null
           success_metric?: string | null
           threads_access_token?: string | null
           threads_profile_picture_url?: string | null

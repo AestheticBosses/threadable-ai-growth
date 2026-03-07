@@ -70,7 +70,7 @@ export function YourWins() {
           .from("profiles")
           .select("shown_milestones, threads_username, full_name, display_name, threads_profile_picture_url")
           .eq("id", user.id)
-          .maybeSingle(),
+          .maybeSingle() as any,
         // Total published posts count
         supabase
           .from("scheduled_posts")
