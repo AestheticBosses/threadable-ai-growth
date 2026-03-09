@@ -20,11 +20,10 @@ function buildCaption(type: MilestoneHit["type"], value: number, meta?: { posts?
     case "streak":
       return `\uD83D\uDD25 ${value} day Threads streak.\n\nConsistency compounds.\n\nthreadable.ai`;
     case "views": {
-      const formatted = value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : `${Math.round(value / 1000)}K`;
-      const detailLine = meta?.sevenDayViews
-        ? `${meta.sevenDayViews.toLocaleString()} views in the last 7 days. $0 ad spend.`
-        : "";
-      return `\uD83D\uDC41\uFE0F ${formatted} total views on Threads.\n\n${detailLine}\n\nthreadable.ai`;
+      const displayViews = meta?.sevenDayViews
+        ? meta.sevenDayViews.toLocaleString()
+        : value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : `${Math.round(value / 1000)}K`;
+      return `\uD83D\uDC41\uFE0F ${displayViews} views in the last 7 days. $0 ad spend.\n\nthreadable.ai`;
     }
     case "viral":
       return `\uD83D\uDEA8 Top ${value}% engagement pattern detected.\n\nAnalyzed by Threadable AI.\n\nthreadable.ai`;

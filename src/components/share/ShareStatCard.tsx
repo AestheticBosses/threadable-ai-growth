@@ -24,12 +24,12 @@ const VARIANT_CONFIG: Record<
   views: {
     accent: "#5B9CF6",
     accentGlow: "rgba(91,156,246,0.15)",
-    unit: "total views",
+    unit: "views in 7 days",
     status: "Organic reach. $0 ad spend.",
     subline: "",
     formatValue: (v, meta) => {
-      const formatted = v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${(v / 1_000).toFixed(0)}K`;
-      return formatted;
+      if (meta?.sevenDayViews) return meta.sevenDayViews.toLocaleString();
+      return v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : `${(v / 1_000).toFixed(0)}K`;
     },
   },
   viral: {
@@ -62,9 +62,7 @@ export const ShareStatCard = forwardRef<HTMLDivElement, ShareStatCardProps>(
   ({ variant, value, user, meta }, ref) => {
     const config = VARIANT_CONFIG[variant];
     const displayValue = config.formatValue(value, meta);
-    const subline = variant === "views" && meta?.sevenDayViews
-      ? `${meta.sevenDayViews.toLocaleString()} views in 7 days`
-      : config.subline;
+    const subline = config.subline;
 
     return (
       <div
