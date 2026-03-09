@@ -5,7 +5,7 @@ import { useLocation } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, ArrowUp, MessageSquare, ChevronDown, ChevronUp, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Loader2, Plus, ArrowUp, MessageSquare, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useSubscription } from "@/hooks/useSubscription";
 import { PaywallModal } from "@/components/PaywallModal";
 import { cn } from "@/lib/utils";
@@ -52,57 +52,6 @@ const QUICK_ACTIONS = [
   { icon: "💡", label: "Give post ideas", action: "ideas" as const },
   { icon: "📈", label: "What's trending", action: "trending" as const, message: "Look at the COMPETITOR INSIGHTS section of my context.\n\nIF competitor posts exist: Show me the top 3 competitor posts by engagement rate. For each one, show the original post text and who wrote it. Format as:\n\n**1. @username — Short description of the post angle**\nOriginal post: \"[paste the full competitor post text]\"\nViews: X | Engagement: X%\nArchetype: [which of MY archetypes could rewrite this]\nFunnel Stage: TOF\n\nThen ask: \"Which one do you want me to rewrite in your voice?\"\n\nIF NO competitor posts exist: Respond conversationally (do NOT use numbered bold titles or the **1. Title** format). Tell the user you don't have trending data from their niche yet and suggest they either paste a viral post from their niche for you to rewrite, or go to the Analyze page to add accounts to study. Keep it to 2-3 sentences.\n\nDo NOT generate new post ideas from my own data — that's what 'Give post ideas' is for. This action is specifically about surfacing other people's top content for me to rewrite." },
   { icon: "📋", label: "Give a template", action: "template" as const, message: "Write posts following my 30-day content plan. Pick 5 diverse combinations from my content plan. You CAN repeat pillars if you use different archetypes/topics. Don't always use the same order — start with a different pillar each time.\n\nStart each with 📌 Pillar × Archetype as the header. Make every hook structure different — no two posts should open the same way (vary between: question, stat, confession, observation, metaphor, prediction, controversy, micro-story, comparison, lesson).\n\nUse my real stories as seasoning, not as the main topic. The pillar provides the topic, the archetype provides the delivery format, and stories add 1-2 authentic details.\n\nFor each post:\n- Fill in ALL content with my real stories, numbers, and experiences — no brackets\n- Format for mobile: short paragraphs, line breaks\n- MUST be under 500 characters — this is a hard Threads limit\n\nFormat:\n📌 Pillar Name × Archetype Name\nthen the full post text\n\nPillar: pillar name\nArchetype: archetype name\nFunnel Stage: TOF/MOF/BOF" },
-];
-
-const MORE_ACTIONS = [
-  { icon: "♻️", label: "Repurpose a post", message: "Take my top performing post and give me 3 ways to repurpose it using different archetypes. Format as numbered ideas with a bold title and description." },
-  { icon: "🔝", label: "Write a TOF post", message: "Write a top-of-funnel reach post designed for maximum reach. Pick whichever of my discovered archetypes is best suited for a broad-appeal, awareness-stage post. Use a real story from my Identity and make the hook pattern match what's worked in my top posts." },
-  { icon: "🎯", label: "Write a BOF post", message: "Write a bottom-of-funnel conversion post that drives toward my main goal. Make it feel natural, not salesy." },
-  { icon: "✏️", label: "Improve a draft", message: "I have a draft post I want to improve. I'll paste it and you score it against my content preferences and suggest improvements." },
-  { icon: "📅", label: "Plan tomorrow's content", message: "Based on my content plan and funnel strategy, what should I post tomorrow? Give me 2-3 options with hooks." },
-  { icon: "🔄", label: "Rewrite a post", message: `I want to rewrite someone else's viral post in my own voice.
-
-Here's what I need you to do when I paste the post:
-
-1. ANALYZE the source post:
-   - What hook type does it use? (provocative statement, specific number, confession, question, "Nobody tells you", list, contrarian take)
-   - What emotional trigger drives it? (fear of missing out, vulnerability, authority flex, contrarian shock, relatability, aspiration)
-   - What structure does it follow? (hook → story → lesson, hook → proof → CTA, hook → list → punchline, hook → contrast → insight)
-   - Why would someone stop scrolling for this?
-
-2. MAP to my content world:
-   - Which of my archetypes fits this angle best?
-   - What stories, numbers, or experiences from my Identity match this theme?
-   - What funnel stage would this serve for my audience?
-
-3. REWRITE as 3 variations:
-   - Each variation should use a DIFFERENT archetype from my discovered archetypes
-   - Each should use DIFFERENT stories and data points from my Identity
-   - Keep the same emotional intensity and hook pattern from the original, but make it 100% mine
-   - Use my real voice, real numbers, real experiences — no brackets, no placeholders
-   - Stay under 500 characters unless the content demands more
-
-Format EXACTLY like this for each variation:
-
-**1. Archetype Name**
-Complete post text using my voice, stories, and data
-
-Archetype: archetype name
-Funnel Stage: TOF/MOF/BOF
-
-**2. Archetype Name**
-Complete post text using my voice, stories, and data
-
-Archetype: archetype name
-Funnel Stage: TOF/MOF/BOF
-
-**3. Archetype Name**
-Complete post text using my voice, stories, and data
-
-Archetype: archetype name
-Funnel Stage: TOF/MOF/BOF
-
-Now please ask me to paste the post I want to rewrite.` },
 ];
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-with-threadable`;
@@ -279,7 +228,6 @@ const Chat = () => {
     return state?.cmoSummaryMessage || "";
   });
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [showMore, setShowMore] = useState(false);
 
   // Flow state
   const [flowItems, setFlowItems] = useState<FlowItem[]>([]);
@@ -410,10 +358,7 @@ const Chat = () => {
   // Auto-initiate CMO analysis on first chat open of the day
   useEffect(() => {
     if (autoInitFired.current) return;
-    if (sessionsLoading || messagesLoading || subLoading) return;
-    if (flowMode !== "empty") return;
-    if (messages.length > 0) return;
-    if (isBusy) return;
+    if (sessionsLoading || subLoading) return;
     if (!canGenerate) return;
     const navState = location.state as { cmoSummaryMessage?: string } | null;
     if (navState?.cmoSummaryMessage) return;
@@ -421,45 +366,55 @@ const Chat = () => {
     if (localStorage.getItem("threadable-chat-auto-init") === today) return;
 
     autoInitFired.current = true;
-    localStorage.setItem("threadable-chat-auto-init", today);
 
-    (async () => {
-      isSendingRef.current = true;
-      setFlowMode("chat");
-      setIsBusy(true);
+    const timer = setTimeout(async () => {
+      try {
+        localStorage.setItem("threadable-chat-auto-init", today);
+        isSendingRef.current = true;
+        setFlowMode("chat");
+        setIsBusy(true);
 
-      const sessionId = await ensureSession();
-      const autoMessage = "Give me a quick performance read — how is my content performing this week and what should I focus on?";
+        const session = await createSession();
+        const sessionId = session.id;
+        setActiveSessionId(sessionId);
 
-      await sendMessage({ content: autoMessage, role: "user", sessionIdOverride: sessionId });
-      await updateTitle({ id: sessionId, title: "Weekly CMO brief" });
+        const autoMessage = "Give me a quick performance read — how is my content performing this week and what should I focus on?";
 
-      let fullResponse = "";
-      await streamAIResponse({
-        message: autoMessage,
-        messageHistory: [],
-        onDelta: (chunk) => {
-          fullResponse += chunk;
-          setFlowItems([{ id: "auto-init-stream", type: "streaming", content: fullResponse }]);
-        },
-        onDone: async () => {
-          isSendingRef.current = false;
-          setFlowItems([]);
-          if (fullResponse.trim()) {
-            await sendMessage({ content: fullResponse, role: "assistant", sessionIdOverride: sessionId });
-          }
-          await refetch();
-          setIsBusy(false);
-        },
-        onError: async (errMsg) => {
-          isSendingRef.current = false;
-          setFlowItems([]);
-          toast({ title: "Error", description: errMsg, variant: "destructive" });
-          setIsBusy(false);
-        },
-      });
-    })();
-  }, [flowMode, sessionsLoading, messagesLoading, subLoading, messages.length, isBusy, canGenerate]);
+        await sendMessage({ content: autoMessage, role: "user", sessionIdOverride: sessionId });
+        await updateTitle({ id: sessionId, title: "Daily CMO Brief" });
+
+        let fullResponse = "";
+        await streamAIResponse({
+          message: autoMessage,
+          messageHistory: [],
+          onDelta: (chunk) => {
+            fullResponse += chunk;
+            setFlowItems([{ id: "auto-init-stream", type: "streaming", content: fullResponse }]);
+          },
+          onDone: async () => {
+            isSendingRef.current = false;
+            setFlowItems([]);
+            if (fullResponse.trim()) {
+              await sendMessage({ content: fullResponse, role: "assistant", sessionIdOverride: sessionId });
+            }
+            await refetch();
+            setIsBusy(false);
+          },
+          onError: async (errMsg) => {
+            isSendingRef.current = false;
+            setFlowItems([]);
+            toast({ title: "Error", description: errMsg, variant: "destructive" });
+            setIsBusy(false);
+          },
+        });
+      } catch (e) {
+        isSendingRef.current = false;
+        setIsBusy(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [sessionsLoading, subLoading, canGenerate]);
 
   /* ─── Helpers ─── */
   const addItem = useCallback((item: any) => {
@@ -1304,13 +1259,13 @@ const Chat = () => {
     }
 
     return (
-      <div className="max-w-[700px] mx-auto px-4 py-6 space-y-4">
+      <div className={cn("max-w-[700px] mx-auto px-4", flowMode === "empty" ? "min-h-full flex flex-col items-center justify-end pb-6" : "py-6 space-y-4")}>
         {/* Empty state landing */}
         {flowMode === "empty" && (
-          <div className="flex flex-col items-center justify-center pt-16 pb-8">
-            <img src={threadableIcon} alt="Threadable" className="h-14 w-14 rounded-xl mb-6" />
-            <h2 className="text-2xl font-bold text-foreground mb-2">What are we creating today?</h2>
-            <p className="text-sm text-muted-foreground mb-4">Ask Threadable to brainstorm, draft, or refine your content.</p>
+          <div className="flex flex-col items-center pb-4">
+            <img src={threadableIcon} alt="Threadable" className="h-14 w-14 rounded-xl mb-4" />
+            <h2 className="text-2xl font-bold text-foreground mb-1">What are we creating today?</h2>
+            <p className="text-sm text-muted-foreground">Ask Threadable to brainstorm, draft, or refine your content.</p>
           </div>
         )}
 
@@ -1651,30 +1606,6 @@ const Chat = () => {
                       ))}
                     </div>
 
-                    <div className="flex justify-center">
-                      <button
-                        onClick={() => setShowMore(!showMore)}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {showMore ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        {showMore ? "Show less" : "Show more"}
-                      </button>
-                    </div>
-
-                    {showMore && (
-                      <div className="flex gap-2 flex-wrap justify-center">
-                        {MORE_ACTIONS.map((action) => (
-                          <button
-                            key={action.label}
-                            onClick={() => handleQuickAction(action.label, action.message)}
-                            className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
-                          >
-                            <span>{action.icon}</span>
-                            <span>{action.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
