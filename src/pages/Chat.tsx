@@ -285,6 +285,7 @@ const Chat = () => {
   // Pending action ref — survives re-renders caused by session creation
   const pendingActionRef = useRef<{ type: string; label?: string; message?: string } | null>(null);
   const isSendingRef = useRef(false);
+  const autoInitFired = useRef(false);
 
   // Sidebar editing
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -394,6 +395,60 @@ const Chat = () => {
     setDraftingIdea(null);
     setDraftMessageId(null);
   }, [activeSessionId, messages.length]);
+
+  // Auto-initiate CMO analysis on first chat open of the day
+  useEffect(() => {
+    if (autoInitFired.current) return;
+    if (sessionsLoading || messagesLoading || subLoading) return;
+    if (flowMode !== "empty") return;
+    if (messages.length > 0) return;
+    if (isBusy) return;
+    if (!canGenerate) return;
+    const navState = location.state as { cmoSummaryMessage?: string } | null;
+    if (navState?.cmoSummaryMessage) return;
+    const today = new Date().toDateString();
+    if (localStorage.getItem("threadable-chat-auto-init") === today) return;
+
+    autoInitFired.current = true;
+    localStorage.setItem("threadable-chat-auto-init", today);
+
+    (async () => {
+      isSendingRef.current = true;
+      setFlowMode("chat");
+      setIsBusy(true);
+
+      const sessionId = await ensureSession();
+      const autoMessage = "Give me a quick performance read — how is my content performing this week and what should I focus on?";
+
+      await sendMessage({ content: autoMessage, role: "user", sessionIdOverride: sessionId });
+      await updateTitle({ id: sessionId, title: "Weekly CMO brief" });
+
+      let fullResponse = "";
+      await streamAIResponse({
+        message: autoMessage,
+        messageHistory: [],
+        onDelta: (chunk) => {
+          fullResponse += chunk;
+          setFlowItems([{ id: "auto-init-stream", type: "streaming", content: fullResponse }]);
+        },
+        onDone: async () => {
+          isSendingRef.current = false;
+          setFlowItems([]);
+          if (fullResponse.trim()) {
+            await sendMessage({ content: fullResponse, role: "assistant", sessionIdOverride: sessionId });
+          }
+          await refetch();
+          setIsBusy(false);
+        },
+        onError: async (errMsg) => {
+          isSendingRef.current = false;
+          setFlowItems([]);
+          toast({ title: "Error", description: errMsg, variant: "destructive" });
+          setIsBusy(false);
+        },
+      });
+    })();
+  }, [flowMode, sessionsLoading, messagesLoading, subLoading, messages.length, isBusy, canGenerate]);
 
   /* ─── Helpers ─── */
   const addItem = useCallback((item: any) => {

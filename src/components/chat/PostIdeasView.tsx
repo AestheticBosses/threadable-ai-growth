@@ -84,6 +84,28 @@ export function parsePostIdeas(text: string): PostIdea[] | null {
     if (ideas.length >= 2) return ideas;
   }
 
+  // Universal numbered — handles **1. Title**, 1. **Title**, 1. Title, mixed bold/bare formatting
+  const numSections = text.split(/\n(?=\s*(?:\*\*\s*)?(?:Idea\s*)?\d+[\.\)]\s)/);
+  if (numSections.length >= 3) {
+    const ideas: PostIdea[] = [];
+    for (const section of numSections) {
+      const prefixMatch = section.match(/^\s*(?:\*\*\s*)?(?:Idea\s*)?\d+[\.\)]\s+([\s\S]*)/);
+      if (!prefixMatch) continue;
+      const rest = prefixMatch[1];
+      const nlIdx = rest.indexOf("\n");
+      if (nlIdx === -1) continue;
+      const rawTitle = rest.substring(0, nlIdx).replace(/\*\*/g, "").replace(/[:\-–—]+$/, "").trim();
+      let body = rest.substring(nlIdx + 1).trim();
+      const archetypeMatch = body.match(/Archetype:\s*(.+)/i);
+      const funnelMatch = body.match(/Funnel\s*Stage:\s*(.+)/i);
+      body = cleanPostBody(body);
+      if (rawTitle && body && body.length >= MIN_POST_BODY_LENGTH) {
+        ideas.push({ title: rawTitle, body, archetype: archetypeMatch?.[1]?.trim(), funnelStage: funnelMatch?.[1]?.trim() });
+      }
+    }
+    if (ideas.length >= 2) return ideas;
+  }
+
   // Split by **NUMBER. TITLE** pattern — handles **1. Title**, **Idea 1: Title**, etc.
   const parts = text.split(/\*\*(?:Idea\s*)?\d+[\.\):\s]\s*/);
 

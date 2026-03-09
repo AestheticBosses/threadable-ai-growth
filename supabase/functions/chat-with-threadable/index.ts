@@ -35,6 +35,43 @@ serve(async (req) => {
 
     const userContext = await getUserContext(admin, user.id);
 
+    // Query recent content for vault story dedup
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const [recentTopicsRes, recentPostsRes] = await Promise.all([
+      admin.from("content_plan_items")
+        .select("topic, hook_idea")
+        .eq("user_id", user.id)
+        .gte("created_at", fourteenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(30),
+      admin.from("scheduled_posts")
+        .select("text_content")
+        .eq("user_id", user.id)
+        .in("status", ["draft", "published"])
+        .gte("created_at", fourteenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+
+    const recentTopics = (recentTopicsRes.data ?? [])
+      .map((r: any) => r.topic || r.hook_idea)
+      .filter(Boolean);
+    const recentPostSnippets = (recentPostsRes.data ?? [])
+      .map((r: any) => (r.text_content || "").substring(0, 100))
+      .filter((s: string) => s.length > 0);
+
+    let vaultDedupSection = "";
+    if (recentTopics.length > 0 || recentPostSnippets.length > 0) {
+      vaultDedupSection = "\n\nRECENTLY USED THEMES — DO NOT REPEAT THESE:\n";
+      if (recentTopics.length > 0) {
+        vaultDedupSection += "Recent topics/hooks:\n" + recentTopics.map((t: string) => `- ${t}`).join("\n") + "\n";
+      }
+      if (recentPostSnippets.length > 0) {
+        vaultDedupSection += "Recent post openings:\n" + recentPostSnippets.map((s: string) => `- ${s}`).join("\n") + "\n";
+      }
+      vaultDedupSection += "\nUse FRESH vault stories, angles, and hooks not in the above list. Rotate through unused vault entries.";
+    }
+
     // Debug logging for context verification
     console.log('=== CONTEXT DEBUG ===');
     console.log('Context length:', userContext.length);
@@ -96,7 +133,7 @@ The user's regression data, archetypes, content plan, and performance metrics ar
 
 ${CONTENT_GENERATION_RULES}
 
-${userContext}
+${userContext}${vaultDedupSection}
 
 Write posts that make people stop and feel something. Sound like a real person texting advice, not a content marketer.
 
