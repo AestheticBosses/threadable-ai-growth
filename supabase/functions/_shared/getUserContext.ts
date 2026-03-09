@@ -142,8 +142,8 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("views", { ascending: false }).limit(10),
     // Top 10 by engagement rate (NEW — may surface different posts)
     supabase.from("posts_analyzed").select("text_content, views, engagement_rate, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("engagement_rate", { ascending: false }).limit(10),
-    // 10 recent posts for variety
-    supabase.from("posts_analyzed").select("text_content, archetype").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).order("posted_at", { ascending: false }).limit(10),
+    // Recent posts (last 7 days) with metrics for CMO analysis
+    supabase.from("posts_analyzed").select("text_content, archetype, views, likes, replies, posted_at").eq("user_id", userId).eq("source", "own").not("text_content", "is", null).gte("posted_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order("views", { ascending: false }).limit(20),
     supabase.from("user_plans").select("plan_type, plan_data").eq("user_id", userId),
     supabase.from("content_strategies").select("strategy_data").eq("user_id", userId).eq("strategy_type", "archetype_discovery").limit(1).maybeSingle(),
     supabase.from("content_strategies").select("regression_insights").eq("user_id", userId).eq("strategy_type", "regression").order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -436,14 +436,14 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
       }).join("\n")
     : "";
 
-  // === RECENT POSTS (last 10, patterns only) ===
+  // === RECENT POSTS (last 7 days with metrics) ===
   const recentPosts = recentPostsRes.data || [];
   const recentSection = recentPosts.length > 0
     ? recentPosts.map((p: any, i: number) => {
         const text = p.text_content || "";
-        const firstWords = text.split(/\s+/).slice(0, 20).join(" ");
-        const hook = classifyHook(text);
-        return `${i + 1}. Hook: ${hook} | Archetype: ${p.archetype || "unknown"} | Opens with: "${firstWords}…"`;
+        const snippet = text.length > 80 ? text.substring(0, 80) + "…" : text;
+        const postedAt = p.posted_at ? new Date(p.posted_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : "unknown";
+        return `${i + 1}. ${(p.views || 0).toLocaleString()} views, ${p.likes || 0} likes, ${p.replies || 0} replies | ${p.archetype || "unknown"} | ${postedAt} | "${snippet}"`;
       }).join("\n")
     : "";
 
@@ -762,7 +762,7 @@ export async function getUserContext(supabase: any, userId: string): Promise<str
     postsBlock += "\n\n=== TOP PERFORMING POST PATTERNS BY ENGAGEMENT RATE ===\n" + engagementSection;
   }
   if (recentSection) {
-    postsBlock += "\n\n=== RECENT POST PATTERNS (for variety reference) ===\n" + recentSection;
+    postsBlock += "\n\n=== RECENT POSTS (last 7 days — ranked by views) ===\n" + recentSection;
   }
 
   const result = "=== JOURNEY STAGE ===\n" +
