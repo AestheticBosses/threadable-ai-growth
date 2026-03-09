@@ -1630,30 +1630,6 @@ const Chat = () => {
                   </div>
                 </div>
 
-                {/* Quick actions — only in empty state */}
-                {flowMode === "empty" && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2 flex-wrap justify-center">
-                      {QUICK_ACTIONS.map((action) => (
-                        <button
-                          key={action.label}
-                          onClick={() => {
-                            if (action.action === "ideas") {
-                              handlePostIdeasAction();
-                            } else if (action.message) {
-                              handleQuickAction(action.label, action.message);
-                            }
-                          }}
-                          className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
-                        >
-                          <span>{action.icon}</span>
-                          <span>{action.label}</span>
-                        </button>
-                      ))}
-                    </div>
-
-                  </div>
-                )}
               </div>
             </div>
           )}
