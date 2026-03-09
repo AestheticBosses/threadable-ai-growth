@@ -738,6 +738,7 @@ export type Database = {
           is_established: boolean | null
           journey_stage: string | null
           last_fetched_at: string | null
+          last_plan_applied_at: string | null
           last_weekly_refresh_at: string | null
           max_posts_per_day: number
           mission: string | null
@@ -783,6 +784,7 @@ export type Database = {
           is_established?: boolean | null
           journey_stage?: string | null
           last_fetched_at?: string | null
+          last_plan_applied_at?: string | null
           last_weekly_refresh_at?: string | null
           max_posts_per_day?: number
           mission?: string | null
@@ -828,6 +830,7 @@ export type Database = {
           is_established?: boolean | null
           journey_stage?: string | null
           last_fetched_at?: string | null
+          last_plan_applied_at?: string | null
           last_weekly_refresh_at?: string | null
           max_posts_per_day?: number
           mission?: string | null
