@@ -41,7 +41,9 @@ export function YourWins() {
       const now = new Date();
       const thirtyDaysAgo = startOfDay(subDays(now, 30));
 
-      const [postsRes, prevPostsRes, publishedRes, profileRes, allPostsCountRes] = await Promise.all([
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const [postsRes, prevPostsRes, publishedRes, profileRes, allPostsCountRes, sevenDayViewsRes] = await Promise.all([
         // Current period posts (30 days)
         supabase
           .from("posts_analyzed")
@@ -77,6 +79,13 @@ export function YourWins() {
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id)
           .eq("status", "published"),
+        // Last 7 days views
+        supabase
+          .from("posts_analyzed")
+          .select("views")
+          .eq("user_id", user.id)
+          .eq("source", "own")
+          .gte("posted_at", sevenDaysAgo),
       ]);
 
       const posts = postsRes.data ?? [];
@@ -129,6 +138,7 @@ export function YourWins() {
       const growthPct = prevViews > 0 ? Math.round(((totalViews - prevViews) / prevViews) * 100) : null;
 
       const postsPublished = allPostsCountRes.count ?? 0;
+      const sevenDayViews = (sevenDayViewsRes.data ?? []).reduce((s, p) => s + (p.views ?? 0), 0);
 
       const currentStats: UserStats = {
         streak,
@@ -152,6 +162,7 @@ export function YourWins() {
         earned,
         profile: profileRes.data,
         postsPublished,
+        sevenDayViews,
       };
     },
     enabled: !!user?.id,
@@ -266,7 +277,7 @@ export function YourWins() {
         <MilestoneShareModal
           milestone={modalMilestone}
           user={userDisplay}
-          meta={{ posts: data.postsPublished }}
+          meta={{ posts: data.postsPublished, sevenDayViews: data.sevenDayViews }}
           onClose={() => setModalMilestone(null)}
           onMarkShown={handleMarkShown}
         />

@@ -6,12 +6,12 @@ export interface ShareStatCardProps {
   variant: "streak" | "views" | "viral" | "growth" | "posts";
   value: number;
   user: { name: string; handle: string; avatarUrl?: string };
-  meta?: { posts?: number };
+  meta?: { posts?: number; sevenDayViews?: number };
 }
 
 const VARIANT_CONFIG: Record<
   ShareStatCardProps["variant"],
-  { accent: string; accentGlow: string; unit: string; status: string; subline: string; formatValue: (v: number, meta?: { posts?: number }) => string }
+  { accent: string; accentGlow: string; unit: string; status: string; subline: string; formatValue: (v: number, meta?: { posts?: number; sevenDayViews?: number }) => string }
 > = {
   streak: {
     accent: "#FF7043",
@@ -62,8 +62,8 @@ export const ShareStatCard = forwardRef<HTMLDivElement, ShareStatCardProps>(
   ({ variant, value, user, meta }, ref) => {
     const config = VARIANT_CONFIG[variant];
     const displayValue = config.formatValue(value, meta);
-    const subline = variant === "views" && meta?.posts
-      ? `Generated from ${meta.posts} posts.`
+    const subline = variant === "views" && meta?.sevenDayViews
+      ? `${meta.sevenDayViews.toLocaleString()} views in 7 days`
       : config.subline;
 
     return (

@@ -10,19 +10,21 @@ import { toast } from "sonner";
 interface MilestoneShareModalProps {
   milestone: MilestoneHit;
   user: { name: string; handle: string; avatarUrl?: string };
-  meta?: { posts?: number };
+  meta?: { posts?: number; sevenDayViews?: number };
   onClose: () => void;
   onMarkShown: (key: string) => void;
 }
 
-function buildCaption(type: MilestoneHit["type"], value: number, meta?: { posts?: number }): string {
+function buildCaption(type: MilestoneHit["type"], value: number, meta?: { posts?: number; sevenDayViews?: number }): string {
   switch (type) {
     case "streak":
       return `\uD83D\uDD25 ${value} day Threads streak.\n\nConsistency compounds.\n\nthreadable.ai`;
     case "views": {
       const formatted = value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : `${Math.round(value / 1000)}K`;
-      const postLine = meta?.posts ? ` Generated from ${meta.posts} posts. $0 ad spend.` : "";
-      return `\uD83D\uDC41\uFE0F ${formatted} views on Threads.\n\n${postLine}\n\nthreadable.ai`;
+      const detailLine = meta?.sevenDayViews
+        ? `${meta.sevenDayViews.toLocaleString()} views in the last 7 days. $0 ad spend.`
+        : "";
+      return `\uD83D\uDC41\uFE0F ${formatted} total views on Threads.\n\n${detailLine}\n\nthreadable.ai`;
     }
     case "viral":
       return `\uD83D\uDEA8 Top ${value}% engagement pattern detected.\n\nAnalyzed by Threadable AI.\n\nthreadable.ai`;
