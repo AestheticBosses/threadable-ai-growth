@@ -1317,6 +1317,10 @@ const Chat = () => {
 
         {/* Chat mode: render messages with inline split-screen for drafted posts */}
         {flowMode === "chat" && messages.map((m, idx) => {
+          const { text: displayText, mode: msgMode } = m.role === "assistant"
+            ? stripModeTag(m.content)
+            : { text: m.content, mode: null };
+
           // Check if this is a drafted post (via metadata)
           if (m.metadata?.type === "drafted_post") {
             const meta = m.metadata;
@@ -1379,12 +1383,9 @@ const Chat = () => {
               if (prevIsDraft && thisIsAnalysis) return null;
             }
 
-            // Strip mode tag for assistant messages
-            const { mode: msgMode, text: msgCleanText } = m.role === "assistant" ? stripModeTag(m.content) : { mode: null, text: m.content };
-
             // Try parsing as idea cards — only for CONTENT mode or untagged (backwards compat)
             if (msgMode !== 'cmo') {
-              const parsedIdeas = parsePostIdeas(msgCleanText);
+              const parsedIdeas = parsePostIdeas(displayText);
               if (parsedIdeas && parsedIdeas.length >= 2) {
                 return (
                   <div key={m.id} className="flex justify-start">
@@ -1432,8 +1433,7 @@ const Chat = () => {
             }
           }
 
-          // Regular message rendering — strip mode tag from display
-          const displayText = m.role === "assistant" ? stripModeTag(m.content).text : m.content;
+          // Regular message rendering
           const showApplyToPlan = m.role === "assistant" && msgMode === "cmo" && isCmoAnalysis(displayText);
           return (
             <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
