@@ -17,6 +17,7 @@ import { toast } from "@/hooks/use-toast";
 import threadableIcon from "@/assets/threadable-icon.png";
 import { InlineContextCards } from "@/components/chat/ContextSelection";
 import { parsePostIdeas, stripModeTag } from "@/components/chat/PostIdeasView";
+import { ApplyToPlanButton } from "@/components/chat/ApplyToPlanButton";
 import { DraftingProgress } from "@/components/chat/DraftingProgress";
 import { PostPreviewSplit, tryParseAnalysisJSON, type AnalysisData } from "@/components/chat/PostPreviewSplit";
 import { useQuery } from "@tanstack/react-query";
@@ -241,6 +242,16 @@ function generateAutoTitle(action: string, contextLabel?: string): string {
   if (action === "trending") return "Trending topics";
   if (action === "template") return "Post templates";
   return action.slice(0, 50);
+}
+
+function isCmoAnalysis(text: string): boolean {
+  let signals = 0;
+  if (/vault_drop|truth|hot_take|window|\bMOF\b|\bBOF\b|\bTOF\b/i.test(text)) signals++;
+  if (/views per post|avg views|view lift|average views/i.test(text)) signals++;
+  if (/focus on|what i.d focus|bottom line|recommend/i.test(text)) signals++;
+  if (/(?:^|\n)\s*\d+[\.\)]\s+.+/m.test(text)) signals++;
+  if (/Draft post/i.test(text)) signals--;
+  return signals >= 2;
 }
 
 function generateTitleFromMessage(msg: string): string {
@@ -1422,6 +1433,7 @@ const Chat = () => {
 
           // Regular message rendering — strip mode tag from display
           const displayText = m.role === "assistant" ? stripModeTag(m.content).text : m.content;
+          const showApplyToPlan = m.role === "assistant" && msgMode === "cmo" && isCmoAnalysis(displayText);
           return (
             <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
               <div className={cn(
@@ -1438,7 +1450,7 @@ const Chat = () => {
                 )}
                 <p className="text-sm whitespace-pre-wrap">{displayText}</p>
                 {/* "View as preview" button for short AI messages that look like posts */}
-                {m.role === "assistant" && displayText.length > 20 && displayText.length < 600 && (
+                {m.role === "assistant" && displayText.length > 20 && displayText.length < 600 && !showApplyToPlan && (
                   <button
                     onClick={() => {
                       setHistoryPreviewData({
@@ -1453,6 +1465,9 @@ const Chat = () => {
                   >
                     👁️ View as post preview
                   </button>
+                )}
+                {showApplyToPlan && (
+                  <ApplyToPlanButton analysisText={displayText} onApplied={() => {}} />
                 )}
               </div>
             </div>

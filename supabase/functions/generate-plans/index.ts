@@ -690,8 +690,23 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { plan_type, include_plans, client_now_minutes, client_day, client_timezone } = body;
+    const { plan_type, include_plans, client_now_minutes, client_day, client_timezone, cmo_override, trigger } = body;
     console.log("[generate-plans] client_now_minutes:", client_now_minutes, "client_day:", client_day, "client_timezone:", client_timezone, "raw body keys:", Object.keys(body));
+
+    // Time gate: enforce 7-day minimum between CMO chat applies
+    if (trigger === "cmo_chat") {
+      const adminGate = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: gateProfile } = await adminGate.from("profiles").select("last_plan_applied_at").eq("id", user.id).maybeSingle();
+      const lastApplied = (gateProfile as any)?.last_plan_applied_at;
+      if (lastApplied) {
+        const daysSince = Math.floor((Date.now() - new Date(lastApplied).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSince < 7) {
+          return new Response(JSON.stringify({ error: `Plan was updated ${daysSince} day(s) ago. Wait ${7 - daysSince} more day(s).` }), {
+            status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
     if (!["content_plan", "branding_plan", "funnel_strategy"].includes(plan_type)) {
       return new Response(JSON.stringify({ error: "Invalid plan_type" }), {
         status: 400,
@@ -1160,8 +1175,13 @@ Apply this to every BOF post idea, the conversion path section, and any CTA lang
     // Build system prompt with rotation constraints at the very top + POV rotation
     const systemPrompt = rotationHeader + basePrompt + stageBlock + (plan_type === "content_plan" ? todayAnchor + storyDayHints + povBlock : "");
 
+    // CMO override block — injected when user applies CMO chat recommendations
+    const cmoOverrideBlock = cmo_override
+      ? `\n=== CMO RECOMMENDATIONS (APPLY THIS WEEK) ===\nThe following came from analysis of this user's actual performance data. Apply them directly:\n\n${cmo_override}\n\nThese override default archetype distribution if there is a conflict.\n`
+      : "";
+
     // Build user message once (shared by single and batch paths) — storyRotationBlock moved to system prompt
-    const userMessage = siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + archetypeDistBlock + recentPostsBlock + "\n" + userContext;
+    const userMessage = cmoOverrideBlock + siblingPlansContext + creatorSettings + ((plan_type === "content_plan" || plan_type === "funnel_strategy") ? goalCtaRules : "") + regressionLengthBlock + archetypeDistBlock + recentPostsBlock + "\n" + userContext;
 
     let planData: any;
     try {
