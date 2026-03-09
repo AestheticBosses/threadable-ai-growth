@@ -1259,13 +1259,59 @@ const Chat = () => {
     }
 
     return (
-      <div className={cn("max-w-[700px] mx-auto px-4", flowMode === "empty" ? "min-h-full flex flex-col items-center justify-end pb-6" : "py-6 space-y-4")}>
+      <div className={cn("max-w-[700px] mx-auto px-4", flowMode === "empty" ? "min-h-full flex flex-col items-center justify-center" : "py-6 space-y-4")}>
         {/* Empty state landing */}
         {flowMode === "empty" && (
-          <div className="flex flex-col items-center pb-4">
+          <div className="flex flex-col items-center w-full max-w-[600px]">
             <img src={threadableIcon} alt="Threadable" className="h-14 w-14 rounded-xl mb-4" />
             <h2 className="text-2xl font-bold text-foreground mb-1">What are we creating today?</h2>
-            <p className="text-sm text-muted-foreground">Ask Threadable to brainstorm, draft, or refine your content.</p>
+            <p className="text-sm text-muted-foreground mb-4">Ask Threadable to brainstorm, draft, or refine your content.</p>
+
+            {/* Inline input + quick actions (centered with headline) */}
+            <div className="w-full">
+              <div className="relative rounded-xl border border-border bg-card overflow-hidden">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask Threadable..."
+                  rows={1}
+                  className="w-full resize-none bg-transparent px-4 pt-3 pb-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  style={{ maxHeight: 120 }}
+                />
+                <div className="absolute bottom-2 left-2 right-2 flex items-center justify-end">
+                  <Button
+                    size="icon"
+                    className="h-8 w-8 rounded-full"
+                    onClick={() => handleSend()}
+                    disabled={!input.trim() || isBusy}
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="flex gap-2 flex-wrap justify-center">
+                  {QUICK_ACTIONS.map((action) => (
+                    <button
+                      key={action.label}
+                      onClick={() => {
+                        if (action.action === "ideas") {
+                          handlePostIdeasAction();
+                        } else if (action.message) {
+                          handleQuickAction(action.label, action.message);
+                        }
+                      }}
+                      className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+                    >
+                      <span>{action.icon}</span>
+                      <span>{action.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1450,7 +1496,7 @@ const Chat = () => {
     );
   };
 
-  const showInput = flowMode !== "preview";
+  const showInput = flowMode !== "preview" && flowMode !== "empty";
 
   return (
     <AppLayout>
