@@ -166,6 +166,39 @@ const Insights = () => {
     enabled: !!user?.id,
   });
 
+  // ─── Competitors data ───
+  const { data: competitorData, isLoading: compLoading } = useQuery({
+    queryKey: ["insights-competitors", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const [accountsRes, postsRes] = await Promise.all([
+        supabase
+          .from("competitor_accounts")
+          .select("threads_username, follower_count")
+          .eq("user_id", user.id)
+          .order("added_at", { ascending: false }),
+        supabase
+          .from("posts_analyzed")
+          .select("text_content, views, likes, replies, reposts, source_username, posted_at")
+          .eq("user_id", user.id)
+          .eq("source", "competitor")
+          .order("views", { ascending: false })
+          .limit(100),
+      ]);
+      const accounts = accountsRes.data ?? [];
+      const posts = postsRes.data ?? [];
+      // Group posts by source_username, take top 10 per account
+      const byAccount: Record<string, typeof posts> = {};
+      for (const p of posts) {
+        const handle = p.source_username || "unknown";
+        if (!byAccount[handle]) byAccount[handle] = [];
+        if (byAccount[handle].length < 10) byAccount[handle].push(p);
+      }
+      return { accounts, posts, byAccount };
+    },
+    enabled: !!user?.id,
+  });
+
   // ─── Growth data ───
   const { data: growthData, isLoading: growthLoading } = useQuery({
     queryKey: ["insights-growth", user?.id],
@@ -294,6 +327,7 @@ const Insights = () => {
             <TabsTrigger value="performance" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Performance</TabsTrigger>
             <TabsTrigger value="regression" className="gap-1.5"><Brain className="h-3.5 w-3.5" /> Regression</TabsTrigger>
             <TabsTrigger value="growth" className="gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> Growth</TabsTrigger>
+            <TabsTrigger value="competitors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Competitors</TabsTrigger>
           </TabsList>
 
           {/* ═══════ TAB 1: PERFORMANCE ═══════ */}
@@ -675,6 +709,68 @@ const Insights = () => {
                 </div>
               </>
             ) : null}
+          </TabsContent>
+          {/* ═══════ TAB 4: COMPETITORS ═══════ */}
+          <TabsContent value="competitors" className="space-y-6">
+            {compLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !competitorData || competitorData.accounts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border p-10 text-center">
+                <Users className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
+                <p className="text-sm text-muted-foreground">No competitor accounts tracked yet.</p>
+                <p className="text-xs text-muted-foreground mt-1">Add competitors from the Analyze page to see their post performance here.</p>
+              </div>
+            ) : (
+              <>
+                {/* Tracked accounts summary */}
+                <div className="flex gap-2 flex-wrap">
+                  {competitorData.accounts.map((a) => (
+                    <Badge key={a.threads_username} variant="secondary" className="text-xs gap-1">
+                      @{a.threads_username}
+                      {a.follower_count ? <span className="text-muted-foreground">({a.follower_count.toLocaleString()})</span> : null}
+                    </Badge>
+                  ))}
+                </div>
+
+                {/* Posts table */}
+                {competitorData.posts.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-10 text-center">
+                    <p className="text-sm text-muted-foreground">No competitor posts fetched yet. Use the Analyze page to fetch their posts.</p>
+                  </div>
+                ) : (
+                  <Card className="border-border">
+                    <CardContent className="p-0">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-[100px]">Account</TableHead>
+                            <TableHead>Post</TableHead>
+                            <TableHead className="text-right w-[80px]"><Eye className="h-3.5 w-3.5 inline" /> Views</TableHead>
+                            <TableHead className="text-right w-[70px]"><Heart className="h-3.5 w-3.5 inline" /> Likes</TableHead>
+                            <TableHead className="text-right w-[70px]"><MessageCircle className="h-3.5 w-3.5 inline" /> Replies</TableHead>
+                            <TableHead className="text-right w-[70px]"><Repeat2 className="h-3.5 w-3.5 inline" /> Reposts</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {competitorData.posts.map((p, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-medium text-muted-foreground">@{p.source_username}</TableCell>
+                              <TableCell className="text-xs max-w-[300px] truncate">{(p.text_content || "").substring(0, 120)}</TableCell>
+                              <TableCell className="text-right text-xs font-mono">{(p.views ?? 0).toLocaleString()}</TableCell>
+                              <TableCell className="text-right text-xs font-mono">{(p.likes ?? 0).toLocaleString()}</TableCell>
+                              <TableCell className="text-right text-xs font-mono">{(p.replies ?? 0).toLocaleString()}</TableCell>
+                              <TableCell className="text-right text-xs font-mono">{(p.reposts ?? 0).toLocaleString()}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
           </TabsContent>
         </Tabs>
       </div>
