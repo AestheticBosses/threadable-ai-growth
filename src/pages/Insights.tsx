@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import {
   Eye, Heart, MessageCircle, Repeat2, TrendingUp, Users, BarChart3,
-  Loader2, Brain, ArrowUp, ArrowDown, Clock, ChevronUp, ChevronDown,
+  Loader2, Brain, ArrowUp, ArrowDown, Clock, ChevronUp, ChevronDown, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { subDays, subMonths, format, parseISO, startOfMonth, endOfMonth } from "date-fns";
@@ -28,12 +29,14 @@ type SortDir = "asc" | "desc";
 const Insights = () => {
   usePageTitle("Insights", "Your performance analytics dashboard");
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [range, setRange] = useState<RangeType>("7d");
   const [analyzing, setAnalyzing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("posted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
+  const [fetchingCompetitors, setFetchingCompetitors] = useState(false);
   const autoFetchRan = useRef(false);
 
   const rangeDays: Record<RangeType, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90, custom: 30 };
@@ -165,6 +168,36 @@ const Insights = () => {
     },
     enabled: !!user?.id,
   });
+
+  const handleRefreshCompetitors = async () => {
+    if (!user?.id || fetchingCompetitors) return;
+    try {
+      setFetchingCompetitors(true);
+      const { data: accounts } = await supabase
+        .from("competitor_accounts")
+        .select("threads_username")
+        .eq("user_id", user.id);
+      const usernames = (accounts ?? []).map((a: any) => a.threads_username).filter(Boolean).slice(0, 5);
+      if (usernames.length === 0) {
+        toast.error("No competitor accounts to fetch. Add accounts on the Analyze page first.");
+        return;
+      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await supabase.functions.invoke("fetch-competitor-posts", {
+        body: { usernames },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (res.error) throw new Error(res.error.message);
+      const count = res.data?.total_saved ?? 0;
+      toast.success(`Fetched ${count} competitor posts`);
+      queryClient.invalidateQueries({ queryKey: ["insights-competitors"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to fetch competitor posts");
+    } finally {
+      setFetchingCompetitors(false);
+    }
+  };
 
   // ─── Competitors data ───
   const { data: competitorData, isLoading: compLoading } = useQuery({
@@ -720,24 +753,32 @@ const Insights = () => {
               <div className="rounded-xl border border-dashed border-border p-10 text-center">
                 <Users className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
                 <p className="text-sm text-muted-foreground">No competitor accounts tracked yet.</p>
-                <p className="text-xs text-muted-foreground mt-1">Add competitors from the Analyze page to see their post performance here.</p>
+                <p className="text-xs text-muted-foreground mt-1 mb-3">Go to Analyze to discover and add competitor accounts, then come back here to view their posts.</p>
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => navigate("/analyze")}>Go to Analyze</Button>
               </div>
             ) : (
               <>
-                {/* Tracked accounts summary */}
-                <div className="flex gap-2 flex-wrap">
-                  {competitorData.accounts.map((a) => (
-                    <Badge key={a.threads_username} variant="secondary" className="text-xs gap-1">
-                      @{a.threads_username}
-                      {a.follower_count ? <span className="text-muted-foreground">({a.follower_count.toLocaleString()})</span> : null}
-                    </Badge>
-                  ))}
+                {/* Tracked accounts + refresh */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    {competitorData.accounts.map((a) => (
+                      <Badge key={a.threads_username} variant="secondary" className="text-xs gap-1">
+                        @{a.threads_username}
+                        {a.follower_count ? <span className="text-muted-foreground">({a.follower_count.toLocaleString()})</span> : null}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handleRefreshCompetitors} disabled={fetchingCompetitors}>
+                    {fetchingCompetitors ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    {fetchingCompetitors ? "Fetching..." : "Refresh Posts"}
+                  </Button>
                 </div>
 
                 {/* Posts table */}
                 {competitorData.posts.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-10 text-center">
-                    <p className="text-sm text-muted-foreground">No competitor posts fetched yet. Use the Analyze page to fetch their posts.</p>
+                    <p className="text-sm text-muted-foreground">No competitor posts fetched yet.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Click "Refresh Posts" above to pull their latest content.</p>
                   </div>
                 ) : (
                   <Card className="border-border">
