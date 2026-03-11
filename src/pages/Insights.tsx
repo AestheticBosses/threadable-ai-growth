@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { AppLayout } from "@/components/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import {
   Eye, Heart, MessageCircle, Repeat2, TrendingUp, Users, BarChart3,
-  Loader2, Brain, ArrowUp, ArrowDown, Clock, ChevronUp, ChevronDown, RefreshCw,
+  Loader2, Brain, ArrowUp, ArrowDown, Clock, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { subDays, subMonths, format, parseISO, startOfMonth, endOfMonth } from "date-fns";
@@ -29,14 +28,12 @@ type SortDir = "asc" | "desc";
 const Insights = () => {
   usePageTitle("Insights", "Your performance analytics dashboard");
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [range, setRange] = useState<RangeType>("7d");
   const [analyzing, setAnalyzing] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("posted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [syncing, setSyncing] = useState(false);
-  const [fetchingCompetitors, setFetchingCompetitors] = useState(false);
   const autoFetchRan = useRef(false);
 
   const rangeDays: Record<RangeType, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90, custom: 30 };
@@ -169,69 +166,6 @@ const Insights = () => {
     enabled: !!user?.id,
   });
 
-  const handleRefreshCompetitors = async () => {
-    if (!user?.id || fetchingCompetitors) return;
-    try {
-      setFetchingCompetitors(true);
-      const { data: accounts } = await supabase
-        .from("competitor_accounts")
-        .select("threads_username")
-        .eq("user_id", user.id);
-      const usernames = (accounts ?? []).map((a: any) => a.threads_username).filter(Boolean).slice(0, 5);
-      if (usernames.length === 0) {
-        toast.error("No competitor accounts to fetch. Add accounts on the Analyze page first.");
-        return;
-      }
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const res = await supabase.functions.invoke("fetch-competitor-posts", {
-        body: { usernames },
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (res.error) throw new Error(res.error.message);
-      const count = res.data?.total_saved ?? 0;
-      toast.success(`Fetched ${count} competitor posts`);
-      queryClient.invalidateQueries({ queryKey: ["insights-competitors"] });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to fetch competitor posts");
-    } finally {
-      setFetchingCompetitors(false);
-    }
-  };
-
-  // ─── Competitors data ───
-  const { data: competitorData, isLoading: compLoading } = useQuery({
-    queryKey: ["insights-competitors", user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const [accountsRes, postsRes] = await Promise.all([
-        supabase
-          .from("competitor_accounts")
-          .select("threads_username, follower_count")
-          .eq("user_id", user.id)
-          .order("added_at", { ascending: false }),
-        supabase
-          .from("posts_analyzed")
-          .select("text_content, views, likes, replies, reposts, source_username, posted_at")
-          .eq("user_id", user.id)
-          .eq("source", "competitor")
-          .order("views", { ascending: false })
-          .limit(100),
-      ]);
-      const accounts = accountsRes.data ?? [];
-      const posts = postsRes.data ?? [];
-      // Group posts by source_username, take top 10 per account
-      const byAccount: Record<string, typeof posts> = {};
-      for (const p of posts) {
-        const handle = p.source_username || "unknown";
-        if (!byAccount[handle]) byAccount[handle] = [];
-        if (byAccount[handle].length < 10) byAccount[handle].push(p);
-      }
-      return { accounts, posts, byAccount };
-    },
-    enabled: !!user?.id,
-  });
-
   // ─── Growth data ───
   const { data: growthData, isLoading: growthLoading } = useQuery({
     queryKey: ["insights-growth", user?.id],
@@ -360,7 +294,6 @@ const Insights = () => {
             <TabsTrigger value="performance" className="gap-1.5"><BarChart3 className="h-3.5 w-3.5" /> Performance</TabsTrigger>
             <TabsTrigger value="regression" className="gap-1.5"><Brain className="h-3.5 w-3.5" /> Regression</TabsTrigger>
             <TabsTrigger value="growth" className="gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> Growth</TabsTrigger>
-            <TabsTrigger value="competitors" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Competitors</TabsTrigger>
           </TabsList>
 
           {/* ═══════ TAB 1: PERFORMANCE ═══════ */}
@@ -742,76 +675,6 @@ const Insights = () => {
                 </div>
               </>
             ) : null}
-          </TabsContent>
-          {/* ═══════ TAB 4: COMPETITORS ═══════ */}
-          <TabsContent value="competitors" className="space-y-6">
-            {compLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : !competitorData || competitorData.accounts.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border p-10 text-center">
-                <Users className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">No competitor accounts tracked yet.</p>
-                <p className="text-xs text-muted-foreground mt-1 mb-3">Go to Analyze to discover and add competitor accounts, then come back here to view their posts.</p>
-                <Button size="sm" variant="outline" className="text-xs" onClick={() => navigate("/analyze")}>Go to Analyze</Button>
-              </div>
-            ) : (
-              <>
-                {/* Tracked accounts + refresh */}
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex gap-2 flex-wrap">
-                    {competitorData.accounts.map((a) => (
-                      <Badge key={a.threads_username} variant="secondary" className="text-xs gap-1">
-                        @{a.threads_username}
-                        {a.follower_count ? <span className="text-muted-foreground">({a.follower_count.toLocaleString()})</span> : null}
-                      </Badge>
-                    ))}
-                  </div>
-                  <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handleRefreshCompetitors} disabled={fetchingCompetitors}>
-                    {fetchingCompetitors ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                    {fetchingCompetitors ? "Fetching..." : "Refresh Posts"}
-                  </Button>
-                </div>
-
-                {/* Posts table */}
-                {competitorData.posts.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-10 text-center">
-                    <p className="text-sm text-muted-foreground">No competitor posts fetched yet.</p>
-                    <p className="text-xs text-muted-foreground mt-1">Click "Refresh Posts" above to pull their latest content.</p>
-                  </div>
-                ) : (
-                  <Card className="border-border">
-                    <CardContent className="p-0">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-[100px]">Account</TableHead>
-                            <TableHead>Post</TableHead>
-                            <TableHead className="text-right w-[80px]"><Eye className="h-3.5 w-3.5 inline" /> Views</TableHead>
-                            <TableHead className="text-right w-[70px]"><Heart className="h-3.5 w-3.5 inline" /> Likes</TableHead>
-                            <TableHead className="text-right w-[70px]"><MessageCircle className="h-3.5 w-3.5 inline" /> Replies</TableHead>
-                            <TableHead className="text-right w-[70px]"><Repeat2 className="h-3.5 w-3.5 inline" /> Reposts</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {competitorData.posts.map((p, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="text-xs font-medium text-muted-foreground">@{p.source_username}</TableCell>
-                              <TableCell className="text-xs max-w-[300px] truncate">{(p.text_content || "").substring(0, 120)}</TableCell>
-                              <TableCell className="text-right text-xs font-mono">{(p.views ?? 0).toLocaleString()}</TableCell>
-                              <TableCell className="text-right text-xs font-mono">{(p.likes ?? 0).toLocaleString()}</TableCell>
-                              <TableCell className="text-right text-xs font-mono">{(p.replies ?? 0).toLocaleString()}</TableCell>
-                              <TableCell className="text-right text-xs font-mono">{(p.reposts ?? 0).toLocaleString()}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </CardContent>
-                  </Card>
-                )}
-              </>
-            )}
           </TabsContent>
         </Tabs>
       </div>
